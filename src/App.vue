@@ -17,7 +17,7 @@
       </label>
       <label>
         Soundwave:
-        <select v-model="waveform" :change="onWaveChange">
+        <select v-model="waveform" v-on:change="onWaveChange">
           <option value="sine">Sine</option>
           <option value="square">Square</option>
           <option value="triangle">Triangle</option>
@@ -63,9 +63,7 @@ export default defineComponent({
     };
   },
   computed: {
-    onWaveChange(_: Event): void {
-      if(this.isRunning) this.toggleMetronome().then(() => this.toggleMetronome());
-    },
+    
     midiNotes(): number[] {
       return this.midiNotesInput
         .split(' ')
@@ -83,6 +81,9 @@ export default defineComponent({
     },
   },
   methods: {
+    async onWaveChange(_ : Event){
+      if(this.isRunning) this.toggleMetronome().then(() => this.toggleMetronome());
+    },
     async toggleMetronome() {
       if (this.isRunning) {
         this.stopMetronome();
