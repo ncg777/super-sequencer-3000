@@ -1,0 +1,27 @@
+{
+  "name": "super-melodic-metronome-3000",
+  "private": true,
+  "homepage": "https://github.com/ncg777/super-melodic-metronome-3000",
+  "version": "2025.01.05",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "super-melodic-metronome-3000": "file:",
+    "super-metronome-3000": "file:",
+    "the-tetronome": "file:",
+    "tone": "^15.0.4",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/vue": "^2.0.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5",
+    "vue-tsc": "^2.2.0"
+  }
+}
