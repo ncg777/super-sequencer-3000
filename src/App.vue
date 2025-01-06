@@ -59,10 +59,10 @@ export default defineComponent({
       bpm: localStorage["bpm"] ?? 90,
       numerator: localStorage["numerator"]?? 4,
       denominator: localStorage["denominator"]?? 4,
-      waveform: localStorage["waveform"]?? "square",
+      waveform: localStorage["waveform"]?? "sine",
       midiNotesInput: localStorage["midiNotesInput"] ?? '0 1 5 7 8',
-      sequenceInput: localStorage["sequenceInput"] ?? '18 8 4 2 1 2 4 8 20 8 4 2 9 2 4 8',
-      octave: localStorage["octave"] ?? 5,
+      sequenceInput: localStorage["sequenceInput"] ?? '20 8 6 1 9 1 8 4',
+      octave: localStorage["octave"] ?? 7,
       isRunning: false,
       synth: null as Tone.PolySynth | null,
       loop: null as Tone.Loop|null,
@@ -104,13 +104,14 @@ export default defineComponent({
       const midi = new Midi();
       const track = midi.addTrack();
       
+      midi.header.keySignatures= [this.numerator,this.denominator];
       this.actualNotes.forEach(
         (notes, index) => {
         notes.forEach((note:number) => {
                 track.addNote({
                   midi: note,
-                  time: 2*index/(this.numerator*this.denominator),
-                  duration: 2.0/(this.numerator*this.denominator)
+                  time: 2.0*index/(this.numerator*this.denominator),
+                  duration: 1.0/(this.denominator)
                 });
               })
       });
@@ -210,7 +211,7 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `super-sequencer-3000-t${this.numerator}-${this.denominator}-bpm-${this.bpm}-${this.formattedDate.toString()}.mid`;
+      a.download = `super-sequencer-3000-sig${this.numerator}on${this.denominator}-${this.bpm}bpm-${this.formattedDate.toString()}.mid`;
       a.click();
 
       // Clean up the URL object
