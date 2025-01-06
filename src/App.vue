@@ -77,6 +77,18 @@ export default defineComponent({
         .map((n:string) => parseInt(n.trim()))
         .filter((n:number) => !isNaN(n));
     },
+
+    actualNotes():number[][] {
+      return this.listOfNumbers.map(
+        (n:number) => {
+          const bits = n.toString(2).padStart(this.midiNotes.length, '0');
+          return this.midiNotes
+            .filter(
+              (_, idx) => bits[bits.length - 1 - idx] == "1"
+            );
+            
+        });
+    },
     totalCounters(): number {
       return this.numerator * this.denominator;
     },
@@ -93,23 +105,19 @@ export default defineComponent({
       const track = midi.addTrack();
       midi.header.setTempo(this.bpm);
 
-      this.listOfNumbers.forEach(
-        (n:number,index:number) => {
-          const bits = n.toString(2).padStart(this.midiNotes.length, '0');
-          this.midiNotes
-            .filter(
-              (_, idx) => bits[bits.length - 1 - idx] == "1"
-            )
-            .forEach(
-              (note:number) => {
+      this.actualNotes.forEach(
+        (notes, index) => {
+        notes.forEach((note:number) => {
                 track.addNote({
                   midi: note,
                   time: (15/this.bpm)*index,
                   duration: (15/this.bpm)
                 });
               })
-        });
-        return midi;
+      
+        
+      });
+      return midi;
     },
     async toggleMetronome() {
       if (this.isRunning) {
@@ -175,30 +183,23 @@ export default defineComponent({
         console.warn("Synth is not initialized");
         return;
       }
-      const n = this.listOfNumbers[this.counter % this.listOfNumbers.length];
-      const bits = n.toString(2).padStart(this.midiNotes.length, '0');
-      const notesToPlay = this.midiNotes
-        .filter(
-          (_, idx) => bits[bits.length - 1 - idx] == "1"
-        )
-        .map(midi => Tone.Frequency(midi, 'midi').toNote());
+      
       const dur = 0.5*15.0/this.bpm;
 
-      if (notesToPlay.length > 0 && synth) {
-        const now = Tone.now();   
-        for(let note of notesToPlay) {
+      if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
+        const now = Tone.now();
+        let notes = this.actualNotes[this.counter%this.actualNotes.length];
+        for(let note of notes) {
           synth.triggerAttackRelease(
-          note,
-          dur+"s",
-          now
-        );
-        }     
-        
+            Tone.Frequency(note, 'midi').toFrequency(),
+            dur+"s",
+            now
+          );
+        }
       }
     },
 
     async downloadMIDI() {
-      console.log("ok"); 
       const data = (await this.getMidi()).toArray();
       const blob = new Blob([data], { type: 'audio/midi' });
       const url = URL.createObjectURL(blob);
