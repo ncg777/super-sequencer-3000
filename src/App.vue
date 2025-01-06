@@ -237,7 +237,8 @@ export default defineComponent({
 </script>
 
 <style scoped>
-body {
+body, * {
+  color: #00ff00;
   background-color: #000000;
 }
 #app {
