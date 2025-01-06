@@ -172,7 +172,7 @@ export default defineComponent({
         console.warn("Synth is not initialized");
         return;
       }
-      const dur = 15.0/this.bpm;
+      const dur = (240.0/(this.denominator*this.numerator*this.bpm));
       synth.set({envelope:{
         attackCurve: 'exponential',
         attack: 0.001,
