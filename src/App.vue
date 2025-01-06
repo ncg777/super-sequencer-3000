@@ -28,12 +28,12 @@
 
     <div class="lists">
       <div>
-        <h3>MIDI Notes</h3>
-        <textarea v-model="midiNotesInput" placeholder="e.g. 60 64 67"></textarea>
+        <h3>Numbers (interpreted as bitstrings)</h3>
+        <textarea v-model="listOfNumbersInput" placeholder="e.g. 1 3 7"></textarea>
       </div>
       <div>
-        <h3>Numbers (will become bits)</h3>
-        <textarea v-model="listOfNumbersInput" placeholder="e.g. 1 3 7"></textarea>
+        <h3>MIDI Notes (mapped to bit indexes)</h3>
+        <textarea v-model="midiNotesInput" placeholder="e.g. 60 64 67"></textarea>
       </div>
     </div>
 
@@ -55,9 +55,9 @@ export default defineComponent({
       bpm: 90,
       numerator: 4,
       denominator: 4,
-      waveform: "sawtooth",
-      midiNotesInput: '72 73 76 78 80',
-      listOfNumbersInput: '16 10 4 2 24 2 8 9',
+      waveform: localStorage["waveform"]?? "sawtooth",
+      midiNotesInput: localStorage["midiNotesInput"] ?? '72 73 76 78 80',
+      listOfNumbersInput: localStorage["listOfNumbersInput"] ?? '16 10 4 2 24 2 8 9',
       isRunning: false,
       synth: null as Tone.PolySynth | null,
       intervalId: null as number | null,
@@ -159,7 +159,14 @@ export default defineComponent({
       }
       console.log('Metronome stopped');
     },
+    saveSettingsToLocalStorage() {
+      localStorage["waveform"] = this.waveform;
+      localStorage["midiNotesInput"] =this.midiNotesInput;
+      localStorage["listOfNumbersInput"]=this.listOfNumbersInput;
+
+    },
     playNote(synth:Tone.PolySynth) {
+      this.saveSettingsToLocalStorage();
       // Ensure synth is initialized and context is running
       if (!synth) {
         console.warn("Synth is not initialized");
