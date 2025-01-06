@@ -136,7 +136,7 @@ export default defineComponent({
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(function(_) {
-          that.playNote(synth);
+          that.playNote(synth, Tone.now());
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, that.interval);
       }
@@ -170,7 +170,7 @@ export default defineComponent({
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
     },
     
-    async playNote(synth:Tone.PolySynth) {
+    async playNote(synth:Tone.PolySynth, when:Tone.Unit.Time) {
       if (!synth) {
         console.warn("Synth is not initialized");
         return;
@@ -191,16 +191,15 @@ export default defineComponent({
           }});
       
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
-        const now = Tone.now();
         let notes = this.actualNotes[this.counter%this.actualNotes.length];
-        for(let note of notes) {
-          synth.triggerAttackRelease(
-            Tone.Frequency(note, 'midi').toFrequency(),
-            (this.denominator*8)+"n",
-            now
-          );
-        }
+        
+        synth.triggerAttackRelease(
+          notes.map((note) => Tone.Frequency(note, 'midi').toNote()),
+          (this.denominator*8)+"n",
+          when
+        );
       }
+      
     },
 
     async downloadMIDI() {
