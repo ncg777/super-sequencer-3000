@@ -28,8 +28,8 @@
 
     <div class="lists">
       <div>
-        <h3>Numbers (converted to binary)</h3>
-        <textarea v-model="listOfNumbersInput" placeholder="e.g. 1 3 7"></textarea>
+        <h3>Sequence (converted to binary)</h3>
+        <textarea v-model="sequenceInput" placeholder="e.g. 1 3 7"></textarea>
       </div>
       <div>
         <h3>MIDI Notes (mapped to bit indexes)</h3>
@@ -57,7 +57,7 @@ export default defineComponent({
       denominator: localStorage["denominator"]?? 4,
       waveform: localStorage["waveform"]?? 'square',
       midiNotesInput: localStorage["midiNotesInput"] ?? '77 74 72 69',
-      listOfNumbersInput: localStorage["listOfNumbersInput"] ?? '10 4 2 1 5 2 1 4',
+      sequenceInput: localStorage["sequenceInput"] ?? '10 4 2 1 5 2 1 4',
       isRunning: false,
       synth: null as Tone.PolySynth | null,
       intervalId: null as number | null,
@@ -71,15 +71,15 @@ export default defineComponent({
         .map((n:string) => parseInt(n.trim()))
         .filter((n:number) => !isNaN(n));
     },
-    listOfNumbers(): number[] {
-      return this.listOfNumbersInput
+    sequence(): number[] {
+      return this.sequenceInput
         .split(' ')
         .map((n:string) => parseInt(n.trim()))
         .filter((n:number) => !isNaN(n));
     },
 
     actualNotes():number[][] {
-      return this.listOfNumbers.map(
+      return this.sequence.map(
         (n:number) => {
           const bits = n.toString(2).padStart(this.midiNotes.length, '0');
           return this.midiNotes
@@ -165,7 +165,7 @@ export default defineComponent({
       localStorage["denominator"] = this.denominator;
       localStorage["waveform"] = this.waveform;
       localStorage["midiNotesInput"] =this.midiNotesInput;
-      localStorage["listOfNumbersInput"]=this.listOfNumbersInput;
+      localStorage["sequenceInput"]=this.sequenceInput;
 
     },
     
