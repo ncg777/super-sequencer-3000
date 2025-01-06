@@ -237,6 +237,9 @@ export default defineComponent({
 </script>
 
 <style scoped>
+* {
+  background-color: #000000;
+}
 #app {
   font-family: 'Avenir', Helvetica, Arial, sans-serif;
   background-color: #000000; /* Dark background */
