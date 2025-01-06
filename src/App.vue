@@ -5,23 +5,23 @@
     <div class="controls">
       <label>
         Tempo (BPM):
-        <input type="number" v-model.number="bpm" />
+        <input type="number" v-model.number="bpm" v-on:change="saveSettingsToLocalStorage" />
       </label>
       <label>
         Numerator:
-        <input type="number" v-model.number="numerator" min="1" />
+        <input type="number" v-model.number="numerator" min="1" v-on:change="saveSettingsToLocalStorage" />
       </label>
       <label>
         Denominator:
-        <input type="number" v-model.number="denominator" min="1" />
+        <input type="number" v-model.number="denominator" min="1" v-on:change="saveSettingsToLocalStorage" />
       </label>
       <label>
         Octave shift:
-        <input type="number" v-model.number="octave" />
+        <input type="number" v-model.number="octave" v-on:change="saveSettingsToLocalStorage" />
       </label>
       <label>
         Soundwave:
-        <select v-model="waveform">
+        <select v-model="waveform" v-on:change="saveSettingsToLocalStorage">
           <option value="sine">Sine</option>
           <option value="square">Square</option>
           <option value="triangle">Triangle</option>
@@ -33,11 +33,11 @@
     <div class="lists">
       <div>
         <h3>Sequence (converted to binary)</h3>
-        <textarea v-model="sequenceInput" placeholder="e.g. 1 3 7"></textarea>
+        <textarea v-model="sequenceInput" placeholder="e.g. 1 3 7" v-on:change="saveSettingsToLocalStorage"></textarea>
       </div>
       <div>
         <h3>MIDI Notes (mapped to bit indexes)</h3>
-        <textarea v-model="midiNotesInput" placeholder="e.g. 60 64 67"></textarea>
+        <textarea v-model="midiNotesInput" placeholder="e.g. 60 64 67" v-on:change="saveSettingsToLocalStorage"></textarea>
       </div>
     </div>
 
@@ -173,7 +173,6 @@ export default defineComponent({
     },
     
     async playNote(synth:Tone.PolySynth) {
-      this.saveSettingsToLocalStorage();
       if (!synth) {
         console.warn("Synth is not initialized");
         return;
