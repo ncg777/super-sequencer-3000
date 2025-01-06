@@ -1,7 +1,7 @@
 {
-  "name": "super-melodic-metronome-3000",
+  "name": "super-sequencer-3000",
   "private": true,
-  "homepage": "https://github.com/ncg777/super-melodic-metronome-3000",
+  "homepage": "https://github.com/ncg777/super-sequencer-3000",
   "version": "2025.01.05",
   "type": "module",
   "scripts": {
