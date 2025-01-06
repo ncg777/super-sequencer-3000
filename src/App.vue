@@ -28,7 +28,7 @@
 
     <div class="lists">
       <div>
-        <h3>Numbers (interpreted as bitstrings)</h3>
+        <h3>Numbers (converted to binary)</h3>
         <textarea v-model="listOfNumbersInput" placeholder="e.g. 1 3 7"></textarea>
       </div>
       <div>
