@@ -16,6 +16,10 @@
         <input type="number" v-model.number="denominator" min="1" />
       </label>
       <label>
+        Octave shift:
+        <input type="number" v-model.number="octave" />
+      </label>
+      <label>
         Soundwave:
         <select v-model="waveform">
           <option value="sine">Sine</option>
@@ -58,6 +62,7 @@ export default defineComponent({
       waveform: localStorage["waveform"]?? 'sawtooth',
       midiNotesInput: localStorage["midiNotesInput"] ?? '69 62 66 63',
       sequenceInput: localStorage["sequenceInput"] ?? '6 2 14 5 6 2 14 13 6 2 14 5 14 2 14 5',
+      octave: localStorage["octave"] ?? 2,
       isRunning: false,
       synth: null as Tone.PolySynth | null,
       intervalId: null as number | null,
@@ -85,7 +90,7 @@ export default defineComponent({
           return this.midiNotes
             .filter(
               (_, idx) => bits[bits.length - 1 - idx] == "1"
-            );
+            ).map((n) => n+this.octave*12);
             
         });
     },
@@ -160,6 +165,7 @@ export default defineComponent({
       localStorage["bpm"] = this.bpm;
       localStorage["numerator"] =this.numerator;
       localStorage["denominator"] = this.denominator;
+      localStorage["octave"] =this.octave;
       localStorage["waveform"] = this.waveform;
       localStorage["midiNotesInput"] =this.midiNotesInput;
       localStorage["sequenceInput"]=this.sequenceInput;
@@ -248,7 +254,7 @@ export default defineComponent({
 .controls select,
 .lists textarea {
   width: 100%;
-  padding: 12px; /* Increased padding for a fancier look */
+  padding: 5px; 
   box-sizing: border-box;
   border: 1px solid #444; /* Dark border */
   border-radius: 5px; /* Slightly rounded corners */
@@ -266,11 +272,11 @@ export default defineComponent({
 
 .lists {
   display: grid; /* Use grid for the lists */
-  gap: 20px; /* Space between items */
+  gap: 5px; /* Space between items */
 }
 
 .lists textarea {
-  height: 100px; /* Adjustable height */
+  height: 4em; /* Adjustable height */
   resize: none; /* Disable resizing */
 }
 
@@ -309,7 +315,7 @@ button:disabled {
   .controls input,
   .controls select,
   .lists textarea {
-    padding: 10px; /* Adjust padding for inputs on mobile */
+    padding: 5px;
   }
 }
 </style>
