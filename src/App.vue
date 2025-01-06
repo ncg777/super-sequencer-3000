@@ -5,7 +5,7 @@
     <div class="controls">
       <label>
         Tempo (BPM):
-        <input type="number" v-model.number="bpm" min="30" max="300" />
+        <input type="number" v-model.number="bpm" />
       </label>
       <label>
         Numerator:
@@ -52,9 +52,9 @@ export default defineComponent({
   
   data() {
     return {
-      bpm: 90,
-      numerator: 4,
-      denominator: 4,
+      bpm: localStorage["bpm"] ?? 90,
+      numerator: localStorage["numerator"]?? 4,
+      denominator: localStorage["denominator"]?? 4,
       waveform: localStorage["waveform"]?? "sawtooth",
       midiNotesInput: localStorage["midiNotesInput"] ?? '72 73 76 78 80',
       listOfNumbersInput: localStorage["listOfNumbersInput"] ?? '16 10 4 2 24 2 8 9',
@@ -160,6 +160,9 @@ export default defineComponent({
       console.log('Metronome stopped');
     },
     saveSettingsToLocalStorage() {
+      localStorage["bpm"] = this.bpm;
+      localStorage["numerator"] =this.numerator;
+      localStorage["denominator"] = this.denominator;
       localStorage["waveform"] = this.waveform;
       localStorage["midiNotesInput"] =this.midiNotesInput;
       localStorage["listOfNumbersInput"]=this.listOfNumbersInput;
