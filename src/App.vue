@@ -70,7 +70,7 @@ export default defineComponent({
     };
   },
   computed: {
-    interval() {return (240.0/(this.numerator*this.denominator*this.bpm))+"s";},
+    interval() {return (this.numerator*this.denominator)+"n";},
     midiNotes(): number[] {
       return this.midiNotesInput
         .split(' ')
@@ -109,8 +109,8 @@ export default defineComponent({
         notes.forEach((note:number) => {
                 track.addNote({
                   midi: note,
-                  time: 0.5*index/this.denominator,
-                  duration: 0.5/this.denominator
+                  time: index/(this.numerator*this.denominator),
+                  duration: 1.0/(this.numerator*this.denominator)
                 });
               })
       });
