@@ -17,7 +17,7 @@
       </label>
       <label>
         Soundwave:
-        <select v-model="waveform" v-on:change="onWaveChange">
+        <select v-model="waveform">
           <option value="sine">Sine</option>
           <option value="square">Square</option>
           <option value="triangle">Triangle</option>
@@ -94,9 +94,6 @@ export default defineComponent({
     },
   },
   methods: {
-    async onWaveChange(_ : Event){
-      if(this.isRunning) this.toggleSequencer().then(() => this.toggleSequencer());
-    },
     async getMidi():Promise<Midi> {
       const midi = new Midi();
       const track = midi.addTrack();
