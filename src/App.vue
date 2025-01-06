@@ -60,12 +60,12 @@ export default defineComponent({
       numerator: localStorage["numerator"]?? 4,
       denominator: localStorage["denominator"]?? 4,
       waveform: localStorage["waveform"]?? "square",
-      midiNotesInput: localStorage["midiNotesInput"] ?? '3 6 7 9 10',
+      midiNotesInput: localStorage["midiNotesInput"] ?? '0 1 5 7 8',
       sequenceInput: localStorage["sequenceInput"] ?? '18 8 4 2 1 2 4 8 20 8 4 2 9 2 4 8',
       octave: localStorage["octave"] ?? 5,
       isRunning: false,
       synth: null as Tone.PolySynth | null,
-      intervalId: null as number | null,
+      loop: null as Tone.Loop|null,
       counter: 0,
     };
   },
@@ -134,32 +134,23 @@ export default defineComponent({
       await Tone.start();
       console.log('Audio context started');
       const synth = new Tone.PolySynth(Tone.Synth).toDestination();
-            
-      if (this.intervalId) {
-        clearInterval(this.intervalId);
+      const that = this;
+      if(this.loop == null) {
+        this.loop = new Tone.Loop(function(_) {
+          that.playNote(synth);
+          that.counter = (that.counter + 1) % that.actualNotes.length; 
+        }, that.denominator+"n");
       }
-      const l = () => {
-        try {
-          this.intervalId = window.setTimeout(l, this.dur*1000);
-          this.playNote(synth);
-          this.counter = (this.counter + 1) % this.actualNotes.length; 
-        } catch(ex) {
-          console.error(ex);
-        }
-      };
-      
-      // Start interval for the metronome
-      this.intervalId = window.setTimeout(l, this.dur*1000);
+      this.loop.start(0);
 
+      Tone.getTransport().start();  
+      
       console.log('Started');
     },
     stopSequencer() {
       if(!this.isRunning) return;
       this.isRunning = false;
-      if (this.intervalId) {
-        clearInterval(this.intervalId);
-        this.intervalId = null; // Clear the interval reference
-      }
+      this.loop?.stop();
       
       console.log('Stopped');
     },
@@ -171,7 +162,11 @@ export default defineComponent({
       localStorage["waveform"] = this.waveform;
       localStorage["midiNotesInput"] =this.midiNotesInput;
       localStorage["sequenceInput"]=this.sequenceInput;
-
+      if(!!this.loop){
+        this.loop.interval=this.denominator+"n";
+      }
+      Tone.getTransport().bpm.value = this.bpm;
+      Tone.getTransport().timeSignature = [this.numerator,this.denominator];
     },
     
     async playNote(synth:Tone.PolySynth) {
@@ -179,12 +174,11 @@ export default defineComponent({
         console.warn("Synth is not initialized");
         return;
       }
-      const dur = (240.0/(this.denominator*this.numerator*this.bpm));
       synth.set({envelope:{
         attackCurve: 'exponential',
         attack: 0.001,
         decayCurve: 'exponential',
-        decay: dur,
+        decay: this.denominator+"n",
         sustain: 0
       },
       oscillator: {
@@ -193,14 +187,14 @@ export default defineComponent({
                               this.waveform === "sawtooth" ? 'sawtooth' : 
                               this.waveform === "square" ? 'square' : 'sine'
           }});
-
+      
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
         const now = Tone.now();
         let notes = this.actualNotes[this.counter%this.actualNotes.length];
         for(let note of notes) {
           synth.triggerAttackRelease(
             Tone.Frequency(note, 'midi').toFrequency(),
-            dur+"s",
+            this.denominator+"n",
             now
           );
         }
