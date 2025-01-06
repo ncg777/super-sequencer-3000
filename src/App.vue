@@ -55,7 +55,7 @@ export default defineComponent({
       bpm: localStorage["bpm"] ?? 90,
       numerator: localStorage["numerator"]?? 4,
       denominator: localStorage["denominator"]?? 4,
-      waveform: localStorage["waveform"]?? "square",
+      waveform: localStorage["waveform"]?? 'square',
       midiNotesInput: localStorage["midiNotesInput"] ?? '77 74 72 69',
       listOfNumbersInput: localStorage["listOfNumbersInput"] ?? '10 4 2 1 5 2 1 4',
       isRunning: false,
@@ -128,13 +128,7 @@ export default defineComponent({
       this.counter = 0;
       await Tone.start();
       console.log('Audio context started');
-      const synth = new Tone.PolySynth(Tone.Synth, {
-          oscillator: {
-              type: 
-                this.waveform === "triangle" ? 'triangle' : 
-                              this.waveform === "sawtooth" ? 'sawtooth' : 
-                              this.waveform === "square" ? 'square' : 'sine'
-          }}).toDestination();
+      const synth = new Tone.PolySynth(Tone.Synth).toDestination();
             
       if (this.intervalId) {
         clearInterval(this.intervalId);
@@ -181,7 +175,20 @@ export default defineComponent({
         console.warn("Synth is not initialized");
         return;
       }
-      const dur = 0.5*15.0/this.bpm;
+      const dur = 15.0/this.bpm;
+      synth.set({envelope:{
+        attackCurve: 'exponential',
+        attack: 0.001,
+        decayCurve: 'exponential',
+        decay: dur,
+        sustain: 0
+      },
+      oscillator: {
+              type: 
+                this.waveform === "triangle" ? 'triangle' : 
+                              this.waveform === "sawtooth" ? 'sawtooth' : 
+                              this.waveform === "square" ? 'square' : 'sine'
+          }});
 
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
         const now = Tone.now();
