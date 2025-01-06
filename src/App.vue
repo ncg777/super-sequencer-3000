@@ -1,6 +1,6 @@
 <template>
-  <div id="app">
-    <h1>Super Sequencer 3000</h1>
+  <div id="container">
+    <h1>>>>>> Super Sequencer 3000 <<<<<</h1>
     <div class="lists">
       <div>
         <h3>Sequence (converted to binary)</h3>
@@ -47,11 +47,8 @@
           </select>
         </label>
       </div>
-      <div class="control-item">
-        <button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
-      </div>
     </div>
-
+    <button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
     <button @click="downloadMIDI">Download MIDI</button>
   </div>
 </template>
@@ -241,7 +238,7 @@ body, * {
   color: #00ff00;
   background-color: #000000;
 }
-#app {
+#container {
   font-family: 'Avenir', Helvetica, Arial, sans-serif;
   background-color: #000000; /* Dark background */
   color: #00ff00; /* Light text color */
@@ -251,6 +248,9 @@ body, * {
   height: 100vh;
   max-width: 800px;
   margin:auto;
+}
+h1 {
+  text-align: center;
 }
 h1, h2, h3, h4 {
   margin-top: 2px;
@@ -272,7 +272,7 @@ h1, h2, h3, h4 {
   padding:3px;
 }
 .control-item input {
-  max-width: 120px;
+  max-width: 70px;
 }
 /* Other existing styles */
 .lists {
@@ -288,7 +288,7 @@ h1, h2, h3, h4 {
 }
 
 button {
-  padding: 3px;
+  padding: 5px;
   font-size: 12px; 
   border-radius: 5px;
   background-color: darkgrey;
