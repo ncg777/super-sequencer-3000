@@ -90,7 +90,7 @@ export default defineComponent({
         });
     },
     totalCounters(): number {
-      return this.numerator * this.denominator;
+      return this.actualNotes.length;
     },
     formattedDate() {
       return (timestamp => `${new Date(timestamp).getUTCFullYear()}${String(new Date(timestamp).getUTCMonth() + 1).padStart(2, '0')}${String(new Date(timestamp).getUTCDate()).padStart(2, '0')}T${String(new Date(timestamp).getUTCHours()).padStart(2, '0')}${String(new Date(timestamp).getUTCMinutes()).padStart(2, '0')}${String(new Date(timestamp).getUTCSeconds()).padStart(2, '0')}Z`)(Date.now());
