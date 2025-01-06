@@ -109,8 +109,8 @@ export default defineComponent({
         notes.forEach((note:number) => {
                 track.addNote({
                   midi: note,
-                  time: index/(this.numerator*this.denominator),
-                  duration: 1.0/(this.numerator*this.denominator)
+                  time: 2*index/(this.numerator*this.denominator),
+                  duration: 2.0/(this.numerator*this.denominator)
                 });
               })
       });
