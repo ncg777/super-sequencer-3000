@@ -37,7 +37,7 @@
       </div>
     </div>
 
-    <button @click="toggleMetronome">{{ isRunning ? 'Stop' : 'Start' }} Metronome</button>
+    <button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
     <button @click="downloadMIDI">Download MIDI</button>
   </div>
 </template>
@@ -89,16 +89,13 @@ export default defineComponent({
             
         });
     },
-    totalCounters(): number {
-      return this.actualNotes.length;
-    },
     formattedDate() {
       return (timestamp => `${new Date(timestamp).getUTCFullYear()}${String(new Date(timestamp).getUTCMonth() + 1).padStart(2, '0')}${String(new Date(timestamp).getUTCDate()).padStart(2, '0')}T${String(new Date(timestamp).getUTCHours()).padStart(2, '0')}${String(new Date(timestamp).getUTCMinutes()).padStart(2, '0')}${String(new Date(timestamp).getUTCSeconds()).padStart(2, '0')}Z`)(Date.now());
     },
   },
   methods: {
     async onWaveChange(_ : Event){
-      if(this.isRunning) this.toggleMetronome().then(() => this.toggleMetronome());
+      if(this.isRunning) this.toggleSequencer().then(() => this.toggleSequencer());
     },
     async getMidi():Promise<Midi> {
       const midi = new Midi();
@@ -114,32 +111,31 @@ export default defineComponent({
                   duration: (15/this.bpm)
                 });
               })
-      
-        
       });
       return midi;
     },
-    async toggleMetronome() {
+    async toggleSequencer() {
       if (this.isRunning) {
-        this.stopMetronome();
+        this.stopSequencer();
       } else {
-        await Tone.start();
-        this.startMetronome();
+        this.startSequencer();
       }
     },
-    async startMetronome() {
-      await Tone.start(); // Start the audio context
-      console.log('Audio context started');
+
+    async startSequencer() {
+      if(this.isRunning) return;
       this.isRunning = true;
       this.counter = 0;
+      await Tone.start();
+      console.log('Audio context started');
       const synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: {
-            type: 
-              this.waveform === "triangle" ? 'triangle' : 
-                            this.waveform === "sawtooth" ? 'sawtooth' : 
-                            this.waveform === "square" ? 'square' : 'sine'
-        }}).toDestination();
-
+          oscillator: {
+              type: 
+                this.waveform === "triangle" ? 'triangle' : 
+                              this.waveform === "sawtooth" ? 'sawtooth' : 
+                              this.waveform === "square" ? 'square' : 'sine'
+          }}).toDestination();
+            
       if (this.intervalId) {
         clearInterval(this.intervalId);
       }
@@ -148,24 +144,26 @@ export default defineComponent({
         try {
           this.intervalId = window.setTimeout(l, calcDur());
           this.playNote(synth);
-          this.counter = (this.counter + 1) % this.totalCounters; 
-          
+          this.counter = (this.counter + 1) % this.actualNotes.length; 
         } catch(ex) {
           console.error(ex);
         }
       };
+      
       // Start interval for the metronome
       this.intervalId = window.setTimeout(l, calcDur());
-      
-      console.log('Metronome started');
+
+      console.log('Started');
     },
-    stopMetronome() {
+    stopSequencer() {
+      if(!this.isRunning) return;
       this.isRunning = false;
       if (this.intervalId) {
         clearInterval(this.intervalId);
         this.intervalId = null; // Clear the interval reference
       }
-      console.log('Metronome stopped');
+      
+      console.log('Stopped');
     },
     saveSettingsToLocalStorage() {
       localStorage["bpm"] = this.bpm;
@@ -176,14 +174,13 @@ export default defineComponent({
       localStorage["listOfNumbersInput"]=this.listOfNumbersInput;
 
     },
+    
     playNote(synth:Tone.PolySynth) {
       this.saveSettingsToLocalStorage();
-      // Ensure synth is initialized and context is running
       if (!synth) {
         console.warn("Synth is not initialized");
         return;
       }
-      
       const dur = 0.5*15.0/this.bpm;
 
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
@@ -215,7 +212,7 @@ export default defineComponent({
   },
   
   beforeUnmount() {
-    this.stopMetronome(); // Ensure metronome stops when component unmounts
+    this.stopSequencer(); // Ensure metronome stops when component unmounts
   },
 
 });
