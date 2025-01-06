@@ -70,9 +70,7 @@ export default defineComponent({
     };
   },
   computed: {
-    dur():number {
-      return 240/(this.denominator*this.numerator*this.bpm);
-    },
+    interval() {return (240.0/(this.numerator*this.denominator*this.bpm))+"s";},
     midiNotes(): number[] {
       return this.midiNotesInput
         .split(' ')
@@ -134,13 +132,15 @@ export default defineComponent({
       await Tone.start();
       console.log('Audio context started');
       const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+      this.saveSettingsToLocalStorage();
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(function(_) {
           that.playNote(synth);
           that.counter = (that.counter + 1) % that.actualNotes.length; 
-        }, that.denominator+"n");
+        }, that.interval);
       }
+      
       this.loop.start(0);
 
       Tone.getTransport().start();  
@@ -154,6 +154,7 @@ export default defineComponent({
       Tone.getTransport().stop();
       console.log('Stopped');
     },
+    
     saveSettingsToLocalStorage() {
       localStorage["bpm"] = this.bpm;
       localStorage["numerator"] =this.numerator;
@@ -163,7 +164,7 @@ export default defineComponent({
       localStorage["midiNotesInput"] =this.midiNotesInput;
       localStorage["sequenceInput"]=this.sequenceInput;
       if(!!this.loop){
-        this.loop.interval=this.denominator+"n";
+        this.loop.interval=this.interval;
       }
       Tone.getTransport().bpm.value = this.bpm;
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
@@ -176,16 +177,17 @@ export default defineComponent({
       }
       synth.set({envelope:{
         attackCurve: 'exponential',
-        attack: 0.001,
-        decayCurve: 'exponential',
-        decay: this.denominator+"n",
-        sustain: 0
+        attack: (this.denominator*32)+"n",
+        decay:0,
+        releaseCurve: 'exponential',
+        release: (this.denominator*8)+"n",
+        sustain: 1.0
       },
       oscillator: {
               type: 
                 this.waveform === "triangle" ? 'triangle' : 
                               this.waveform === "sawtooth" ? 'sawtooth' : 
-                              this.waveform === "square" ? 'square' : 'sine'
+                              this.waveform === "square" ? 'square' : 'sine1'
           }});
       
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
@@ -194,7 +196,7 @@ export default defineComponent({
         for(let note of notes) {
           synth.triggerAttackRelease(
             Tone.Frequency(note, 'midi').toFrequency(),
-            this.denominator+"n",
+            (this.denominator*8)+"n",
             now
           );
         }
