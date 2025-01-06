@@ -237,7 +237,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-* {
+body {
   background-color: #000000;
 }
 #app {
@@ -297,5 +297,4 @@ button {
   width: 100%; /* Full width for buttons */
 }
 
-/* Other styles remain unchanged... */
 </style>
