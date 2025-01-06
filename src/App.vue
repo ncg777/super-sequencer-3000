@@ -58,10 +58,10 @@ export default defineComponent({
     return {
       bpm: localStorage["bpm"] ?? 90,
       numerator: localStorage["numerator"]?? 4,
-      denominator: localStorage["denominator"]?? 4,
+      denominator: localStorage["denominator"]?? 2,
       waveform: localStorage["waveform"]?? "sine",
       midiNotesInput: localStorage["midiNotesInput"] ?? '0 1 5 7 8',
-      sequenceInput: localStorage["sequenceInput"] ?? '20 8 6 1 9 1 8 4',
+      sequenceInput: localStorage["sequenceInput"] ?? '10 4 8 1 17 4 2 1',
       octave: localStorage["octave"] ?? 7,
       isRunning: false,
       synth: null as Tone.PolySynth | null,
@@ -229,31 +229,38 @@ export default defineComponent({
 <style scoped>
 #app {
   font-family: 'Avenir', Helvetica, Arial, sans-serif;
-  padding: 20px;
   background-color: #121212; /* Dark background */
   color: #ffffff; /* Light text color */
-  min-height: 100vh; /* Fill the viewport height */
   display: flex; /* Use flexbox for alignment */
   flex-direction: column; /* Stack elements vertically */
+  padding: 10px; /* Add padding around the app */
+  height: 100vh; /* Full height of the viewport */
 }
 
-.controls, .lists {
-  margin-bottom: 20px; /* Add margin between sections */
+.controls {
+  margin-bottom: 10px; /* Space between controls and lists */
+  min-height: 150px; /* Ensure controls section has minimum height */
 }
 
+.lists {
+  max-height: calc(100vh - 200px); /* Limit the height of the lists section */
+  overflow-y: auto; /* Enable scrolling for lists if necessary */
+}
+
+/* Control and List styling */
 .controls label,
 .lists div {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 5px; /* Reduced margin around labels and divs */
   color: #ffffff; /* Ensure label text is white */
 }
 
 .controls input,
 .controls select,
 .lists textarea {
-  width: 100%;
-  padding: 5px; 
-  box-sizing: border-box;
+  width: 100%; /* Full width for all inputs */
+  padding: 10px; /* Comfortable padding */
+  box-sizing: border-box; /* Include padding in width */
   border: 1px solid #444; /* Dark border */
   border-radius: 5px; /* Slightly rounded corners */
   background-color: #1e1e1e; /* Darker input background */
@@ -274,14 +281,13 @@ export default defineComponent({
 }
 
 .lists textarea {
-  height: 4em; /* Adjustable height */
+  height: 4em; /* Fixed height for text areas for better visibility */
   resize: none; /* Disable resizing */
 }
 
 button {
-  margin-top: 20px;
-  padding: 12px; /* Increase padding for better touch target size */
-  font-size: 16px;
+  padding: 12px; /* Padding for better touch target size */
+  font-size: 18px; /* Size for button text */
   border: none; /* Remove default border */
   border-radius: 5px; /* Rounded corners */
   background-color: #bb86fc; /* Purple background */
@@ -303,17 +309,15 @@ button:disabled {
 /* Media Queries for Mobile Responsiveness */
 @media (max-width: 600px) {
   #app {
-    padding: 10px; /* Reduce padding on small screens */
+    padding: 10px; /* Adequate padding for mobile visibility */
   }
 
+  .controls {
+    margin-bottom: 10px; /* Maintain consistent spacing */
+  }
+  
   button {
-    font-size: 18px; /* Increase button text size on mobile */
-  }
-
-  .controls input,
-  .controls select,
-  .lists textarea {
-    padding: 5px;
+    font-size: 20px; /* Increase button text size on mobile */
   }
 }
 </style>
