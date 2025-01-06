@@ -104,8 +104,8 @@ export default defineComponent({
         notes.forEach((note:number) => {
                 track.addNote({
                   midi: note,
-                  time: (15/this.bpm)*index,
-                  duration: (15/this.bpm)
+                  time: (240.0/(this.denominator*this.numerator*this.bpm))*index,
+                  duration: (240.0/(this.denominator*this.numerator*this.bpm))
                 });
               })
       });
@@ -130,7 +130,7 @@ export default defineComponent({
       if (this.intervalId) {
         clearInterval(this.intervalId);
       }
-      const calcDur = () => 15000/this.bpm;
+      const calcDur = () => 240000/(this.denominator*this.numerator*this.bpm);
       const l = () => {
         try {
           this.intervalId = window.setTimeout(l, calcDur());
