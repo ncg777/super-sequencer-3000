@@ -207,7 +207,7 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'super-metronome-3000-bpm' + this.bpm+ "-" + this.formattedDate.toString() + '.mid';
+      a.download = 'super-sequencer-3000-bpm' + this.bpm+ "-" + this.formattedDate.toString() + '.mid';
       a.click();
 
       // Clean up the URL object
