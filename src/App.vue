@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <h1>Super Metronome 3000</h1>
+    <h1>Super Sequencer 3000</h1>
 
     <div class="controls">
       <label>
