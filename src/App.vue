@@ -191,11 +191,10 @@ export default defineComponent({
           }});
       
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
-        let notes = this.actualNotes[this.counter%this.actualNotes.length];
-        
         synth.triggerAttackRelease(
-          notes.map((note) => Tone.Frequency(note, 'midi').toNote()),
-          (this.denominator*8)+"n",
+          this.actualNotes[this.counter%this.actualNotes.length].map(
+            (note) => Tone.Frequency(note, 'midi').toNote()),
+          (this.denominator*this.numerator*2)+"n",
           when
         );
       }
