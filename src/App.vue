@@ -70,6 +70,9 @@ export default defineComponent({
     };
   },
   computed: {
+    dur():number {
+      return 240/(this.denominator*this.numerator*this.bpm);
+    },
     midiNotes(): number[] {
       return this.midiNotesInput
         .split(' ')
@@ -135,10 +138,9 @@ export default defineComponent({
       if (this.intervalId) {
         clearInterval(this.intervalId);
       }
-      const calcDur = () => 240000/(this.denominator*this.numerator*this.bpm);
       const l = () => {
         try {
-          this.intervalId = window.setTimeout(l, calcDur());
+          this.intervalId = window.setTimeout(l, this.dur*1000);
           this.playNote(synth);
           this.counter = (this.counter + 1) % this.actualNotes.length; 
         } catch(ex) {
@@ -147,7 +149,7 @@ export default defineComponent({
       };
       
       // Start interval for the metronome
-      this.intervalId = window.setTimeout(l, calcDur());
+      this.intervalId = window.setTimeout(l, this.dur*1000);
 
       console.log('Started');
     },
