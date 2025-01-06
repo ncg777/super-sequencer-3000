@@ -1,35 +1,6 @@
 <template>
   <div id="app">
     <h1>Super Sequencer 3000</h1>
-
-    <div class="controls">
-      <label>
-        Tempo (BPM):
-        <input type="number" v-model.number="bpm" v-on:change="saveSettingsToLocalStorage" />
-      </label>
-      <label>
-        Numerator:
-        <input type="number" v-model.number="numerator" min="1" v-on:change="saveSettingsToLocalStorage" />
-      </label>
-      <label>
-        Denominator:
-        <input type="number" v-model.number="denominator" min="1" v-on:change="saveSettingsToLocalStorage" />
-      </label>
-      <label>
-        Octave shift:
-        <input type="number" v-model.number="octave" v-on:change="saveSettingsToLocalStorage" />
-      </label>
-      <label>
-        Soundwave:
-        <select v-model="waveform" v-on:change="saveSettingsToLocalStorage">
-          <option value="sine">Sine</option>
-          <option value="square">Square</option>
-          <option value="triangle">Triangle</option>
-          <option value="sawtooth">Sawtooth</option>
-        </select>
-      </label>
-    </div>
-
     <div class="lists">
       <div>
         <h3>Sequence (converted to binary)</h3>
@@ -40,8 +11,47 @@
         <textarea v-model="midiNotesInput" placeholder="e.g. 60 64 67" v-on:change="saveSettingsToLocalStorage"></textarea>
       </div>
     </div>
+    <div class="controls">
+      <div class="control-item">
+        <label>
+          Tempo (BPM):
+          <input type="number" v-model.number="bpm" v-on:change="saveSettingsToLocalStorage" />
+        </label>
+      </div>
+      <div class="control-item">
+        <label>
+          Numerator:
+          <input type="number" v-model.number="numerator" min="1" v-on:change="saveSettingsToLocalStorage" />
+        </label>
+      </div>
+      <div class="control-item">
+        <label>
+          Denominator:
+          <input type="number" v-model.number="denominator" min="1" v-on:change="saveSettingsToLocalStorage" />
+        </label>
+      </div>
+      <div class="control-item">
+        <label>
+          Octave shift:
+          <input type="number" v-model.number="octave" v-on:change="saveSettingsToLocalStorage" />
+        </label>
+      </div>
+      <div class="control-item">
+        <label>
+          Soundwave:
+          <select v-model="waveform" v-on:change="saveSettingsToLocalStorage">
+            <option value="sine">Sine</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sawtooth">Sawtooth</option>
+          </select>
+        </label>
+      </div>
+      <div class="control-item">
+        <button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
+      </div>
+    </div>
 
-    <button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
     <button @click="downloadMIDI">Download MIDI</button>
   </div>
 </template>
@@ -229,95 +239,60 @@ export default defineComponent({
 <style scoped>
 #app {
   font-family: 'Avenir', Helvetica, Arial, sans-serif;
-  background-color: #121212; /* Dark background */
-  color: #ffffff; /* Light text color */
-  display: flex; /* Use flexbox for alignment */
-  flex-direction: column; /* Stack elements vertically */
-  padding: 10px; /* Add padding around the app */
-  height: 100vh; /* Full height of the viewport */
+  background-color: #000000; /* Dark background */
+  color: #00ff00; /* Light text color */
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  height: 100vh;
+  max-width: 800px;
+  margin:auto;
 }
-
+h1, h2, h3, h4 {
+  margin-top: 2px;
+  margin-bottom: 2px;
+  padding:0;
+}
 .controls {
-  margin-bottom: 10px; /* Space between controls and lists */
-  min-height: 150px; /* Ensure controls section has minimum height */
+  display: grid; /* Use grid layout for controls */
+  grid-template-columns: repeat(3, 1fr); /* 3 columns */
+  grid-template-rows: repeat(2, auto); /* 2 rows */
+  gap: 0px; /* Space between items */
+  margin-bottom: 0px; /* Space below controls */
 }
 
+.control-item {
+  display: flex;
+  flex-direction: column;
+  text-align: end;
+  padding:3px;
+}
+.control-item input {
+  max-width: 120px;
+}
+/* Other existing styles */
 .lists {
-  max-height: calc(100vh - 200px); /* Limit the height of the lists section */
-  overflow-y: auto; /* Enable scrolling for lists if necessary */
-}
-
-/* Control and List styling */
-.controls label,
-.lists div {
-  display: block;
-  margin-bottom: 5px; /* Reduced margin around labels and divs */
-  color: #ffffff; /* Ensure label text is white */
-}
-
-.controls input,
-.controls select,
-.lists textarea {
-  width: 100%; /* Full width for all inputs */
-  padding: 10px; /* Comfortable padding */
-  box-sizing: border-box; /* Include padding in width */
-  border: 1px solid #444; /* Dark border */
-  border-radius: 5px; /* Slightly rounded corners */
-  background-color: #1e1e1e; /* Darker input background */
-  color: #ffffff; /* Light text color in inputs */
-}
-
-.controls input:focus,
-.controls select:focus,
-.lists textarea:focus {
-  outline: none; /* Remove outline */
-  border-color: #bb86fc; /* Purple border on focus */
-  background-color: #2e2e2e; /* Slightly highlighted input */
+  overflow-y: auto;
 }
 
 .lists {
   display: grid; /* Use grid for the lists */
-  gap: 5px; /* Space between items */
+  gap: 0px; /* Space between items */
 }
-
 .lists textarea {
-  height: 4em; /* Fixed height for text areas for better visibility */
-  resize: none; /* Disable resizing */
+  width:99%;
 }
 
 button {
-  padding: 12px; /* Padding for better touch target size */
-  font-size: 18px; /* Size for button text */
-  border: none; /* Remove default border */
-  border-radius: 5px; /* Rounded corners */
-  background-color: #bb86fc; /* Purple background */
-  color: #ffffff; /* White text */
+  padding: 3px;
+  font-size: 12px; 
+  border-radius: 5px;
+  background-color: darkgrey;
+  color: #00ff00; /* White text */
   cursor: pointer; /* Pointer cursor */
   transition: background-color 0.3s ease; /* Smooth transition */
   width: 100%; /* Full width for buttons */
 }
 
-button:hover {
-  background-color: #9b66dd; /* Slightly darker purple on hover */
-}
-
-button:disabled {
-  background-color: #444; /* Darker button when disabled */
-  cursor: not-allowed; /* Not-allowed cursor */
-}
-
-/* Media Queries for Mobile Responsiveness */
-@media (max-width: 600px) {
-  #app {
-    padding: 10px; /* Adequate padding for mobile visibility */
-  }
-
-  .controls {
-    margin-bottom: 10px; /* Maintain consistent spacing */
-  }
-  
-  button {
-    font-size: 20px; /* Increase button text size on mobile */
-  }
-}
+/* Other styles remain unchanged... */
 </style>
