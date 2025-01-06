@@ -55,9 +55,9 @@ export default defineComponent({
       bpm: localStorage["bpm"] ?? 90,
       numerator: localStorage["numerator"]?? 4,
       denominator: localStorage["denominator"]?? 4,
-      waveform: localStorage["waveform"]?? 'square',
-      midiNotesInput: localStorage["midiNotesInput"] ?? '77 74 72 69',
-      sequenceInput: localStorage["sequenceInput"] ?? '10 4 2 1 5 2 1 4',
+      waveform: localStorage["waveform"]?? 'sawtooth',
+      midiNotesInput: localStorage["midiNotesInput"] ?? '69 62 66 63',
+      sequenceInput: localStorage["sequenceInput"] ?? '6 2 14 5 6 2 14 13 6 2 14 5 14 2 14 5',
       isRunning: false,
       synth: null as Tone.PolySynth | null,
       intervalId: null as number | null,
@@ -166,7 +166,7 @@ export default defineComponent({
 
     },
     
-    playNote(synth:Tone.PolySynth) {
+    async playNote(synth:Tone.PolySynth) {
       this.saveSettingsToLocalStorage();
       if (!synth) {
         console.warn("Synth is not initialized");
