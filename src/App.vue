@@ -8,12 +8,12 @@
         <input type="number" v-model.number="bpm" min="30" max="300" />
       </label>
       <label>
-        Multiplier:
-        <input type="number" v-model.number="multiplier" min="1" />
+        Numerator:
+        <input type="number" v-model.number="numerator" min="1" />
       </label>
       <label>
-        Divisor:
-        <input type="number" v-model.number="divisor" min="1" />
+        Denominator:
+        <input type="number" v-model.number="denominator" min="1" />
       </label>
       <label>
         Soundwave:
@@ -38,12 +38,14 @@
     </div>
 
     <button @click="toggleMetronome">{{ isRunning ? 'Stop' : 'Start' }} Metronome</button>
+    <button @click="downloadMIDI">Download MIDI</button>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
 import * as Tone from 'tone';
+import { Midi } from '@tonejs/midi';
 
 export default defineComponent({
   name: 'App',
@@ -51,8 +53,8 @@ export default defineComponent({
   data() {
     return {
       bpm: 90,
-      multiplier: 4,
-      divisor: 4,
+      numerator: 4,
+      denominator: 4,
       waveform: "sawtooth",
       midiNotesInput: '72 73 76 78 80',
       listOfNumbersInput: '16 10 4 2 24 2 8 9',
@@ -63,26 +65,51 @@ export default defineComponent({
     };
   },
   computed: {
-    
     midiNotes(): number[] {
       return this.midiNotesInput
         .split(' ')
         .map((n:string) => parseInt(n.trim()))
-        .filter((n) => !isNaN(n));
+        .filter((n:number) => !isNaN(n));
     },
     listOfNumbers(): number[] {
       return this.listOfNumbersInput
         .split(' ')
         .map((n:string) => parseInt(n.trim()))
-        .filter((n) => !isNaN(n));
+        .filter((n:number) => !isNaN(n));
     },
     totalCounters(): number {
-      return this.multiplier * this.divisor;
+      return this.numerator * this.denominator;
+    },
+    formattedDate() {
+      return (timestamp => `${new Date(timestamp).getUTCFullYear()}${String(new Date(timestamp).getUTCMonth() + 1).padStart(2, '0')}${String(new Date(timestamp).getUTCDate()).padStart(2, '0')}T${String(new Date(timestamp).getUTCHours()).padStart(2, '0')}${String(new Date(timestamp).getUTCMinutes()).padStart(2, '0')}${String(new Date(timestamp).getUTCSeconds()).padStart(2, '0')}Z`)(Date.now());
     },
   },
   methods: {
     async onWaveChange(_ : Event){
       if(this.isRunning) this.toggleMetronome().then(() => this.toggleMetronome());
+    },
+    async getMidi():Promise<Midi> {
+      const midi = new Midi();
+      const track = midi.addTrack();
+      midi.header.setTempo(this.bpm);
+
+      this.listOfNumbers.forEach(
+        (n:number,index:number) => {
+          const bits = n.toString(2).padStart(this.midiNotes.length, '0');
+          this.midiNotes
+            .filter(
+              (_, idx) => bits[bits.length - 1 - idx] == "1"
+            )
+            .forEach(
+              (note:number) => {
+                track.addNote({
+                  midi: note,
+                  time: (15/this.bpm)*index,
+                  duration: (15/this.bpm)
+                });
+              })
+        });
+        return midi;
     },
     async toggleMetronome() {
       if (this.isRunning) {
@@ -111,9 +138,10 @@ export default defineComponent({
       const calcDur = () => 15000/this.bpm;
       const l = () => {
         try {
+          this.intervalId = window.setTimeout(l, calcDur());
           this.playNote(synth);
           this.counter = (this.counter + 1) % this.totalCounters; 
-          this.intervalId = window.setTimeout(l, calcDur());
+          
         } catch(ex) {
           console.error(ex);
         }
@@ -158,10 +186,27 @@ export default defineComponent({
         
       }
     },
+
+    async downloadMIDI() {
+      console.log("ok"); 
+      const data = (await this.getMidi()).toArray();
+      const blob = new Blob([data], { type: 'audio/midi' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'super-metronome-3000-bpm' + this.bpm+ "-" + this.formattedDate.toString() + '.mid';
+      a.click();
+
+      // Clean up the URL object
+      URL.revokeObjectURL(url);
+    }
   },
+  
   beforeUnmount() {
     this.stopMetronome(); // Ensure metronome stops when component unmounts
   },
+
 });
 </script>
 
@@ -169,30 +214,90 @@ export default defineComponent({
 #app {
   font-family: 'Avenir', Helvetica, Arial, sans-serif;
   padding: 20px;
+  background-color: #121212; /* Dark background */
+  color: #ffffff; /* Light text color */
+  min-height: 100vh; /* Fill the viewport height */
+  display: flex; /* Use flexbox for alignment */
+  flex-direction: column; /* Stack elements vertically */
 }
+
+.controls, .lists {
+  margin-bottom: 20px; /* Add margin between sections */
+}
+
 .controls label,
 .lists div {
   display: block;
   margin-bottom: 10px;
+  color: #ffffff; /* Ensure label text is white */
 }
+
 .controls input,
 .controls select,
 .lists textarea {
   width: 100%;
-  padding: 5px;
+  padding: 12px; /* Increased padding for a fancier look */
   box-sizing: border-box;
+  border: 1px solid #444; /* Dark border */
+  border-radius: 5px; /* Slightly rounded corners */
+  background-color: #1e1e1e; /* Darker input background */
+  color: #ffffff; /* Light text color in inputs */
 }
+
+.controls input:focus,
+.controls select:focus,
+.lists textarea:focus {
+  outline: none; /* Remove outline */
+  border-color: #bb86fc; /* Purple border on focus */
+  background-color: #2e2e2e; /* Slightly highlighted input */
+}
+
 .lists {
-  margin-top: 20px;
-  display: flex;
-  gap: 20px;
+  display: grid; /* Use grid for the lists */
+  gap: 20px; /* Space between items */
 }
+
 .lists textarea {
-  height: 80px;
+  height: 100px; /* Adjustable height */
+  resize: none; /* Disable resizing */
 }
+
 button {
   margin-top: 20px;
-  padding: 10px 20px;
+  padding: 12px; /* Increase padding for better touch target size */
   font-size: 16px;
+  border: none; /* Remove default border */
+  border-radius: 5px; /* Rounded corners */
+  background-color: #bb86fc; /* Purple background */
+  color: #ffffff; /* White text */
+  cursor: pointer; /* Pointer cursor */
+  transition: background-color 0.3s ease; /* Smooth transition */
+  width: 100%; /* Full width for buttons */
+}
+
+button:hover {
+  background-color: #9b66dd; /* Slightly darker purple on hover */
+}
+
+button:disabled {
+  background-color: #444; /* Darker button when disabled */
+  cursor: not-allowed; /* Not-allowed cursor */
+}
+
+/* Media Queries for Mobile Responsiveness */
+@media (max-width: 600px) {
+  #app {
+    padding: 10px; /* Reduce padding on small screens */
+  }
+
+  button {
+    font-size: 18px; /* Increase button text size on mobile */
+  }
+
+  .controls input,
+  .controls select,
+  .lists textarea {
+    padding: 10px; /* Adjust padding for inputs on mobile */
+  }
 }
 </style>

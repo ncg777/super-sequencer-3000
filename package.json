@@ -10,9 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tonejs/midi": "^2.0.28",
     "super-melodic-metronome-3000": "file:",
-    "super-metronome-3000": "file:",
-    "the-tetronome": "file:",
     "tone": "^15.0.4",
     "vue": "^3.5.13"
   },
