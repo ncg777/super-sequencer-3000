@@ -90,7 +90,7 @@ export default defineComponent({
           const bits = n.toString(2).padStart(this.midiNotes.length, '0');
           return this.midiNotes
             .filter(
-              (_, idx) => bits[bits.length - 1 - idx] == "1"
+              (_, idx) => bits[idx] == "1"
             ).map((k) => k+(this.octave*12));
         });
     },
@@ -191,12 +191,15 @@ export default defineComponent({
           }});
       
       if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
-        synth.triggerAttackRelease(
-          this.actualNotes[this.counter%this.actualNotes.length].map(
-            (note) => Tone.Frequency(note, 'midi').toNote()),
+        for(let note of this.actualNotes[this.counter%this.actualNotes.length]) {
+          synth.triggerAttackRelease(
+          Tone.Frequency(note, 'midi').toFrequency(),
           (this.denominator*this.numerator*2)+"n",
-          when
+          when,
+          0.333
         );
+        }
+        
       }
       
     },
