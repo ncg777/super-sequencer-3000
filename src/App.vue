@@ -91,8 +91,7 @@ export default defineComponent({
           return this.midiNotes
             .filter(
               (_, idx) => bits[bits.length - 1 - idx] == "1"
-            ).map((n) => n+this.octave*12);
-            
+            ).map((k) => k+this.octave*12);
         });
     },
     formattedDate() {
