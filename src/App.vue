@@ -151,7 +151,7 @@ export default defineComponent({
       if(!this.isRunning) return;
       this.isRunning = false;
       this.loop?.stop();
-      
+      Tone.getTransport().stop();
       console.log('Stopped');
     },
     saveSettingsToLocalStorage() {
