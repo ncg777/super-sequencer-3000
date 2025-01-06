@@ -102,18 +102,18 @@ export default defineComponent({
     async getMidi():Promise<Midi> {
       const midi = new Midi();
       const track = midi.addTrack();
-      midi.header.setTempo(this.bpm);
-
+      
       this.actualNotes.forEach(
         (notes, index) => {
         notes.forEach((note:number) => {
                 track.addNote({
                   midi: note,
-                  time: (240.0/(this.denominator*this.numerator*this.bpm))*index,
-                  duration: (240.0/(this.denominator*this.numerator*this.bpm))
+                  time: 0.5*index/this.denominator,
+                  duration: 0.5/this.denominator
                 });
               })
       });
+      midi.header.setTempo(this.bpm);
       return midi;
     },
     async toggleSequencer() {
@@ -212,7 +212,7 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'super-sequencer-3000-bpm' + this.bpm+ "-" + this.formattedDate.toString() + '.mid';
+      a.download = `super-sequencer-3000-t${this.numerator}-${this.denominator}-bpm-${this.bpm}-${this.formattedDate.toString()}.mid`;
       a.click();
 
       // Clean up the URL object
