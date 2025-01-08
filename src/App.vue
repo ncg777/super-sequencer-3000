@@ -170,8 +170,8 @@ export default defineComponent({
       this.saveSettingsToLocalStorage();
       const that = this;
       if(this.loop == null) {
-        this.loop = new Tone.Loop(function(_) {
-          that.playNote(Tone.now());
+        this.loop = new Tone.Loop((_) => {
+          that.playNote(_);
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, this.interval);
       }
