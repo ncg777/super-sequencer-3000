@@ -70,7 +70,7 @@ export default defineComponent({
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
-      forte: localStorage["forte"] ?? "7-35.11",
+      forte: localStorage["forte"] ?? "5-35.05",
       counter: 0,
     };
   },
