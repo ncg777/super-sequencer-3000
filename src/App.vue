@@ -20,7 +20,7 @@
       <v-row>
         <v-col cols="12">
 				  <v-text-field 
-            label="Sequence (interpreted as binary)" 
+            label="Sequence (converted to binary)" 
             v-model="sequenceInput" 
             placeholder="e.g. 1 3 7" 
             @update:modelValue="saveSettingsToLocalStorage" />
