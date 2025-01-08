@@ -76,6 +76,25 @@ export default defineComponent({
     };
   },
   computed: {
+    synth() { 
+      return new Tone.PolySynth(Tone.Synth).toDestination(
+        {
+          envelope:{
+            attackCurve: 'exponential',
+            attack: (this.denominator*this.numerator*8)+"n",
+            decay:0,
+            releaseCurve: 'exponential',
+            release: (this.denominator*this.numerator*2)+"n",
+            sustain: 1.0
+          },
+          oscillator: {
+                type: 
+                  this.waveform === "triangle" ? 'triangle' : 
+                    this.waveform === "sawtooth" ? 'sawtooth' : 
+                      this.waveform === "square" ? 'square' : 'sine1'
+          }
+        });
+    },
     interval() {return (this.numerator*this.denominator)+"n";},
     sequence(): number[] {
       return this.sequenceInput
@@ -149,12 +168,11 @@ export default defineComponent({
       this.counter = 0;
       await Tone.start();
       console.log('Audio context started');
-      const synth = new Tone.PolySynth(Tone.Synth).toDestination();
       this.saveSettingsToLocalStorage();
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(function(_) {
-          that.playNote(synth, Tone.now());
+          that.playNote(Tone.now());
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, this.interval);
       }
@@ -188,39 +206,19 @@ export default defineComponent({
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
     },
     
-    async playNote(synth:Tone.PolySynth, when:Tone.Unit.Time) {
-      if (!synth) {
-        console.warn("Synth is not initialized");
-        return;
-      }
-      synth.set({envelope:{
-        attackCurve: 'exponential',
-        attack: (this.denominator*32)+"n",
-        decay:0,
-        releaseCurve: 'exponential',
-        release: (this.denominator*8)+"n",
-        sustain: 1.0
-      },
-      oscillator: {
-              type: 
-                this.waveform === "triangle" ? 'triangle' : 
-                  this.waveform === "sawtooth" ? 'sawtooth' : 
-                    this.waveform === "square" ? 'square' : 'sine1'
-          }});
+    async playNote(when:Tone.Unit.Time) {
       const arr = this.actualNotes[this.counter%this.actualNotes.length];
-      if (arr.length > 0 && synth) {
+      if (arr.length > 0 && this.synth()) {
         const vel = 0.5*Math.sqrt(1.0/arr.length);
         for(let note of arr) {
-          synth.triggerAttackRelease(
+          this.synth().triggerAttackRelease(
           Tone.Frequency(note, 'midi').toFrequency(),
-          (this.denominator*this.numerator)+"n",
+          2*(this.denominator*this.numerator)+"n",
           when,
           vel
         );
         }
-        
       }
-      
     },
 
     async downloadMIDI() {
