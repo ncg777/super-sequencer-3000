@@ -90,14 +90,15 @@ export class PCS12 extends ImmutableCombination {
     public static getChords(): Set<PCS12> {
       const output = new Set<PCS12>();
   
-      // Add all values from ChordDict to the output Set
       for (let e of this.ChordCombinationDict.values()) {
           output.add(e);
       }
       return output;
   }
     private static async fillForteNumbersDict() {
-      const forteRows : string[][]= Papa.parse(FORTE_NUMBERS, { header: false }).data as string[][];
+      const forteRows : string[][]= FORTE_NUMBERS
+        .split("\n")
+        .map(l => l.split(",").map(s => s.replace(/"/g,'')));
       
       const forteNumbersDict = new Map<string, string>();
       const forteNumbersRotationDict = new Map<string, number>();
@@ -131,7 +132,9 @@ export class PCS12 extends ImmutableCombination {
       PCS12.ForteNumbersRotationDict = forteNumbersRotationDict;
       PCS12.ForteNumbersToPCS12Dict = forteNumbersToPCS12Dict;
       
-      const forteNamesRows : string[][]= Papa.parse(COMMON_NAMES, { header: false }).data as string[][];
+      const forteNamesRows : string[][]= COMMON_NAMES
+        .split("\n")
+        .map(l => l.split(",").map(s => s.replace(/"/g,'')));
 
       for(let row of forteNamesRows) {
         const forteNumber = row[0];

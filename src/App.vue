@@ -77,8 +77,7 @@ export default defineComponent({
   },
   computed: {
     synth() { 
-      return new Tone.PolySynth(Tone.Synth).toDestination(
-        {
+        return new Tone.PolySynth(Tone.Synth,{
           envelope:{
             attackCurve: 'exponential',
             attack: (this.denominator*this.numerator*8)+"n",
@@ -93,7 +92,7 @@ export default defineComponent({
                     this.waveform === "sawtooth" ? 'sawtooth' : 
                       this.waveform === "square" ? 'square' : 'sine1'
           }
-        });
+        }).toDestination();
     },
     interval() {return (this.numerator*this.denominator)+"n";},
     sequence(): number[] {

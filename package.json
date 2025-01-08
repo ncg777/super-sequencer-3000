@@ -2,7 +2,7 @@
   "name": "super-sequencer-3000",
   "private": true,
   "homepage": "https://github.com/ncg777/super-sequencer-3000",
-  "version": "2025.01.06",
+  "version": "2025.01.07",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,6 @@
   "dependencies": {
     "@mdi/font": "7.4.47",
     "@tonejs/midi": "^2.0.28",
-    "papaparse": "^5.4.1",
     "roboto-fontface": "*",
     "super-sequencer-3000": "file:",
     "testvuetify": "file:",
