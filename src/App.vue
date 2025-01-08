@@ -5,7 +5,7 @@
 			<h1>Super Sequencer 3k</h1>
 			<v-row>
         <v-col cols="6">
-          <v-select
+          <v-autocomplete
             label="Forte number"
             v-model="forte"
             :items="allChords"
