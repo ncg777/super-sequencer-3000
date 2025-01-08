@@ -47,6 +47,7 @@
 				</v-col>
       </v-row>
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
+      <button @click="copyURL" class="copyurl">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
 		  </v-responsive>
       </v-main>
@@ -62,17 +63,19 @@ import { PCS12 } from './objects/PCS12';
 export default defineComponent({
   name: 'App',
   data() {
+    const params = new URLSearchParams(window.location.search);
+
     return {
-      bpm: parseInt(localStorage["bpm"]?? "90") ,
-      numerator: parseInt(localStorage["numerator"]?? "4"),
-      denominator: parseInt(localStorage["denominator"] ?? "5"),
-      waveform: localStorage["waveform"] ?? "sine",
-      sequenceInput: localStorage["sequenceInput"] ?? '1 2 4 8 16',
-      octave: parseInt(localStorage["octave"] ?? "6"),
+      bpm: parseInt(params.get("bpm") ?? localStorage["bpm"]?? "90") ,
+      numerator: parseInt(params.get("numerator") ?? localStorage["numerator"]?? "4"),
+      denominator: parseInt(params.get("denominator") ?? localStorage["denominator"] ?? "5"),
+      waveform: params.get("waveform") ?? localStorage["waveform"] ?? "sine",
+      sequenceInput: params.get("sequence") ?? localStorage["sequence"] ?? '1 2 4 8 16',
+      octave: parseInt(params.get("octave") ?? localStorage["octave"] ?? "6"),
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
-      forte: localStorage["forte"] ?? "5-35.05",
+      forte: params.get("forte") ?? localStorage["forte"] ?? "5-35.05",
       counter: 0,
     };
   },
@@ -157,7 +160,10 @@ export default defineComponent({
         this.startSequencer();
       }
     },
-
+    async copyURL() {
+      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/super-sequencer-3000?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&sequence=${this.sequenceInput}`));
+      window.alert("URL copied to clipboard.");
+    },
     async startSequencer() {
       if(this.isRunning) return;
       this.isRunning = true;
@@ -256,6 +262,11 @@ h1 {
 }
 
 .downloadmidi {
+  padding: 10px;
+  font-size: 18px;
+  width: 100%;
+}
+.copyurl {
   padding: 10px;
   font-size: 18px;
   width: 100%;
