@@ -1,5 +1,5 @@
-import { BitSet } from './Objects/BitSet'; // Import BitSet if it's defined in another file
-import { PCS12 } from './Objects/PCS12';
+import { BitSet } from './objects/BitSet'; // Import BitSet if it's defined in another file
+import { PCS12 } from './objects/PCS12';
 
 class Utils {
     public static calcIntervalVector(input: number[]): number[] {

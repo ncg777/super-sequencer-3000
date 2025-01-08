@@ -55,7 +55,7 @@
 import { defineComponent } from 'vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
-import { PCS12 } from './Objects/PCS12';
+import { PCS12 } from './objects/PCS12';
 
 export default defineComponent({
   name: 'App',
