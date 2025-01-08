@@ -120,7 +120,7 @@ export default defineComponent({
       const nbBits = Math.floor(Math.log2(max))+1;
       return this.sequence.map(
         (n:number) => {
-          const bits = n.toString(2).padStart(nbBits, '0');
+          const bits = n.toString(2).padStart(nbBits, '0').split('').reverse().join('');
           return this.scale
             .filter(
               (_, idx) => bits[idx] == "1"
