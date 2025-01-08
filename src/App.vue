@@ -65,10 +65,10 @@ export default defineComponent({
     return {
       bpm: parseInt(localStorage["bpm"]?? "90") ,
       numerator: parseInt(localStorage["numerator"]?? "4"),
-      denominator: parseInt(localStorage["denominator"] ?? "2"),
+      denominator: parseInt(localStorage["denominator"] ?? "5"),
       waveform: localStorage["waveform"] ?? "sine",
-      sequenceInput: localStorage["sequenceInput"] ?? '10 4 8 1 17 4 2 1',
-      octave: parseInt(localStorage["octave"] ?? "7"),
+      sequenceInput: localStorage["sequenceInput"] ?? '1 2 4 8 16',
+      octave: parseInt(localStorage["octave"] ?? "6"),
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
