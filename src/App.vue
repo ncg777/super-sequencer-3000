@@ -4,7 +4,7 @@
 		  <v-responsive class="align-centerfill-height mx-auto" max-width="900">
 			<h1>>>>>> Super Sequencer 3000 <<<<<</h1>
 			<v-row>
-        <v-col cols="4">
+        <v-col cols="6">
           <v-select
             label="Forte number"
             v-model="forte"
@@ -13,35 +13,37 @@
             @update:modelValue="saveSettingsToLocalStorage"
           />
 				</v-col>
-				<v-col cols="4">
+        <v-col cols="6">
+          <v-select v-model="waveform" label="Waveform" :items="['sine','square','triangle','sawtooth']" @update:modelValue="saveSettingsToLocalStorage" />
+			  </v-col>
+			</v-row>
+      <v-row>
+        <v-col cols="12">
 				  <v-text-field 
             label="Sequence (interpreted as binary)" 
             v-model="sequenceInput" 
             placeholder="e.g. 1 3 7" 
             @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
-        <v-col cols="4">
-          <v-select v-model="waveform" label="Waveform" :items="['sine','square','triangle','sawtooth']" @update:modelValue="saveSettingsToLocalStorage" />
-			  </v-col>
-			</v-row>
+      </v-row>
 			<v-row>
-			  <v-col cols="4">
+			  <v-col cols="12">
           <v-slider :label="'Tempo (' + bpm + 'BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
-        <v-col colr="4">
+      </v-row>
+      <v-row>
+        <v-col colr="12">
           <v-slider :label="'Numerator (' + numerator + ')'" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
-			  <v-col cols="4">
+      </v-row>
+      <v-row>
+			  <v-col cols="12">
 				  <v-slider :label="'Denominator ('+ denominator + ')'" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
 			</v-row>
       <v-row>
-        <v-col cols="4">
-				</v-col>
-        <v-col cols="4">
+        <v-col cols="12">
 				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=11 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
-				</v-col>
-        <v-col cols="4">
 				</v-col>
       </v-row>
 			<button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
