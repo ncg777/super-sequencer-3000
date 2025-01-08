@@ -1,104 +1,111 @@
-<template>
-  <div id="container">
-    <h1>>>>>> Super Sequencer 3000 <<<<<</h1>
-    <div class="lists">
-      <div>
-        <h3>Sequence (converted to binary)</h3>
-        <textarea v-model="sequenceInput" placeholder="e.g. 1 3 7" v-on:change="saveSettingsToLocalStorage"></textarea>
-      </div>
-      <div>
-        <h3>MIDI Notes (mapped to bit indexes)</h3>
-        <textarea v-model="midiNotesInput" placeholder="e.g. 60 64 67" v-on:change="saveSettingsToLocalStorage"></textarea>
-      </div>
-    </div>
-    <div class="controls">
-      <div class="control-item">
-        <label>
-          Tempo (BPM):
-          <input type="number" v-model.number="bpm" v-on:change="saveSettingsToLocalStorage" />
-        </label>
-      </div>
-      <div class="control-item">
-        <label>
-          Numerator:
-          <input type="number" v-model.number="numerator" min="1" v-on:change="saveSettingsToLocalStorage" />
-        </label>
-      </div>
-      <div class="control-item">
-        <label>
-          Denominator:
-          <input type="number" v-model.number="denominator" min="1" v-on:change="saveSettingsToLocalStorage" />
-        </label>
-      </div>
-      <div class="control-item">
-        <label>
-          Octave shift:
-          <input type="number" v-model.number="octave" v-on:change="saveSettingsToLocalStorage" />
-        </label>
-      </div>
-      <div class="control-item">
-        <label>
-          Soundwave:
-          <select v-model="waveform" v-on:change="saveSettingsToLocalStorage">
-            <option value="sine">Sine</option>
-            <option value="square">Square</option>
-            <option value="triangle">Triangle</option>
-            <option value="sawtooth">Sawtooth</option>
-          </select>
-        </label>
-      </div>
-    </div>
-    <button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
-    <button @click="downloadMIDI">Download MIDI</button>
-  </div>
+<template>  
+	<v-app>
+		<v-main>
+		  <v-responsive class="align-centerfill-height mx-auto" max-width="900">
+			<h1>>>>>> Super Sequencer 3000 <<<<<</h1>
+			<v-row>
+        <v-col cols="4">
+          <v-select
+            label="Forte number"
+            v-model="forte"
+            :items="allChords"
+            placeholder="Forte number..."
+            @update:modelValue="saveSettingsToLocalStorage"
+          />
+				</v-col>
+				<v-col cols="4">
+				  <v-text-field 
+            label="Sequence (interpreted as binary)" 
+            v-model="sequenceInput" 
+            placeholder="e.g. 1 3 7" 
+            @update:modelValue="saveSettingsToLocalStorage" />
+				</v-col>
+        <v-col cols="4">
+          <v-select v-model="waveform" label="Waveform" :items="['sine','square','triangle','sawtooth']" @update:modelValue="saveSettingsToLocalStorage" />
+			  </v-col>
+			</v-row>
+			<v-row>
+			  <v-col cols="4">
+          <v-slider label="Tempo (BPM)" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
+				</v-col>
+        <v-col colr="4">
+          <v-slider label="Numerator" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="saveSettingsToLocalStorage" />
+				</v-col>
+			  <v-col cols="4">
+				  <v-slider label="Denominator" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="saveSettingsToLocalStorage" />
+				</v-col>
+			</v-row>
+      <v-row>
+        <v-col cols="4">
+				</v-col>
+        <v-col cols="4">
+				  <v-slider label="Octave shift" min=0 step=1 max=11 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
+				</v-col>
+        <v-col cols="4">
+				</v-col>
+      </v-row>
+			<button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
+			<button @click="downloadMIDI">Download MIDI</button>
+		  </v-responsive>
+      </v-main>
+  </v-app>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
+import { PCS12 } from './Objects/PCS12';
 
 export default defineComponent({
   name: 'App',
-  
   data() {
     return {
-      bpm: localStorage["bpm"] ?? 90,
-      numerator: localStorage["numerator"]?? 4,
-      denominator: localStorage["denominator"]?? 2,
-      waveform: localStorage["waveform"]?? "sine",
-      midiNotesInput: localStorage["midiNotesInput"] ?? '0 1 5 7 8',
+      bpm: parseInt(localStorage["bpm"]?? "90") ,
+      numerator: parseInt(localStorage["numerator"]?? "4"),
+      denominator: parseInt(localStorage["denominator"] ?? "2"),
+      waveform: localStorage["waveform"] ?? "sine",
       sequenceInput: localStorage["sequenceInput"] ?? '10 4 8 1 17 4 2 1',
-      octave: localStorage["octave"] ?? 7,
+      octave: parseInt(localStorage["octave"] ?? "7"),
+      allChords: [],
       isRunning: false,
       synth: null as Tone.PolySynth | null,
       loop: null as Tone.Loop|null,
+      forte: localStorage["forte"] ?? "7-35.11",
       counter: 0,
     };
   },
   computed: {
     interval() {return (this.numerator*this.denominator)+"n";},
-    midiNotes(): number[] {
-      return this.midiNotesInput
-        .split(' ')
-        .map((n:string) => parseInt(n.trim()))
-        .filter((n:number) => !isNaN(n));
-    },
     sequence(): number[] {
       return this.sequenceInput
         .split(' ')
         .map((n:string) => parseInt(n.trim()))
         .filter((n:number) => !isNaN(n));
     },
-
+    scale(): number[] {
+      const p = PCS12.parseForte(this.forte).asSequence();
+      const o = [];
+      
+      for(const i of p) {
+        for(let j=(i+this.octave*12);j<128;j+=12) {
+          o.push(j);
+        }
+      }
+      o.sort((a,b) => a-b);
+      return o; 
+    },
     actualNotes():number[][] {
+      let max = -1;
+      for(const i of this.sequence) if(i > max) max = i;
+      const nbBits = Math.floor(Math.log2(max))+1;
       return this.sequence.map(
         (n:number) => {
-          const bits = n.toString(2).padStart(this.midiNotes.length, '0');
-          return this.midiNotes
+          const bits = n.toString(2).padStart(nbBits, '0');
+          return this.scale
             .filter(
               (_, idx) => bits[idx] == "1"
-            ).map((k) => k+(this.octave*12));
+            );
         });
     },
     formattedDate() {
@@ -111,17 +118,21 @@ export default defineComponent({
       const track = midi.addTrack();
       
       midi.header.keySignatures= [this.numerator,this.denominator];
-      this.actualNotes.forEach(
-        (notes, index) => {
-        notes.forEach((note:number) => {
-                track.addNote({
-                  midi: note,
-                  time: 2.0*index/(this.numerator*this.denominator),
-                  duration: 1.0/(this.denominator)
-                });
-              })
-      });
       midi.header.setTempo(this.bpm);
+      for(let i=0;i < this.actualNotes.length;i++) {
+        const notes = this.actualNotes[i];
+        const vel = 64*Math.sqrt(1.0/notes.length);
+        const quant = 240.0/(this.numerator*this.denominator*this.bpm);
+        for(let note of notes) {
+          track.addNote({
+            midi: note,
+            time: i*quant,
+            duration: quant/2.0,
+            velocity: vel 
+          });
+        };
+      }
+      
       return midi;
     },
     async toggleSequencer() {
@@ -145,11 +156,10 @@ export default defineComponent({
         this.loop = new Tone.Loop(function(_) {
           that.playNote(synth, Tone.now());
           that.counter = (that.counter + 1) % that.actualNotes.length; 
-        }, that.interval);
+        }, this.interval);
       }
       
       this.loop.start(0);
-
       Tone.getTransport().start();  
       
       console.log('Started');
@@ -170,6 +180,7 @@ export default defineComponent({
       localStorage["waveform"] = this.waveform;
       localStorage["midiNotesInput"] =this.midiNotesInput;
       localStorage["sequenceInput"]=this.sequenceInput;
+      localStorage["forte"]=this.forte.toString();
       if(!!this.loop){
         this.loop.interval=this.interval;
       }
@@ -193,17 +204,18 @@ export default defineComponent({
       oscillator: {
               type: 
                 this.waveform === "triangle" ? 'triangle' : 
-                              this.waveform === "sawtooth" ? 'sawtooth' : 
-                              this.waveform === "square" ? 'square' : 'sine1'
+                  this.waveform === "sawtooth" ? 'sawtooth' : 
+                    this.waveform === "square" ? 'square' : 'sine1'
           }});
-      
-      if (this.actualNotes[this.counter%this.actualNotes.length].length > 0 && synth) {
-        for(let note of this.actualNotes[this.counter%this.actualNotes.length]) {
+      const arr = this.actualNotes[this.counter%this.actualNotes.length];
+      if (arr.length > 0 && synth) {
+        const vel = 0.5*Math.sqrt(1.0/arr.length);
+        for(let note of arr) {
           synth.triggerAttackRelease(
           Tone.Frequency(note, 'midi').toFrequency(),
-          (this.denominator*this.numerator*2)+"n",
+          (this.denominator*this.numerator)+"n",
           when,
-          0.333
+          vel
         );
         }
         
@@ -218,18 +230,25 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `super-sequencer-3000-sig${this.numerator}on${this.denominator}-${this.bpm}bpm-${this.formattedDate.toString()}.mid`;
+      a.download = `SS3k-loop-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig-${this.formattedDate.toString()}.mid`;
       a.click();
 
       // Clean up the URL object
       URL.revokeObjectURL(url);
     }
   },
-  
+  async beforeMount() {
+      await PCS12.init();
+      const arr = Array.from(PCS12.getChords()).map(c => c.toString());
+      arr.sort(PCS12.ReverseForteStringComparator);
+      this.allChords=arr;
+  },
   beforeUnmount() {
     this.stopSequencer(); // Ensure metronome stops when component unmounts
   },
-
+  async onMounted() {
+    this.saveSettingsToLocalStorage();
+  }
 });
 </script>
 
@@ -237,17 +256,6 @@ export default defineComponent({
 body, * {
   color: #00ff00;
   background-color: #000000;
-}
-#container {
-  font-family: 'Avenir', Helvetica, Arial, sans-serif;
-  background-color: #000000; /* Dark background */
-  color: #00ff00; /* Light text color */
-  display: flex;
-  flex-direction: column;
-  padding: 5px;
-  height: 100vh;
-  max-width: 800px;
-  margin:auto;
 }
 h1 {
   text-align: center;
@@ -257,39 +265,10 @@ h1, h2, h3, h4 {
   margin-bottom: 2px;
   padding:0;
 }
-.controls {
-  display: grid; /* Use grid layout for controls */
-  grid-template-columns: repeat(3, 1fr); /* 3 columns */
-  grid-template-rows: repeat(2, auto); /* 2 rows */
-  gap: 0px; /* Space between items */
-  margin-bottom: 0px; /* Space below controls */
-}
-
-.control-item {
-  display: flex;
-  flex-direction: column;
-  text-align: end;
-  padding:3px;
-}
-.control-item input {
-  max-width: 70px;
-}
-/* Other existing styles */
-.lists {
-  overflow-y: auto;
-}
-
-.lists {
-  display: grid; /* Use grid for the lists */
-  gap: 0px; /* Space between items */
-}
-.lists textarea {
-  width:99%;
-}
 
 button {
-  padding: 5px;
-  font-size: 12px; 
+  padding: 10px;
+  font-size: 18px; 
   border-radius: 5px;
   background-color: darkgrey;
   color: #00ff00; /* White text */
