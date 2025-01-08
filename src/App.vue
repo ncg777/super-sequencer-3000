@@ -263,7 +263,7 @@ button {
   padding: 10px;
   font-size: 18px; 
   border-radius: 5px;
-  background-color: darkgrey;
+  background-color: black;
   color: #00ff00; /* White text */
   cursor: pointer; /* Pointer cursor */
   transition: background-color 0.3s ease; /* Smooth transition */
