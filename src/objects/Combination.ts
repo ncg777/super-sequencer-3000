@@ -42,29 +42,7 @@ export class Combination extends BitSet {
         const str = Array.from(this.getTrueBits()).map((s) => s.toString()).join(" ");
         return str;
     }
-    /*
-    public async getComposition(): Promise<Composition> {
-        const { Composition } = await import('./Composition'); 
-
-        const nsb = this.nextSetBit(0);
-        if (nsb === -1) {
-            return new Composition(this.n); // Return empty composition if no set bits
-        } else {
-            const rotated = this.rotate(-nsb); // Rotate left by the index of the first set bit
-            const compositionArray: boolean[] = [];
-            for (let i = 1; i < this.n; i++) {
-                compositionArray.push(rotated.get(i));
-            }
-            return Composition.compositionFromBooleanArray(compositionArray); // Return Composition
-        }
-    }
-
-    public async calcSpan(): number {
-        const compositionArray = (await this.getComposition()).asSequence(); // Get the underlying array representation
-        const maxVal = Math.max(...compositionArray); // Find the maximum value in the array
-        return this.getN() - maxVal;  // Calculate span
-    }
-*/
+   
     public getIntervalVector(): number[] {
         return Utils.calcIntervalVector(this.getBitSetAsNumberArray());
     }

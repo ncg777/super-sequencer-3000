@@ -106,6 +106,25 @@ export class Composition extends Combination {
         return groups;
     }
 
+    public calcSpan(): number {
+        const compositionArray = this.asSequence(); 
+        const maxVal = Math.max(...compositionArray);
+        return this.getN() - maxVal;
+    }
+
+    public extractFromCombination(combination: Combination):Composition {
+        const nsb = combination.nextSetBit(0);
+        if (nsb === -1) {
+            return new Composition(combination.getN());
+        } else {
+            const rotated = combination.rotate(-nsb);
+            const compositionArray: boolean[] = [];
+            for (let i = 1; i < combination.getN(); i++) {
+                compositionArray.push(rotated.get(i));
+            }
+            return Composition.compositionFromBooleanArray(compositionArray); // Return Composition
+        }
+    }
 
     toString(): string {
         return this.getCompositionAsArray().join(" ");

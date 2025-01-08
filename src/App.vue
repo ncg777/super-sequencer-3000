@@ -1,5 +1,5 @@
 <template>  
-	<v-app>
+	<v-app style="padding: 10px;">
 		<v-main>
 		  <v-responsive class="align-centerfill-height mx-auto" max-width="900">
 			<h1>Super Sequencer 3k</h1>
