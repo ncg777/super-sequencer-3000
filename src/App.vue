@@ -43,7 +43,7 @@
 			</v-row>
       <v-row>
         <v-col cols="12">
-				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=11 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
+				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
 			<button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
