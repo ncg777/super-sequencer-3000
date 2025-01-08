@@ -42,6 +42,7 @@ export class Combination extends BitSet {
         const str = Array.from(this.getTrueBits()).map((s) => s.toString()).join(" ");
         return str;
     }
+    /*
     public async getComposition(): Promise<Composition> {
         const { Composition } = await import('./Composition'); 
 
@@ -63,7 +64,7 @@ export class Combination extends BitSet {
         const maxVal = Math.max(...compositionArray); // Find the maximum value in the array
         return this.getN() - maxVal;  // Calculate span
     }
-
+*/
     public getIntervalVector(): number[] {
         return Utils.calcIntervalVector(this.getBitSetAsNumberArray());
     }

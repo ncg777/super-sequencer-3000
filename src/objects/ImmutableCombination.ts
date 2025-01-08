@@ -41,10 +41,11 @@ export class ImmutableCombination {
     public combinationString(): string {
         return this.combination.combinationString();
     }
+    /*
     public calcSpan(): number {
         return this.combination.calcSpan();
     }
-
+    */
     public getIntervalVector(): number[] {
         return this.combination.getIntervalVector();
     }
@@ -67,11 +68,11 @@ export class ImmutableCombination {
     public symmetricDifference(y: ImmutableCombination): ImmutableCombination {
         return new ImmutableCombination(this.combination.symmetricDifference(y.combination));
     }
-
+    /*
     public getComposition(): Composition {
         return this.combination.getComposition();
     }
-
+    */
     public get(bitIndex: number): boolean {
         return this.combination.get(bitIndex);
     }

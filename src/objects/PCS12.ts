@@ -1,4 +1,3 @@
-import Papa from 'papaparse';
 import { CustomComparisonChain, Ordering } from '../Utils';
 import {COMMON_NAMES,FORTE_NUMBERS} from '../ForteCSV';
 import { ImmutableCombination } from './ImmutableCombination';
@@ -15,10 +14,11 @@ export class PCS12 extends ImmutableCombination {
     constructor(set: Set<number>) {
         super(Combination.createWithSizeAndSet(12, set));
     }
+    /*
     public getIntervals() :number[] {
       return this.transpose(-this.getForteNumberRotation()).getComposition().getCompositionAsArray();
     }
-
+    */
     public static identify(input: ImmutableCombination): PCS12 {
       if(input.isEmpty()) return PCS12.empty();
       if (input.getN() !== 12) {

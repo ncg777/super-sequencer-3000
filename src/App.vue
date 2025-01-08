@@ -26,20 +26,20 @@
 			</v-row>
 			<v-row>
 			  <v-col cols="4">
-          <v-slider label="Tempo (BPM)" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Tempo (' + bpm + 'BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
         <v-col colr="4">
-          <v-slider label="Numerator" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Numerator (' + numerator + ')'" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
 			  <v-col cols="4">
-				  <v-slider label="Denominator" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="saveSettingsToLocalStorage" />
+				  <v-slider :label="'Denominator ('+ denominator + ')'" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
 			</v-row>
       <v-row>
         <v-col cols="4">
 				</v-col>
         <v-col cols="4">
-				  <v-slider label="Octave shift" min=0 step=1 max=11 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
+				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=11 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
         <v-col cols="4">
 				</v-col>
@@ -67,16 +67,15 @@ export default defineComponent({
       waveform: localStorage["waveform"] ?? "sine",
       sequenceInput: localStorage["sequenceInput"] ?? '10 4 8 1 17 4 2 1',
       octave: parseInt(localStorage["octave"] ?? "7"),
-      allChords: [],
+      allChords: [] as string[],
       isRunning: false,
-      synth: null as Tone.PolySynth | null,
       loop: null as Tone.Loop|null,
       forte: localStorage["forte"] ?? "7-35.11",
       counter: 0,
     };
   },
   computed: {
-    synth() { 
+    synth():Tone.PolySynth { 
         return new Tone.PolySynth(Tone.Synth,{
           envelope:{
             attackCurve: 'exponential',
@@ -102,7 +101,7 @@ export default defineComponent({
         .filter((n:number) => !isNaN(n));
     },
     scale(): number[] {
-      const p = PCS12.parseForte(this.forte).asSequence();
+      const p = PCS12.parseForte(this.forte)?.asSequence()||[];
       const o = [];
       
       for(const i of p) {
@@ -135,7 +134,6 @@ export default defineComponent({
       const midi = new Midi();
       const track = midi.addTrack();
       
-      midi.header.keySignatures= [this.numerator,this.denominator];
       midi.header.setTempo(this.bpm);
       for(let i=0;i < this.actualNotes.length;i++) {
         const notes = this.actualNotes[i];
@@ -171,7 +169,8 @@ export default defineComponent({
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(function(_) {
-          that.playNote(Tone.now());
+          const now = Tone.now();
+          that.playNote(now);
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, this.interval);
       }
@@ -195,7 +194,6 @@ export default defineComponent({
       localStorage["denominator"] = this.denominator;
       localStorage["octave"] =this.octave;
       localStorage["waveform"] = this.waveform;
-      localStorage["midiNotesInput"] =this.midiNotesInput;
       localStorage["sequenceInput"]=this.sequenceInput;
       localStorage["forte"]=this.forte.toString();
       if(!!this.loop){
@@ -205,17 +203,17 @@ export default defineComponent({
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
     },
     
-    async playNote(when:Tone.Unit.Time) {
+    async playNote(when : Tone.Unit.Seconds) {
       const arr = this.actualNotes[this.counter%this.actualNotes.length];
-      if (arr.length > 0 && this.synth()) {
+      if (arr.length > 0 && this.synth) {
         const vel = 0.5*Math.sqrt(1.0/arr.length);
         for(let note of arr) {
-          this.synth().triggerAttackRelease(
-          Tone.Frequency(note, 'midi').toFrequency(),
-          2*(this.denominator*this.numerator)+"n",
-          when,
-          vel
-        );
+          this.synth.triggerAttackRelease(
+            Tone.Frequency(note, 'midi').toFrequency(),
+            2*(this.denominator*this.numerator)+"n",
+            when,
+            vel
+          );
         }
       }
     },
