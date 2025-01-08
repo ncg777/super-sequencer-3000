@@ -47,7 +47,7 @@
 				</v-col>
       </v-row>
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
-			<button @click="downloadMIDI">Download MIDI</button>
+			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
 		  </v-responsive>
       </v-main>
   </v-app>
@@ -247,29 +247,22 @@ export default defineComponent({
 
 <style scoped>
 body, * {
-  color: #00ff00;
+  color: #00aa00;
   background-color: #000000;
 }
 h1 {
   text-align: center;
-}
-h1, h2, h3, h4 {
-  margin-top: 2px;
-  margin-bottom: 2px;
-  padding:0;
+  margin-bottom: 16pt;
 }
 
-button {
+.downloadmidi {
   padding: 10px;
-  font-size: 18px; 
-  border-radius: 5px;
-  background-color: black;
-  color: #00ff00; /* White text */
-  cursor: pointer; /* Pointer cursor */
-  transition: background-color 0.3s ease; /* Smooth transition */
-  width: 100%; /* Full width for buttons */
+  font-size: 18px;
+  width: 100%;
 }
 .stopplay {
+  padding: 10px;
   font-size: 75px;
+  width: 100%;
 }
 </style>
