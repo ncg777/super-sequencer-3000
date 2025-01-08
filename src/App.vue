@@ -77,7 +77,7 @@ export default defineComponent({
     };
   },
   computed: {
-    synth():Tone.PolySynth { 
+    synth():Tone.PolySynth {
         return new Tone.PolySynth(Tone.Synth,{
           envelope:{
             attackCurve: 'exponential',
@@ -171,8 +171,7 @@ export default defineComponent({
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(function(_) {
-          const now = Tone.now();
-          that.playNote(now);
+          that.playNote(Tone.now());
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, this.interval);
       }
