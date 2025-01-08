@@ -46,7 +46,7 @@
 				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
-			<button @click="toggleSequencer">{{ isRunning ? 'Stop' : 'Start' }}</button>
+			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
 			<button @click="downloadMIDI">Download MIDI</button>
 		  </v-responsive>
       </v-main>
@@ -115,15 +115,12 @@ export default defineComponent({
       return o; 
     },
     actualNotes():number[][] {
-      let max = -1;
-      for(const i of this.sequence) if(i > max) max = i;
-      const nbBits = Math.floor(Math.log2(max))+1;
       return this.sequence.map(
         (n:number) => {
-          const bits = n.toString(2).padStart(nbBits, '0').split('').reverse().join('');
+          const bits = n.toString(2).split('').reverse();
           return this.scale
             .filter(
-              (_, idx) => bits[idx] == "1"
+              (_, idx) => idx < bits.length && bits[idx] == "1"
             );
         });
     },
@@ -272,5 +269,7 @@ button {
   transition: background-color 0.3s ease; /* Smooth transition */
   width: 100%; /* Full width for buttons */
 }
-
+.stopplay {
+  font-size: 75px;
+}
 </style>
