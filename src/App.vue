@@ -2,7 +2,7 @@
 	<v-app>
 		<v-main>
 		  <v-responsive class="align-centerfill-height mx-auto" max-width="900">
-			<h1>>>>>> Super Sequencer 3000 <<<<<</h1>
+			<h1>Super Sequencer 3k</h1>
 			<v-row>
         <v-col cols="6">
           <v-select
