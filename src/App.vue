@@ -84,10 +84,10 @@ export default defineComponent({
         return new Tone.PolySynth(Tone.Synth,{
           envelope:{
             attackCurve: 'exponential',
-            attack: (this.denominator*this.numerator*8)+"n",
+            attack: (this.quant/2.0).toString()+"s",
             decay:0,
             releaseCurve: 'exponential',
-            release: (this.denominator*this.numerator*2)+"n",
+            release: (this.quant/2.0).toString()+"s",
             sustain: 1.0
           },
           oscillator: {
@@ -98,7 +98,7 @@ export default defineComponent({
           }
         }).toDestination();
     },
-    interval() {return (this.numerator*this.denominator)+"n";},
+    quant() {return 240.0/(this.bpm*this.numerator*this.denominator);},
     sequence(): number[] {
       return this.sequenceInput
         .split(' ')
@@ -140,18 +140,17 @@ export default defineComponent({
       for(let i=0;i < this.actualNotes.length;i++) {
         const notes = this.actualNotes[i];
         const vel = 64*Math.sqrt(1.0/notes.length);
-        const quant = 240.0/(this.numerator*this.denominator*this.bpm);
 
         let dur = 1;
         while(this.actualNotes[(i+dur)%this.actualNotes.length].length == 0) dur++;
-        dur *= quant;
+        
         dur *= 0.5;
 
         for(let note of notes) {
           track.addNote({
             midi: note,
-            time: i*quant,
-            duration: dur,
+            time: i*this.quant,
+            duration: dur*this.quant,
             velocity: vel 
           });
         };
@@ -182,7 +181,7 @@ export default defineComponent({
         this.loop = new Tone.Loop((_) => {
           that.playNote(_);
           that.counter = (that.counter + 1) % that.actualNotes.length; 
-        }, this.interval);
+        }, this.quant.toString()+"s");
       }
       
       this.loop.start(0);
@@ -207,7 +206,7 @@ export default defineComponent({
       localStorage.setItem("sequence", this.sequenceInput);
       localStorage.setItem("forte", this.forte);
       if(!!this.loop){
-        this.loop.interval=this.interval;
+        this.loop.interval=this.quant.toString()+"s";
       }
       Tone.getTransport().bpm.value = this.bpm;
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
@@ -219,13 +218,13 @@ export default defineComponent({
       if (arr.length > 0 && this.synth) {
         let dur = 1;
         while(this.actualNotes[(this.counter+dur)%this.actualNotes.length].length == 0) dur++;
-        dur *= (240.0/(this.numerator*this.denominator*this.bpm));
+        
         dur *= 0.5;
         const vel = 0.5*Math.sqrt(1.0/arr.length);
         for(let note of arr) {
           this.synth.triggerAttackRelease(
             Tone.Frequency(note, 'midi').toFrequency(),
-            dur+"s",
+            (dur*this.quant).toString()+"s",
             when,
             vel
           );
