@@ -141,11 +141,17 @@ export default defineComponent({
         const notes = this.actualNotes[i];
         const vel = 64*Math.sqrt(1.0/notes.length);
         const quant = 240.0/(this.numerator*this.denominator*this.bpm);
+
+        let dur = 1;
+        while(this.actualNotes[(i+dur)%this.actualNotes.length].length == 0) dur++;
+        dur *= quant;
+        dur *= 0.5;
+
         for(let note of notes) {
           track.addNote({
             midi: note,
             time: i*quant,
-            duration: quant/2.0,
+            duration: dur,
             velocity: vel 
           });
         };
@@ -209,12 +215,17 @@ export default defineComponent({
     
     async playNote(when : Tone.Unit.Seconds) {
       const arr = this.actualNotes[this.counter%this.actualNotes.length];
+      
       if (arr.length > 0 && this.synth) {
+        let dur = 1;
+        while(this.actualNotes[(this.counter+dur)%this.actualNotes.length].length == 0) dur++;
+        dur *= (240.0/(this.numerator*this.denominator*this.bpm));
+        dur *= 0.5;
         const vel = 0.5*Math.sqrt(1.0/arr.length);
         for(let note of arr) {
           this.synth.triggerAttackRelease(
             Tone.Frequency(note, 'midi').toFrequency(),
-            2*(this.denominator*this.numerator)+"n",
+            dur+"s",
             when,
             vel
           );
