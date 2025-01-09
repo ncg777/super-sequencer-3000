@@ -66,16 +66,16 @@ export default defineComponent({
     const params = new URLSearchParams(window.location.search);
 
     return {
-      bpm: parseInt(params.get("bpm") ?? localStorage["bpm"]?? "90") ,
-      numerator: parseInt(params.get("numerator") ?? localStorage["numerator"]?? "4"),
-      denominator: parseInt(params.get("denominator") ?? localStorage["denominator"] ?? "5"),
-      waveform: params.get("waveform") ?? localStorage["waveform"] ?? "sine",
-      sequenceInput: params.get("sequence") ?? localStorage["sequence"] ?? '1 2 4 8 16',
-      octave: parseInt(params.get("octave") ?? localStorage["octave"] ?? "6"),
+      bpm: parseInt(params.get("bpm") ?? localStorage.getItem("bpm")?? "90") ,
+      numerator: parseInt(params.get("numerator") ?? localStorage.getItem("numerator")?? "4"),
+      denominator: parseInt(params.get("denominator") ?? localStorage.getItem("denominator") ?? "5"),
+      waveform: params.get("waveform") ?? localStorage.getItem("waveform") ?? "sine",
+      sequenceInput: params.get("sequence") ?? localStorage.getItem("sequence") ?? '1 2 4 8 16',
+      octave: parseInt(params.get("octave") ?? localStorage.getItem("octave") ?? "6"),
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
-      forte: params.get("forte") ?? localStorage["forte"] ?? "5-35.05",
+      forte: params.get("forte") ?? localStorage.getItem("forte") ?? "5-35.05",
       counter: 0,
     };
   },
@@ -198,7 +198,7 @@ export default defineComponent({
       localStorage["denominator"] = this.denominator;
       localStorage["octave"] =this.octave;
       localStorage["waveform"] = this.waveform;
-      localStorage["sequenceInput"]=this.sequenceInput;
+      localStorage["sequence"]=this.sequenceInput;
       localStorage["forte"]=this.forte.toString();
       if(!!this.loop){
         this.loop.interval=this.interval;
