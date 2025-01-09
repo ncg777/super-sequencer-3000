@@ -193,13 +193,13 @@ export default defineComponent({
     },
     
     saveSettingsToLocalStorage() {
-      localStorage["bpm"] = this.bpm;
-      localStorage["numerator"] =this.numerator;
-      localStorage["denominator"] = this.denominator;
-      localStorage["octave"] =this.octave;
-      localStorage["waveform"] = this.waveform;
-      localStorage["sequence"]=this.sequenceInput;
-      localStorage["forte"]=this.forte.toString();
+      localStorage.setItem("bpm", this.bpm.toString());
+      localStorage.setItem("numerator", this.numerator.toString());
+      localStorage.setItem("denominator", this.denominator.toString());
+      localStorage.setItem("octave", this.octave.toString());
+      localStorage.setItem("waveform", this.waveform);
+      localStorage.setItem("sequence", this.sequenceInput);
+      localStorage.setItem("forte", this.forte);
       if(!!this.loop){
         this.loop.interval=this.interval;
       }
