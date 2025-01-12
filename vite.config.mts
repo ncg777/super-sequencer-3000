@@ -26,6 +26,7 @@ export default defineConfig({
       },
     }),
   ],
+  base:'/super-sequencer-3000/',
   define: { 'process.env': {} },
   resolve: {
     alias: {
