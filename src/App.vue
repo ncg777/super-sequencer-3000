@@ -82,7 +82,7 @@
                           <ul>
                               <li>Each number is converted into binary, with bit 0 at position 0, bit 1 at position 1, and so on. For example:</li>
                               <ul>
-                                  <li>The number <code>5</code> becomes <code>1010</code>.</li>
+                                  <li>The number <code>5</code> becomes <code>101</code>.</li>
                                   <li>The number <code>10</code> becomes <code>0101</code>.</li>
                               </ul>
                           </ul>
