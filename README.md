@@ -12,7 +12,7 @@ This application uses a binary-based encoding system to determine which notes ar
 
 2. **Pitch Class Assignment:**
 
-   - Each binary digit corresponds to a position in the selected pitch class set. For example, for 7-35.11:
+   - Each binary digit corresponds to a position in the selected pitch class set going up octavewise to the maximal midi pitch. For example, for 7-35.11:
      - Position 0 = C
      - Position 1 = D
      - Position 2 = E
@@ -20,18 +20,10 @@ This application uses a binary-based encoding system to determine which notes ar
      - Position 4 = G
      - Position 5 = A
      - Position 6 = B
+     - Position 7 = C
+     - ...
 
-3. **Interpreting Binary Digits:**
-
-   - Each `1` in the binary number maps to its corresponding pitch class. For example:
-     - The number `5` (`1010`) includes Position 0 (C) and Position 2 (E).
-
-4. **Octave Offsets:**
-
-   - Notes are shifted by an "octave offset" calculated as `(octave * 12)`.
-     - Example: Position 0 (C) with an offset of 4 becomes MIDI note `48` (C4).
-
-5. **Chords:**
+3. **Chords:**
 
    - If multiple `1`s are present, the corresponding notes form a chord.
      - Example: The number `7` (`111`) maps to C, D, and E.

@@ -47,8 +47,72 @@
 				</v-col>
       </v-row>
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
-      <button @click="copyURL" class="copyurl">📋Copy URL</button>
+      <button @click="copyURL" class="buttbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
+      <!-- Help Button -->
+      <button @click="showHelp = true" class="buttbutton">❓ Help</button>
+
+      <!-- Help Modal -->
+      <v-dialog v-model="showHelp" max-width="800px">
+          <v-card>
+              <v-card-title>
+                  <span class="headline">Help</span>
+                  <v-spacer></v-spacer>
+                  <v-btn icon @click="showHelp = false" class="close-btn">
+                      <v-icon>mdi-close</v-icon>
+                  </v-btn>
+              </v-card-title>
+              <v-card-text>
+                  <h4>How the Sequencer Works</h4>
+                  <p>The sequencer allows you to customize the following parameters:</p>
+                  <ul>
+                      <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
+                      <li><strong>Numerator</strong>: The top number of the time signature.</li>
+                      <li><strong>Denominator</strong>: The bottom number of the time signature.</li>
+                      <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms.</li>
+                      <li><strong>Sequence</strong>: Input a sequence of numbers to generate notes based on their binary representation.</li>
+                      <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played.</li>
+                  </ul>
+
+                  <h3>How Notes Are Computed in the Encoding Scheme</h3>
+                  <p>This application uses a binary-based encoding system to determine which notes are played from numerical values. Here's how it works:</p>
+
+                  <ol>
+                      <li><strong>Binary Representation of Numbers:</strong>
+                          <ul>
+                              <li>Each number is converted into binary, with bit 0 at position 0, bit 1 at position 1, and so on. For example:</li>
+                              <ul>
+                                  <li>The number <code>5</code> becomes <code>1010</code>.</li>
+                                  <li>The number <code>10</code> becomes <code>0101</code>.</li>
+                              </ul>
+                          </ul>
+                      </li>
+                      <li><strong>Pitch Class Assignment:</strong>
+                          <ul>
+                              <li>Each binary digit corresponds to a position in the selected pitch class set going up octavewise to the maximal midi pitch. For example, for 3-11B.00:
+                                  <ul>
+                                      <li>Position 0 = C</li>
+                                      <li>Position 1 = E</li>
+                                      <li>Position 2 = G</li>
+                                      <li>Position 3 = C</li>
+                                      <li>...</li>
+                                  </ul>
+                              </li>
+                          </ul>
+                      </li>
+                      <li><strong>Chords:</strong>
+                          <ul>
+                              <li>If multiple <code>1</code>s are present, the corresponding notes form a chord.</li>
+                              <li>Example: The number <code>7</code> (<code>111</code>) maps to C, E, and G.</li>
+                          </ul>
+                      </li>
+                  </ol>
+              </v-card-text>
+              <v-card-actions>
+                  <v-spacer></v-spacer>
+              </v-card-actions>
+          </v-card>
+      </v-dialog>
 		  </v-responsive>
       </v-main>
   </v-app>
@@ -77,6 +141,7 @@ export default defineComponent({
       loop: null as Tone.Loop|null,
       forte: params.get("forte") ?? localStorage.getItem("forte") ?? "5-35.05",
       counter: 0,
+      showHelp: false,
     };
   },
   computed: {
@@ -276,7 +341,7 @@ h1 {
   font-size: 18px;
   width: 100%;
 }
-.copyurl {
+.buttbutton {
   padding: 10px;
   font-size: 18px;
   width: 100%;
@@ -285,5 +350,10 @@ h1 {
   padding: 10px;
   font-size: 75px;
   width: 100%;
+}
+.close-btn {
+    position: absolute;
+    top: 16px; /* Adjust as needed */
+    right: 16px; /* Adjust as needed */
 }
 </style>
