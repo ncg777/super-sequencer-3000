@@ -66,6 +66,7 @@
                   <h4>How the Sequencer Works</h4>
                   <p>The sequencer allows you to customize the following parameters:</p>
                   <ul>
+                      <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
                       <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
                       <li><strong>Numerator</strong>: The top number of the time signature.</li>
                       <li><strong>Denominator</strong>: The bottom number of the time signature.</li>
