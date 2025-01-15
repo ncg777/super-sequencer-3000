@@ -1,6 +1,6 @@
 {
   "name": "super-sequencer-3000",
-  "version": "2025.1.9",
+  "version": "2025.1.15",
   "private": true,
   "scripts": {
     "build": "run-p type-check \"build-only {@}\" --",
