@@ -172,7 +172,8 @@ export default defineComponent({
         .filter((n:number) => !isNaN(n));
     },
     scale(): number[] {
-      const p = PCS12.parseForte(this.forte)?.asSequence()||[];
+      const s = PCS12.parseForte(this.forte);
+      const p = s?.asSequence()||[];
       const o = [];
       
       for(const i of p) {
@@ -181,7 +182,7 @@ export default defineComponent({
         }
       }
       o.sort((a,b) => a-b);
-      return o; 
+      return o.filter(v => v >= this.octave*12 +(s?.getForteNumberRotation() ?? 0)); 
     },
     actualNotes():number[][] {
       return this.sequence.map(
