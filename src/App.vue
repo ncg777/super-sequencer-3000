@@ -288,14 +288,14 @@ export default defineComponent({
         
         dur *= 0.5;
         const vel = 0.5*Math.sqrt(1.0/arr.length);
-        for(let note of arr) {
-          this.synth.triggerAttackRelease(
-            Tone.Frequency(note, 'midi').toFrequency(),
-            (dur*this.quant).toString()+"s",
-            when,
-            vel
-          );
-        }
+        
+        this.synth.triggerAttackRelease(
+          arr.map(note =>  Tone.Frequency(note, 'midi').toFrequency()),
+          (dur*this.quant).toString()+"s",
+          when,
+          vel
+        );
+        
       }
     },
 
