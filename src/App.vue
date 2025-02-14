@@ -202,8 +202,9 @@ export default defineComponent({
       return o; 
     },
     actualNotes():number[][] {
-      const offset = this.scale.indexOf(PCS12.parseForte(this.forte)?.getForteNumberRotation()??0);
       const s = PCS12.parseForte(this.forte);
+      if(!s) return [];
+      const offset = this.scale.indexOf(s?.getForteNumberRotation()??0);
       const k = s?.getK()??0;
       const l = this.scale.length;
       return this.sequence.map(
