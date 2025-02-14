@@ -176,22 +176,25 @@ export default defineComponent({
       const p = s?.asSequence()||[];
       const o = [];
       
-      for(const i of p) {
-        for(let j=(i+this.octave*12);j<128;j+=12) {
-          o.push(j);
+      for(const n of p) {
+        for(let i=0;i<=10;i++) {
+          const t = n+(12*i);
+          if(t < 128) o.push(t);
         }
       }
       o.sort((a,b) => a-b);
-      return o.filter(v => v >= this.octave*12 +(s?.getForteNumberRotation() ?? 0)); 
+      return o; 
     },
     actualNotes():number[][] {
+      const offset = this.scale.indexOf(PCS12.parseForte(this.forte)?.getForteNumberRotation()??0);
       return this.sequence.map(
         (n:number) => {
           const bits = n.toString(2).split('').reverse();
           return this.scale
             .filter(
-              (_, idx) => idx < bits.length && bits[idx] == "1"
-            );
+              (_, idx) => (idx-offset) >=0 && (idx-offset) < bits.length && bits[idx-offset] == "1"
+            ).map(n => (n + this.octave*12))
+            ;
         });
     },
     formattedDate() {
