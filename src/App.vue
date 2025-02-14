@@ -81,7 +81,7 @@
                   <ol>
                       <li><strong>Binary Representation of Numbers:</strong>
                           <ul>
-                              <li>Each number is converted into binary, with bit 0 at position 0, bit 1 at position 1, and so on. For example:</li>
+                              <li>Each number's absolute value is converted into binary, with bit 0 at position 0, bit 1 at position 1, and so on. For example:</li>
                               <ul>
                                   <li>The number <code>5</code> becomes <code>101</code>.</li>
                                   <li>The number <code>10</code> becomes <code>0101</code>.</li>
@@ -93,6 +93,10 @@
                           <ul>
                               <li>Each binary digit corresponds to a position in the selected pitch class set going up octavewise to the maximal midi pitch. For example, for 3-11B.00:
                                   <ul>
+                                      <li>...</li>
+                                      <li>Position -3 = C</li>
+                                      <li>Position -2 = G</li>
+                                      <li>Position -1 = E</li>
                                       <li>Position 0 = C</li>
                                       <li>Position 1 = E</li>
                                       <li>Position 2 = G</li>
