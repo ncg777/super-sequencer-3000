@@ -187,14 +187,22 @@ export default defineComponent({
     },
     actualNotes():number[][] {
       const offset = this.scale.indexOf(PCS12.parseForte(this.forte)?.getForteNumberRotation()??0);
+      const s = PCS12.parseForte(this.forte);
+      const k = s?.getK()??0;
+      const l = this.scale.length;
       return this.sequence.map(
         (n:number) => {
-          const bits = n.toString(2).split('').reverse();
+          const bits = Math.abs(n).toString(2).split('').reverse();
+          const sign = Math.sign(n);
           return this.scale
             .filter(
-              (_, idx) => (idx-offset) >=0 && (idx-offset) < bits.length && bits[idx-offset] == "1"
-            ).map(n => (n + this.octave*12))
-            ;
+              (_, idx) => {
+                const bitIndex = (sign*(idx-offset-this.octave*k));
+                
+                return bitIndex >=0 && bitIndex < bits.length && bits[bitIndex] == "1";
+              }
+            );
+
         });
     },
     formattedDate() {
