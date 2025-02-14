@@ -103,10 +103,6 @@
                     <li>Each binary digit corresponds to a position in the selected pitch class set, with the octave shift, going up and down octavewise
                       to the minimal and maximal midi pitch. For example, to give a general idea without considering the octave, for 3-11B.00 you would get:
                       <ul>
-                        <li>...</li>
-                        <li>Position -3 = C</li>
-                        <li>Position -2 = G</li>
-                        <li>Position -1 = E</li>
                         <li>Position 0 = C</li>
                         <li>Position 1 = E</li>
                         <li>Position 2 = G</li>
