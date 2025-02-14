@@ -22,7 +22,7 @@
 				  <v-text-field 
             label="Sequence (converted to binary)" 
             v-model="sequenceInput" 
-            placeholder="e.g. 1 3 7" 
+            placeholder="e.g. 0 1 2..." 
             @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
@@ -86,6 +86,7 @@
                                   <li>The number <code>5</code> becomes <code>101</code>.</li>
                                   <li>The number <code>10</code> becomes <code>0101</code>.</li>
                               </ul>
+                              <li>Negative numbers are supported and in this case the note indices are computed as you would expect.</li>
                           </ul>
                       </li>
                       <li><strong>Pitch Class Assignment:</strong>
