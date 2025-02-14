@@ -53,73 +53,84 @@
       <button @click="showHelp = true" class="buttbutton">❓ Help</button>
 
       <!-- Help Modal -->
-      <v-dialog v-model="showHelp" max-width="800px">
-          <v-card>
-              <v-card-title>
-                  <span class="headline">Help</span>
-                  <v-spacer></v-spacer>
-                  <v-btn icon @click="showHelp = false" class="close-btn">
-                      <v-icon>mdi-close</v-icon>
-                  </v-btn>
-              </v-card-title>
-              <v-card-text>
-                  <h4>How the Sequencer Works</h4>
-                  <p>The sequencer allows you to customize the following parameters:</p>
-                  <ul>
-                      <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
-                      <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
-                      <li><strong>Numerator</strong>: The top number of the time signature.</li>
-                      <li><strong>Denominator</strong>: The bottom number of the time signature.</li>
-                      <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms.</li>
-                      <li><strong>Sequence</strong>: Input a sequence of numbers to generate notes based on their binary representation.</li>
-                      <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played.</li>
-                  </ul>
-
-                  <h3>How Notes Are Computed in the Encoding Scheme</h3>
-                  <p>This application uses a binary-based encoding system to determine which notes are played from numerical values. Here's how it works:</p>
-
-                  <ol>
-                      <li><strong>Binary Representation of Numbers:</strong>
-                          <ul>
-                              <li>Each number's absolute value is converted into binary, with bit 0 at position 0, bit 1 at position 1, and so on. For example:</li>
-                              <ul>
-                                  <li>The number <code>5</code> becomes <code>101</code>.</li>
-                                  <li>The number <code>10</code> becomes <code>0101</code>.</li>
-                              </ul>
-                              <li>Negative numbers are supported and in this case the note indices are computed as you would expect.</li>
-                          </ul>
-                      </li>
-                      <li><strong>Pitch Class Assignment:</strong>
-                          <ul>
-                              <li>Each binary digit corresponds to a position in the selected pitch class set going up octavewise to the maximal midi pitch. For example, for 3-11B.00:
-                                  <ul>
-                                      <li>...</li>
-                                      <li>Position -3 = C</li>
-                                      <li>Position -2 = G</li>
-                                      <li>Position -1 = E</li>
-                                      <li>Position 0 = C</li>
-                                      <li>Position 1 = E</li>
-                                      <li>Position 2 = G</li>
-                                      <li>Position 3 = C</li>
-                                      <li>...</li>
-                                  </ul>
-                              </li>
-                          </ul>
-                      </li>
-                      <li><strong>Chords:</strong>
-                          <ul>
-                              <li>If multiple <code>1</code>s are present, the corresponding notes form a chord.</li>
-                              <li>Example: The number <code>7</code> (<code>111</code>) maps to C, E, and G.</li>
-                          </ul>
-                      </li>
-                  </ol>
-              </v-card-text>
-              <v-card-actions>
-                  <v-spacer></v-spacer>
-              </v-card-actions>
-          </v-card>
-      </v-dialog>
+      
 		  </v-responsive>
+      <!-- Help Modal -->
+      <v-dialog v-model="showHelp" max-width="800px">
+          <v-card class="pa-4 bg-black">
+            <v-card-title class="pa-4">
+              <span class="text-h5 font-weight-bold">Help</span>
+              <v-spacer></v-spacer>
+              <v-btn icon @click="showHelp = false" class="close-btn">
+                <v-icon>mdi-close</v-icon>
+              </v-btn>
+            </v-card-title>
+            <v-divider></v-divider>
+            <v-card-text class="pa-4">
+              <h4 class="mb-2">How the Sequencer Works</h4>
+              <p>The sequencer allows you to customize the following parameters:</p>
+              <ul>
+                <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
+                  <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
+                <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
+                <li><strong>Numerator</strong>: The top number of the time signature.</li>
+                <li><strong>Denominator</strong>: The bottom number of the time signature.</li>
+                <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms.</li>
+                <li><strong>Sequence</strong>: Input a sequence of numbers to generate notes based on their binary
+                  representation.</li>
+                <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played.</li>
+              </ul>
+
+              <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
+              <p>This application uses a binary-based encoding system to determine which notes are played from numerical
+                values. Here's how it works:</p>
+
+              <ol>
+                <li><strong>Binary Representation of Numbers:</strong>
+                  <ul>
+                    <li>Each number's absolute value is converted into binary, with bit 0 at position 0, bit 1 at
+                      position 1, and so on. For example:</li>
+                    <ul>
+                      <li>The number <code>5</code> becomes <code>101</code>.</li>
+                      <li>The number <code>10</code> becomes <code>0101</code>.</li>
+                    </ul>
+                    <li>Negative numbers are supported and in this case the note indices are computed as you would
+                      expect.</li>
+                  </ul>
+                </li>
+                <li><strong>Pitch Class Assignment:</strong>
+                  <ul>
+                    <li>Each binary digit corresponds to a position in the selected pitch class set, with the octave shift, going up and down octavewise
+                      to the minimal and maximal midi pitch. For example, to give a general idea without considering the octave, for 3-11B.00 you would get:
+                      <ul>
+                        <li>...</li>
+                        <li>Position -3 = C</li>
+                        <li>Position -2 = G</li>
+                        <li>Position -1 = E</li>
+                        <li>Position 0 = C</li>
+                        <li>Position 1 = E</li>
+                        <li>Position 2 = G</li>
+                        <li>Position 3 = C</li>
+                        <li>...</li>
+                      </ul>
+                    </li>
+                  </ul>
+                </li>
+                <li><strong>Chords:</strong>
+                  <ul>
+                    <li>If multiple <code>1</code>s are present, the corresponding notes form a chord.</li>
+                    <li>Example: The number <code>7</code> (<code>111</code>) maps to C, E, and G.</li>
+                  </ul>
+                </li>
+              </ol>
+            </v-card-text>
+            <v-divider></v-divider>
+            <v-card-actions class="pa-4">
+              <v-spacer></v-spacer>
+              <v-btn color="primary" @click="showHelp = false">Close</v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
       </v-main>
   </v-app>
 </template>
