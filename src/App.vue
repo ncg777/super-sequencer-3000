@@ -270,7 +270,7 @@ export default defineComponent({
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(async (_) => {
-          await that.playNote(_);
+          that.playNote(_, that.counter);
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, this.quant.toString()+"s");
       }
@@ -303,12 +303,12 @@ export default defineComponent({
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
     },
     
-    async playNote(when : Tone.Unit.Seconds) {
-      const arr = this.actualNotes[this.counter%this.actualNotes.length];
+    async playNote(when : Tone.Unit.Seconds, counter:number) {
+      const arr = this.actualNotes[counter%this.actualNotes.length];
       
       if (arr.length > 0 && this.synth) {
         let dur = 1;
-        while(this.actualNotes[(this.counter+dur)%this.actualNotes.length].length == 0) dur++;
+        while(this.actualNotes[(counter+dur)%this.actualNotes.length].length == 0) dur++;
         
         dur *= 0.5;
         const vel = 0.5*Math.sqrt(1.0/arr.length);
