@@ -47,10 +47,10 @@
 				</v-col>
       </v-row>
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
-      <button @click="copyURL" class="buttbutton">📋Copy URL</button>
+      <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
       <!-- Help Button -->
-      <button @click="showHelp = true" class="buttbutton">❓ Help</button>
+      <button @click="showHelp = true" class="userbutton">❓ Help</button>
 
       <!-- Help Modal -->
       
@@ -367,15 +367,16 @@ h1 {
   font-size: 18px;
   width: 100%;
 }
-.buttbutton {
+.userbutton {
   padding: 10px;
   font-size: 18px;
   width: 100%;
 }
 .stopplay {
-  padding: 10px;
-  font-size: 75px;
+  padding: 2px;
+  font-size: 50px;
   width: 100%;
+  margin-bottom: 5px;
 }
 .close-btn {
     position: absolute;
