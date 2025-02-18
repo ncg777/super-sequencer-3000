@@ -132,7 +132,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
+import { defineComponent, markRaw } from 'vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import { PCS12 } from './objects/PCS12';
@@ -159,7 +159,7 @@ export default defineComponent({
   },
   computed: {
     synth():Tone.PolySynth {
-      const o = new Tone.PolySynth(Tone.Synth,{
+      const o = markRaw(new Tone.PolySynth(Tone.Synth,{
           envelope:{
             attackCurve: 'exponential',
             attack: (this.quant/2.0).toString()+"s",
@@ -174,7 +174,7 @@ export default defineComponent({
                     this.waveform === "sawtooth" ? 'sawtooth' : 
                       this.waveform === "square" ? 'square' : 'sine1'
           }
-        }).toDestination();
+        }).toDestination());
         o.context.lookAhead = 1;
         return o;
     },
