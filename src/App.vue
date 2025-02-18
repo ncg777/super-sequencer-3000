@@ -230,7 +230,7 @@ export default defineComponent({
       midi.header.setTempo(this.bpm);
       for(let i=0;i < this.actualNotes.length;i++) {
         const notes = this.actualNotes[i];
-        const vel = 0.7*Math.sqrt(1.0/notes.length);
+        const vel = 0.5*Math.sqrt(1.0/notes.length);
 
         let dur = 1;
         while(this.actualNotes[(i+dur)%this.actualNotes.length].length == 0) dur++;
@@ -308,7 +308,7 @@ export default defineComponent({
         let dur = 1;
         while(this.actualNotes[(counter+dur)%this.actualNotes.length].length == 0) dur++;
         
-        const vel = 0.7*Math.sqrt(1.0/arr.length);
+        const vel = 0.5*Math.sqrt(1.0/arr.length);
         
         this.synth.triggerAttackRelease(
           arr.map(note =>  Tone.Frequency(note, 'midi').toFrequency()),
