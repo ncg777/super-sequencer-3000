@@ -20,7 +20,7 @@
       <v-row>
         <v-col cols="12">
 				  <v-text-field 
-            label="Sequence (converted to binary)" 
+            :label="`Sequence (${sequence.length})`"
             v-model="sequenceInput" 
             placeholder="e.g. 0 1 2..." 
             @update:modelValue="saveSettingsToLocalStorage" />
