@@ -28,7 +28,7 @@
       </v-row>
 			<v-row>
 			  <v-col cols="12">
-          <v-slider :label="'Tempo (' + bpm + 'BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
       <v-row>
