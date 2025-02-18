@@ -330,7 +330,7 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `SS3k-loop-${this.formattedDate.toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
+      a.download = `SSeq3k-${this.formattedDate.toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
       a.click();
 
       // Clean up the URL object
