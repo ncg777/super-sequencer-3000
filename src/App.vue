@@ -230,7 +230,7 @@ export default defineComponent({
       midi.header.setTempo(this.bpm);
       for(let i=0;i < this.actualNotes.length;i++) {
         const notes = this.actualNotes[i];
-        const vel = 88*Math.sqrt(1.0/notes.length);
+        const vel = 0.7*Math.sqrt(1.0/notes.length);
 
         let dur = 1;
         while(this.actualNotes[(i+dur)%this.actualNotes.length].length == 0) dur++;
