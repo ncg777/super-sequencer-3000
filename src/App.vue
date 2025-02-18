@@ -159,7 +159,7 @@ export default defineComponent({
   },
   computed: {
     synth():Tone.PolySynth {
-        return new Tone.PolySynth(Tone.Synth,{
+      const o = new Tone.PolySynth(Tone.Synth,{
           envelope:{
             attackCurve: 'exponential',
             attack: (this.quant/2.0).toString()+"s",
@@ -175,6 +175,8 @@ export default defineComponent({
                       this.waveform === "square" ? 'square' : 'sine1'
           }
         }).toDestination();
+        o.context.lookAhead = 0.5;
+        return o;
     },
     quant() {return 240.0/(this.bpm*this.numerator*this.denominator);},
     sequence(): number[] {
@@ -263,6 +265,7 @@ export default defineComponent({
       this.isRunning = true;
       this.counter = 0;
       await Tone.start();
+      
       console.log('Audio context started');
       this.saveSettingsToLocalStorage();
       const that = this;
