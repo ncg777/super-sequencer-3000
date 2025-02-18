@@ -235,8 +235,6 @@ export default defineComponent({
         let dur = 1;
         while(this.actualNotes[(i+dur)%this.actualNotes.length].length == 0) dur++;
         
-        dur *= 0.5;
-
         for(let note of notes) {
           track.addNote({
             midi: note,
@@ -310,8 +308,7 @@ export default defineComponent({
         let dur = 1;
         while(this.actualNotes[(counter+dur)%this.actualNotes.length].length == 0) dur++;
         
-        dur *= 0.5;
-        const vel = 0.5*Math.sqrt(1.0/arr.length);
+        const vel = Math.sqrt(1.0/arr.length);
         
         this.synth.triggerAttackRelease(
           arr.map(note =>  Tone.Frequency(note, 'midi').toFrequency()),
