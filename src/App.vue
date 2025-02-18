@@ -175,7 +175,7 @@ export default defineComponent({
                       this.waveform === "square" ? 'square' : 'sine1'
           }
         }).toDestination();
-        o.context.lookAhead = 1;
+        o.context.lookAhead = 2;
         return o;
     },
     quant() {return 240.0/(this.bpm*this.numerator*this.denominator);},
