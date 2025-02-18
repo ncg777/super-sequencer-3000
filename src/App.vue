@@ -269,8 +269,8 @@ export default defineComponent({
       this.saveSettingsToLocalStorage();
       const that = this;
       if(this.loop == null) {
-        this.loop = new Tone.Loop((_) => {
-          that.playNote(_);
+        this.loop = new Tone.Loop(async (_) => {
+          await that.playNote(_);
           that.counter = (that.counter + 1) % that.actualNotes.length; 
         }, this.quant.toString()+"s");
       }
