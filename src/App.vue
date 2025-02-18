@@ -143,16 +143,16 @@ export default defineComponent({
     const params = new URLSearchParams(window.location.search);
 
     return {
-      bpm: parseInt(params.get("bpm") ?? localStorage.getItem("bpm")?? "90") ,
-      numerator: parseInt(params.get("numerator") ?? localStorage.getItem("numerator")?? "4"),
-      denominator: parseInt(params.get("denominator") ?? localStorage.getItem("denominator") ?? "5"),
-      waveform: params.get("waveform") ?? localStorage.getItem("waveform") ?? "sine",
-      sequenceInput: params.get("sequence") ?? localStorage.getItem("sequence") ?? '1 2 4 8 16',
-      octave: parseInt(params.get("octave") ?? localStorage.getItem("octave") ?? "6"),
+      bpm: parseInt(params.get("bpm") ?? localStorage.getItem("ss3k_bpm")?? "90") ,
+      numerator: parseInt(params.get("numerator") ?? localStorage.getItem("ss3k_numerator")?? "4"),
+      denominator: parseInt(params.get("denominator") ?? localStorage.getItem("ss3k_denominator") ?? "5"),
+      waveform: params.get("waveform") ?? localStorage.getItem("ss3k_waveform") ?? "sine",
+      sequenceInput: params.get("sequence") ?? localStorage.getItem("ss3k_sequence") ?? '1 2 4 8 16',
+      octave: parseInt(params.get("octave") ?? localStorage.getItem("ss3k_octave") ?? "6"),
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
-      forte: params.get("forte") ?? localStorage.getItem("forte") ?? "5-35.05",
+      forte: params.get("forte") ?? localStorage.getItem("ss3k_forte") ?? "5-35.05",
       counter: 0,
       showHelp: false,
     };
@@ -289,13 +289,13 @@ export default defineComponent({
     },
     
     saveSettingsToLocalStorage() {
-      localStorage.setItem("bpm", this.bpm.toString());
-      localStorage.setItem("numerator", this.numerator.toString());
-      localStorage.setItem("denominator", this.denominator.toString());
-      localStorage.setItem("octave", this.octave.toString());
-      localStorage.setItem("waveform", this.waveform);
-      localStorage.setItem("sequence", this.sequenceInput);
-      localStorage.setItem("forte", this.forte);
+      localStorage.setItem("ss3k_bpm", this.bpm.toString());
+      localStorage.setItem("ss3k_numerator", this.numerator.toString());
+      localStorage.setItem("ss3k_denominator", this.denominator.toString());
+      localStorage.setItem("ss3k_octave", this.octave.toString());
+      localStorage.setItem("ss3k_waveform", this.waveform);
+      localStorage.setItem("ss3k_sequence", this.sequenceInput);
+      localStorage.setItem("ss3k_forte", this.forte);
       if(!!this.loop){
         this.loop.interval=this.quant.toString()+"s";
       }
