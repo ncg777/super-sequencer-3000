@@ -1,7 +1,7 @@
 <template>  
-	<v-app style="pa-4">
+	<v-app>
 		<v-main>
-		  <v-responsive class="align-center mx-auto" max-width="900">
+		  <v-responsive class="align-center mx-auto pa-4" max-width="900">
 			<h1>Super Sequencer 3k</h1>
 			<v-row>
         <v-col cols="6">
