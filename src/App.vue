@@ -155,6 +155,7 @@ export default defineComponent({
       forte: params.get("forte") ?? localStorage.getItem("ss3k_forte") ?? "5-35.05",
       counter: 0,
       showHelp: false,
+      synth: markRaw(new Tone.PolySynth(Tone.Synth).toDestination()),
     };
   },
   computed: {
@@ -225,6 +226,29 @@ export default defineComponent({
     },
   },
   methods: {
+    updateSynth() {
+      const waveformType = 
+        this.waveform === "triangle" ? 'triangle' :
+        this.waveform === "sawtooth" ? 'sawtooth' :
+        this.waveform === "square" ? 'square' : 'sine';
+
+      this.synth.set({
+        envelope: {
+          attackCurve: 'exponential',
+          attack: (this.quant / 2.0).toString() + "s",
+          decay: 0,
+          releaseCurve: 'exponential',
+          release: (this.quant / 2.0).toString() + "s",
+          sustain: 1.0
+        },
+        oscillator: {
+          type: waveformType
+        }
+      });
+      
+      // Set lookahead
+      this.synth.context.lookAhead = 1;
+    },
     async getMidi():Promise<Midi> {
       const midi = new Midi();
       const track = midi.addTrack();
@@ -265,7 +289,7 @@ export default defineComponent({
       this.isRunning = true;
       this.counter = 0;
       await Tone.start();
-      
+      this.updateSynth();
       console.log('Audio context started');
       this.saveSettingsToLocalStorage();
       const that = this;
@@ -302,6 +326,7 @@ export default defineComponent({
       }
       Tone.getTransport().bpm.value = this.bpm;
       Tone.getTransport().timeSignature = [this.numerator,this.denominator];
+      this.updateSynth();
     },
     
     async playNote(when : Tone.Unit.Seconds, counter:number) {
@@ -315,7 +340,7 @@ export default defineComponent({
         
         this.synth.triggerAttackRelease(
           arr.map(note =>  Tone.Frequency(note, 'midi').toFrequency()),
-          (dur*this.quant).toString()+"s",
+          (dur*this.quant*0.75).toString()+"s",
           when,
           vel
         );
@@ -342,9 +367,11 @@ export default defineComponent({
       const arr = Array.from(PCS12.getChords()).map(c => c.toString());
       arr.sort(PCS12.ReverseForteStringComparator);
       this.allChords=arr;
+      this.updateSynth();
   },
   beforeUnmount() {
-    this.stopSequencer(); // Ensure metronome stops when component unmounts
+    this.stopSequencer();
+    this.synth.dispose();
   },
   async onMounted() {
     this.saveSettingsToLocalStorage();
