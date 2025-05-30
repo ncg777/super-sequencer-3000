@@ -1,7 +1,7 @@
 {
   "name": "super-sequencer-3000",
-  "version": "2025.1.15",
-  "private": true,
+  "version": "2025.5.30",
+  "private": false,
   "scripts": {
     "build": "run-p type-check \"build-only {@}\" --",
     "build-only": "vite build",
@@ -14,7 +14,6 @@
     "@tonejs/midi": "^2.0.28",
     "register-service-worker": "^1.7.2",
     "roboto-fontface": "*",
-    "super-sequencer-3000": "file:",
     "testvuetify": "file:",
     "tone": "^15.0.4",
     "vue": "^3.4.31",
@@ -33,6 +32,7 @@
     "unplugin-fonts": "^1.1.1",
     "unplugin-vue-components": "^0.27.2",
     "vite": "^5.4.10",
+    "vite-plugin-pwa": "^1.0.0",
     "vite-plugin-vuetify": "^2.0.3",
     "vue-tsc": "^2.1.10"
   },
