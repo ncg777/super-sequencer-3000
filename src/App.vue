@@ -46,6 +46,18 @@
 				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
+      <v-row>
+        <v-col cols="12">
+          <v-slider 
+            :label="'Note Length (' + lengthFactor + '%)'" 
+            min="1" 
+            max="200" 
+            step="1" 
+            v-model.number="lengthFactor" 
+            @update:modelValue="saveSettingsToLocalStorage" 
+          />
+        </v-col>
+      </v-row>
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
@@ -79,6 +91,7 @@
                 <li><strong>Sequence</strong>: Input a sequence of numbers to generate notes based on their binary
                   representation.</li>
                 <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played.</li>
+                <li><strong>Note length</strong>: Multiplies the durations of the notes played.</li>
               </ul>
 
               <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
@@ -135,7 +148,7 @@
 import { defineComponent, markRaw } from 'vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
-import { PCS12 } from './objects/PCS12';
+import { PCS12 } from 'ultra-mega-enumerator';
 
 export default defineComponent({
   name: 'App',
@@ -149,6 +162,7 @@ export default defineComponent({
       waveform: params.get("waveform") ?? localStorage.getItem("ss3k_waveform") ?? "sine",
       sequenceInput: params.get("sequence") ?? localStorage.getItem("ss3k_sequence") ?? '1 2 4 8 16',
       octave: parseInt(params.get("octave") ?? localStorage.getItem("ss3k_octave") ?? "6"),
+      lengthFactor: parseInt(params.get("lengthFactor") ?? localStorage.getItem("ss3k_lengthFactor") ?? "100"),
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
@@ -265,7 +279,7 @@ export default defineComponent({
           track.addNote({
             midi: note,
             time: i*this.quant,
-            duration: dur*this.quant,
+            duration: dur*this.quant*this.lengthFactor/100.0,
             velocity: vel 
           });
         };
@@ -321,6 +335,7 @@ export default defineComponent({
       localStorage.setItem("ss3k_waveform", this.waveform);
       localStorage.setItem("ss3k_sequence", this.sequenceInput);
       localStorage.setItem("ss3k_forte", this.forte);
+      localStorage.setItem("ss3k_lengthFactor", this.lengthFactor.toString());
       if(!!this.loop){
         this.loop.interval=this.quant.toString()+"s";
       }
@@ -340,7 +355,7 @@ export default defineComponent({
         
         this.synth.triggerAttackRelease(
           arr.map(note =>  Tone.Frequency(note, 'midi').toFrequency()),
-          (dur*this.quant*0.75).toString()+"s",
+          (dur*this.quant * this.lengthFactor/100.0).toString()+"s",
           when,
           vel
         );
