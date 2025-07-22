@@ -2,7 +2,15 @@
 	<v-app>
 		<v-main>
 		  <v-responsive class="align-center mx-auto pa-4" max-width="900">
-			<h1>Super Sequencer 3k</h1>
+			<h1>Super Sequencer 3k
+      <v-btn 
+          icon 
+          @click="showHelp = true" 
+          class="help-button"
+        >
+          <v-icon>mdi-help-circle</v-icon>
+        </v-btn>
+      </h1>
 			<v-row>
         <v-col cols="6">
           <v-autocomplete
@@ -26,27 +34,27 @@
             @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
-			<v-row>
+			<v-row class="compact-row">
 			  <v-col cols="12">
           <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
-      <v-row>
+      <v-row class="compact-row">
         <v-col colr="12">
           <v-slider :label="'Numerator (' + numerator + ')'" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
-      <v-row>
+      <v-row class="compact-row">
 			  <v-col cols="12">
 				  <v-slider :label="'Denominator ('+ denominator + ')'" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
 			</v-row>
-      <v-row>
+      <v-row class="compact-row">
         <v-col cols="12">
 				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
 				</v-col>
       </v-row>
-      <v-row>
+      <v-row class="compact-row">
         <v-col cols="12">
           <v-slider 
             :label="'Note Length (' + lengthFactor + '%)'" 
@@ -78,8 +86,6 @@
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
-      <!-- Help Button -->
-      <button @click="showHelp = true" class="userbutton">❓ Help</button>
 
       <!-- Help Modal -->
       
@@ -88,7 +94,7 @@
       <v-dialog v-model="showHelp" max-width="800px">
           <v-card class="pa-4 bg-black">
             <v-card-title class="pa-4">
-              <span class="text-h5 font-weight-bold">Help</span>
+              <span class="text-h5 font-weight-bold">Super Sequencer 3000 <small style="font-size:0.6em; color:#888; margin-left:1em;">v{{ appVersion }}</small></span>
               <v-spacer></v-spacer>
               <v-btn icon @click="showHelp = false" class="close-btn">
                 <v-icon>mdi-close</v-icon>
@@ -162,6 +168,8 @@
 </template>
 
 <script lang="ts">
+import pkg from '../package.json';
+const appVersion = pkg.version;
 import { defineComponent, markRaw } from 'vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
@@ -192,6 +200,7 @@ export default defineComponent({
       selectedMidiDevice: null,
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
+      appVersion: appVersion
     };
   },
   computed: {
@@ -454,7 +463,6 @@ export default defineComponent({
 
 <style scoped>
 body, * {
-  color: #00aa00;
   background-color: #000000;
 }
 h1 {
@@ -482,5 +490,10 @@ h1 {
     position: absolute;
     top: 16px; /* Adjust as needed */
     right: 16px; /* Adjust as needed */
+}
+.compact-row * {
+  padding:0;
+  margin-bottom: 0;
+  margin-top: 0;
 }
 </style>
