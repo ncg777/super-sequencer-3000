@@ -67,19 +67,28 @@
         </v-col>
       </v-row>
       <v-row>
-        <v-col cols="6">
+        <v-col cols="3">
           <v-switch 
             v-model="useMidiOutput" 
             label="Use MIDI Output" 
             @update:modelValue="updateMidiMode"
           />
         </v-col>
-        <v-col cols="6" v-if="useMidiOutput">
+        <v-col cols="3" v-if="useMidiOutput">
           <v-select 
             v-model="selectedMidiDevice" 
             :items="midiDevices" 
             label="MIDI Device" 
             @update:modelValue="updateMidiDevice"
+          />
+        </v-col>
+        <v-col cols="6" v-if="useMidiOutput">
+          <v-slider 
+            :label="'Channel (' + midiChannel + ')'" 
+            min="1" 
+            max="16" 
+            step="1" 
+            v-model.number="midiChannel"
           />
         </v-col>
       </v-row>
@@ -198,6 +207,7 @@ export default defineComponent({
       useMidiOutput: false,
       midiDevices: [] as string[],
       selectedMidiDevice: null,
+      midiChannel: 1,
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
       appVersion: appVersion
@@ -293,8 +303,8 @@ export default defineComponent({
     },
     async playNoteWithMidi(note: number, velocity: number, duration: number, when: number) {
       if (this.midiOutput!!) {
-          const noteOn = [0x90, note, Math.round(velocity * 127)];
-          const noteOff = [0x80, note, 0];
+          const noteOn = [0x90 + this.midiChannel-1, note, Math.round(velocity * 127)];
+          const noteOff = [0x80 + this.midiChannel-1, note, 0];
           this.midiOutput!.send(noteOn, when*1000);
           this.midiOutput!.send(noteOff, (when+duration)*1000);
       }
