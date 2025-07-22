@@ -51,10 +51,27 @@
           <v-slider 
             :label="'Note Length (' + lengthFactor + '%)'" 
             min="1" 
-            max="200" 
+            max="400" 
             step="1" 
             v-model.number="lengthFactor" 
             @update:modelValue="saveSettingsToLocalStorage" 
+          />
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col cols="6">
+          <v-switch 
+            v-model="useMidiOutput" 
+            label="Use MIDI Output" 
+            @update:modelValue="updateMidiMode"
+          />
+        </v-col>
+        <v-col cols="6" v-if="useMidiOutput">
+          <v-select 
+            v-model="selectedMidiDevice" 
+            :items="midiDevices" 
+            label="MIDI Device" 
+            @update:modelValue="updateMidiDevice"
           />
         </v-col>
       </v-row>
@@ -170,6 +187,11 @@ export default defineComponent({
       counter: 0,
       showHelp: false,
       synth: markRaw(new Tone.PolySynth(Tone.Synth).toDestination()),
+      useMidiOutput: false,
+      midiDevices: [] as string[],
+      selectedMidiDevice: null,
+      midiAccess: null as MIDIAccess | null,
+      midiOutput: null as MIDIOutput | null,
     };
   },
   computed: {
@@ -240,6 +262,34 @@ export default defineComponent({
     },
   },
   methods: {
+    async initializeMidi() {
+      try {
+        const access = await navigator.requestMIDIAccess();
+        this.midiAccess = access;
+        this.midiDevices = Array.from(access.outputs.values()).map(output => output.name!);
+      } catch (error) {
+        console.error("Failed to initialize MIDI:", error);
+      }
+    },
+    updateMidiDevice() {
+      const device = Array.from(this.midiAccess?.outputs.values() || []).find(output => output.name === this.selectedMidiDevice);
+      this.midiOutput = device || null;
+    },
+    updateMidiMode() {
+      if (this.useMidiOutput) {
+        this.initializeMidi();
+      } else {
+        this.midiOutput = null;
+      }
+    },
+    async playNoteWithMidi(note: number, velocity: number, duration: number, when: number) {
+      if (this.midiOutput!!) {
+          const noteOn = [0x90, note, Math.round(velocity * 127)];
+          const noteOff = [0x80, note, 0];
+          this.midiOutput!.send(noteOn, when*1000);
+          this.midiOutput!.send(noteOff, (when+duration)*1000);
+      }
+    },
     updateSynth() {
       const waveformType = 
         this.waveform === "triangle" ? 'triangle' :
@@ -353,13 +403,18 @@ export default defineComponent({
         
         const vel = 0.5*Math.sqrt(1.0/arr.length);
         
-        this.synth.triggerAttackRelease(
-          arr.map(note =>  Tone.Frequency(note, 'midi').toFrequency()),
-          (dur*this.quant * this.lengthFactor/100.0).toString()+"s",
-          when,
-          vel
-        );
-        
+        if (this.useMidiOutput) {
+          for (const note of arr) {
+            this.playNoteWithMidi(note, vel, dur * this.quant * this.lengthFactor / 100.0, when);
+          }
+        } else if (this.synth) {
+          this.synth.triggerAttackRelease(
+            arr.map(note => Tone.Frequency(note, 'midi').toFrequency()),
+            (dur * this.quant * this.lengthFactor / 100.0).toString() + "s",
+            when,
+            vel
+          );
+        }
       }
     },
 
@@ -390,6 +445,9 @@ export default defineComponent({
   },
   async onMounted() {
     this.saveSettingsToLocalStorage();
+    if (this.useMidiOutput) {
+      await this.initializeMidi();
+  }
   }
 });
 </script>
