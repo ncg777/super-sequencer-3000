@@ -66,7 +66,7 @@
           />
         </v-col>
       </v-row>
-      <!--
+      
       <v-row>
         <v-col cols="3">
           <v-switch 
@@ -93,7 +93,7 @@
           />
         </v-col>
       </v-row>
-      -->
+      
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
@@ -212,7 +212,8 @@ export default defineComponent({
       midiChannel: 1,
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
-      appVersion: appVersion
+      appVersion: appVersion,
+      midiOffsetMs: 0
     };
   },
   computed: {
@@ -287,6 +288,7 @@ export default defineComponent({
       try {
         const access = await navigator.requestMIDIAccess();
         this.midiAccess = access;
+        
         this.midiDevices = Array.from(access.outputs.values()).map(output => output.name!);
       } catch (error) {
         console.error("Failed to initialize MIDI:", error);
@@ -307,8 +309,8 @@ export default defineComponent({
       if (this.midiOutput!!) {
           const noteOn = [0x90 + this.midiChannel-1, note, Math.round(velocity * 127)];
           const noteOff = [0x80 + this.midiChannel-1, note, 0];
-          this.midiOutput!.send(noteOn, when*1000);
-          this.midiOutput!.send(noteOff, (when+duration)*1000);
+          this.midiOutput!.send(noteOn, this.midiOffsetMs+(when*1000));
+          this.midiOutput!.send(noteOff, this.midiOffsetMs+((when+duration)*1000));
       }
     },
     updateSynth() {
@@ -387,15 +389,18 @@ export default defineComponent({
       }
       
       this.loop.start(0);
-      Tone.getTransport().start();  
+      Tone.getTransport().seconds=0;
+      if(this.midiOffsetMs == 0) this.midiOffsetMs = performance.now();
+      Tone.getTransport().start();
       
-      console.log('Started');
+      
     },
     stopSequencer() {
       if(!this.isRunning) return;
       this.isRunning = false;
       this.loop?.stop();
       Tone.getTransport().stop();
+      Tone.getTransport().seconds=0;
       console.log('Stopped');
     },
     
