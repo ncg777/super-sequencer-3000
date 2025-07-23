@@ -66,7 +66,7 @@
           />
         </v-col>
       </v-row>
-      
+      <!--
       <v-row>
         <v-col cols="3">
           <v-switch 
@@ -93,7 +93,7 @@
           />
         </v-col>
       </v-row>
-      
+      -->
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
