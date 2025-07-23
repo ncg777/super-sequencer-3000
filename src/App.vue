@@ -367,7 +367,7 @@ export default defineComponent({
       }
     },
     async copyURL() {
-      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/super-sequencer-3000?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&sequence=${this.sequenceInput}`));
+      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/super-sequencer-3000?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&lengthFactor=${this.lengthFactor}&sequence=${this.sequenceInput}`));
       window.alert("URL copied to clipboard.");
     },
     async startSequencer() {
