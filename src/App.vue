@@ -301,12 +301,12 @@ export default defineComponent({
         this.midiOutput = null;
       }
     },
-    async playNoteWithMidi(note: number, velocity: number, duration: Tone.Unit.Seconds, when: DOMHighResTimeStamp) {
+    async playNoteWithMidi(note: number, velocity: number, duration: Tone.Unit.Seconds, when: number) {
       if (this.midiOutput!!) {
           const noteOn = [0x90 + this.midiChannel-1, note, Math.round(velocity * 127)];
           const noteOff = [0x80 + this.midiChannel-1, note, 0];
-          this.midiOutput!.send(noteOn, when);
-          this.midiOutput!.send(noteOff, when+duration*1000);
+          this.midiOutput!.send(noteOn, when*1000);
+          this.midiOutput!.send(noteOff, (when+duration)*1000);
       }
     },
     updateSynth() {
@@ -424,11 +424,8 @@ export default defineComponent({
         const vel = 0.5*Math.sqrt(1.0/arr.length);
         
         if (this.useMidiOutput) {
-          // Calculate the absolute time in ms when this note should play
-          const transportNow = Tone.getTransport().seconds;
-          const when2 =  performance.now() + ((when - transportNow) * 1000);
           for (const note of arr) {
-            this.playNoteWithMidi(note, vel, dur * this.quant * this.lengthFactor / 100.0, when2);
+            this.playNoteWithMidi(note, vel, dur * this.quant * this.lengthFactor / 100.0, when);
           }
         } else if (this.synth) {
           this.synth.triggerAttackRelease(
