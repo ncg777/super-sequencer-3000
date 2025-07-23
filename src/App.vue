@@ -66,7 +66,7 @@
           />
         </v-col>
       </v-row>
-      <!--
+      
       <v-row>
         <v-col cols="3">
           <v-switch 
@@ -93,7 +93,7 @@
           />
         </v-col>
       </v-row>
-      -->
+      
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
@@ -390,7 +390,7 @@ export default defineComponent({
       
       this.loop.start(0);
       Tone.getTransport().seconds=0;
-      if(this.midiOffsetMs == 0) this.midiOffsetMs = performance.now();
+      this.midiOffsetMs = performance.now();
       Tone.getTransport().start();
       
       
