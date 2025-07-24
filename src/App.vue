@@ -392,7 +392,7 @@ export default defineComponent({
       this.loop.start(0);
       Tone.getTransport().seconds=0;
       if(this.pnowMs < 0) this.pnowMs = performance.now();
-      if(this.transportnowMs<0) this.transportnowMs = Tone.getTransport().seconds*1000;
+      this.transportnowMs = Tone.getTransport().seconds*1000;
       Tone.getTransport().start();
     },
     stopSequencer() {
