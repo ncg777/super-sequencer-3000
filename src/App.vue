@@ -66,7 +66,7 @@
           />
         </v-col>
       </v-row>
-      <!--
+      
       <v-row>
         <v-col cols="3">
           <v-switch 
@@ -93,7 +93,7 @@
           />
         </v-col>
       </v-row>
-      -->
+      
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
@@ -302,7 +302,7 @@ export default defineComponent({
       if (this.useMidiOutput) {
         this.initializeMidi();
       } else {
-        this.midiOutput = null;
+        //this.midiOutput = null;
       }
     },
     async playNoteWithMidi(note: number, velocity: number, duration: Tone.Unit.Seconds, when: number) {
@@ -390,10 +390,8 @@ export default defineComponent({
       
       this.loop.start(0);
       Tone.getTransport().seconds=0;
-      this.midiOffsetMs = performance.now();
+      if(this.midiOffsetMs < 1) this.midiOffsetMs = performance.now()-Tone.getTransport().seconds*1000;
       Tone.getTransport().start();
-      
-      
     },
     stopSequencer() {
       if(!this.isRunning) return;
