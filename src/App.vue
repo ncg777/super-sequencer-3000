@@ -68,14 +68,14 @@
       </v-row>
       
       <v-row>
-        <v-col cols="3">
+        <v-col cols="4">
           <v-switch 
             v-model="useMidiOutput" 
-            label="Use MIDI Output" 
+            label="MIDI" 
             @update:modelValue="updateMidiMode"
           />
         </v-col>
-        <v-col cols="3" v-if="useMidiOutput">
+        <v-col cols="4" v-if="useMidiOutput">
           <v-select 
             v-model="selectedMidiDevice" 
             :items="midiDevices" 
@@ -83,7 +83,7 @@
             @update:modelValue="updateMidiDevice"
           />
         </v-col>
-        <v-col cols="6" v-if="useMidiOutput">
+        <v-col cols="4" v-if="useMidiOutput">
           <v-slider 
             :label="'Channel (' + midiChannel + ')'" 
             min="1" 
