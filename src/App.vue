@@ -213,7 +213,8 @@ export default defineComponent({
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
       appVersion: appVersion,
-      midiOffsetMs: -1
+      pnowMs: -1,
+      transportnowMs:-1,
     };
   },
   computed: {
@@ -309,8 +310,8 @@ export default defineComponent({
       if (this.midiOutput!!) {
           const noteOn = [0x90 + this.midiChannel-1, note, Math.round(velocity * 127)];
           const noteOff = [0x80 + this.midiChannel-1, note, 0];
-          this.midiOutput!.send(noteOn, this.midiOffsetMs+(when*1000));
-          this.midiOutput!.send(noteOff, this.midiOffsetMs+((when+duration)*1000));
+          this.midiOutput!.send(noteOn, this.pnowMs-this.transportnowMs+(when*1000));
+          this.midiOutput!.send(noteOff, this.pnowMs-this.transportnowMs+((when+duration)*1000));
       }
     },
     updateSynth() {
@@ -390,7 +391,8 @@ export default defineComponent({
       
       this.loop.start(0);
       Tone.getTransport().seconds=0;
-      if(this.midiOffsetMs < 0) this.midiOffsetMs = performance.now()-Tone.getTransport().seconds*1000;
+      if(this.pnowMs < 0) this.pnowMs = performance.now();
+      if(this.transportnowMs<0) this.transportnowMs = Tone.getTransport().seconds*1000;
       Tone.getTransport().start();
     },
     stopSequencer() {
