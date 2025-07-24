@@ -213,7 +213,7 @@ export default defineComponent({
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
       appVersion: appVersion,
-      midiOffsetMs: 0
+      midiOffsetMs: -1
     };
   },
   computed: {
@@ -390,7 +390,7 @@ export default defineComponent({
       
       this.loop.start(0);
       Tone.getTransport().seconds=0;
-      if(this.midiOffsetMs < 1) this.midiOffsetMs = performance.now()-Tone.getTransport().seconds*1000;
+      if(this.midiOffsetMs < 0) this.midiOffsetMs = performance.now()-Tone.getTransport().seconds*1000;
       Tone.getTransport().start();
     },
     stopSequencer() {
