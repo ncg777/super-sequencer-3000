@@ -340,7 +340,7 @@ export default defineComponent({
     async getMidi():Promise<Midi> {
       const midi = new Midi();
       const track = midi.addTrack();
-      track.channel = this.useMidiOutput ? this.midiChannel : 1;
+      track.channel = this.useMidiOutput ? this.midiChannel-1 : 0;
       
       midi.header.setTempo(this.bpm);
       for(let i=0;i < this.actualNotes.length;i++) {
