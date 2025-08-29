@@ -278,11 +278,12 @@ export default defineComponent({
 
         });
     },
+    
+  },
+  methods: {
     formattedDate() {
       return (timestamp => `${new Date(timestamp).getUTCFullYear()}${String(new Date(timestamp).getUTCMonth() + 1).padStart(2, '0')}${String(new Date(timestamp).getUTCDate()).padStart(2, '0')}T${String(new Date(timestamp).getUTCHours()).padStart(2, '0')}${String(new Date(timestamp).getUTCMinutes()).padStart(2, '0')}${String(new Date(timestamp).getUTCSeconds()).padStart(2, '0')}Z`)(Date.now());
     },
-  },
-  methods: {
     async initializeMidi() {
       try {
         const access = await navigator.requestMIDIAccess();
@@ -450,7 +451,7 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `SSeq3k-${this.formattedDate.toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
+      a.download = `SSeq3k-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
       a.click();
 
       // Clean up the URL object
