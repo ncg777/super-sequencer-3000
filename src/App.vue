@@ -262,9 +262,7 @@ export default defineComponent({
     actualNotes():number[][] {
       const s = PCS12.parseForte(this.forte);
       if(!s) return [];
-      const offset = this.scale.indexOf(s?.getForteNumberRotation()??0);
       const k = s?.getK()??0;
-      const l = this.scale.length;
       return this.sequence.map(
         (n:number) => {
           const bits = Math.abs(n).toString(2).split('').reverse();
@@ -272,7 +270,7 @@ export default defineComponent({
           return this.scale
             .filter(
               (_, idx) => {
-                const bitIndex = (sign*(idx-offset-this.octave*k));
+                const bitIndex = (sign*(idx-this.octave*k));
                 
                 return bitIndex >=0 && bitIndex < bits.length && bits[bitIndex] == "1";
               }
@@ -506,8 +504,8 @@ h1 {
 }
 .close-btn {
     position: absolute;
-    top: 16px; /* Adjust as needed */
-    right: 16px; /* Adjust as needed */
+    top: 16px;
+    right: 16px;
 }
 .compact-row * {
   padding:0;
