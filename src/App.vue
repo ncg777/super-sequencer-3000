@@ -238,7 +238,7 @@ export default defineComponent({
         o.context.lookAhead = 1;
         return o;
     },
-    quant() {return 240.0/(this.bpm*this.numerator*this.denominator);},
+    quant() {return 60.0/(this.bpm*this.denominator);},
     sequence(): number[] {
       return this.sequenceInput
         .split(' ')
