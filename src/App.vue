@@ -235,7 +235,8 @@ export default defineComponent({
                       this.waveform === "square" ? 'square' : 'sine1'
           }
         }).toDestination());
-        o.context.lookAhead = 1;
+        // Use a small lookAhead so playback feels immediate while keeping scheduling stable
+        o.context.lookAhead = 0.05;
         return o;
     },
     quant() {return 60.0/(this.bpm*this.denominator);},
@@ -309,8 +310,17 @@ export default defineComponent({
       if (this.midiOutput!!) {
           const noteOn = [0x90 + this.midiChannel-1, note, Math.round(velocity * 127)];
           const noteOff = [0x80 + this.midiChannel-1, note, 0];
-          this.midiOutput!.send(noteOn, this.pnowMs-this.transportnowMs+(when*1000));
-          this.midiOutput!.send(noteOff, this.pnowMs-this.transportnowMs+((when+duration)*1000));
+
+          // 'when' is in the AudioContext time coordinates; convert to Performance timeline
+          const ctxNow = Tone.now();
+          const nowMs = performance.now();
+          // Schedule relative to now; clamp to 0 to avoid negative scheduling
+          const delayMs = Math.max(0, (when - ctxNow) * 1000);
+          const onTimeMs = nowMs + delayMs;
+          const offTimeMs = onTimeMs + Number(duration) * 1000;
+
+          this.midiOutput!.send(noteOn, onTimeMs);
+          this.midiOutput!.send(noteOff, offTimeMs);
       }
     },
     updateSynth() {
@@ -333,8 +343,8 @@ export default defineComponent({
         }
       });
       
-      // Set lookahead
-      this.synth.context.lookAhead = 1;
+      // Use a small lookAhead for a snappier start
+      this.synth.context.lookAhead = 0.05;
     },
     async getMidi():Promise<Midi> {
       const midi = new Midi();
@@ -388,10 +398,9 @@ export default defineComponent({
         }, this.quant.toString()+"s");
       }
       
+      // Start loop and transport immediately; schedule from now without artificial offsets
       this.loop.start(0);
-      Tone.getTransport().seconds=0;
-      if(this.pnowMs < 0) this.pnowMs = performance.now();
-      this.transportnowMs = Tone.getTransport().seconds*1000;
+      Tone.getTransport().seconds = 0;
       Tone.getTransport().start();
     },
     stopSequencer() {
