@@ -7,6 +7,6 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    Adjacencymatrix: typeof import('./src/components/Adjacencymatrix.vue')['default']
+    AdjacencyMatrix: typeof import('./src/components/AdjacencyMatrix.vue')['default']
   }
 }
