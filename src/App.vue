@@ -1,7 +1,7 @@
 <template>  
 	<v-app>
 		<v-main>
-		  <v-responsive class="align-center mx-auto pa-4" max-width="900">
+		  <v-responsive class="align-center mx-auto pa-4 pb-8" max-width="900">
 			<h1>Super Sequencer 3k
       <v-btn 
           icon 
@@ -97,7 +97,11 @@
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
-
+      <br />
+      <br />
+      <v-row>
+        <AdjacencyMatrix :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
+      </v-row>
       <!-- Help Modal -->
       
 		  </v-responsive>
@@ -181,16 +185,20 @@
 <script lang="ts">
 import pkg from '../package.json';
 const appVersion = pkg.version;
-import { defineComponent, markRaw } from 'vue';
+import { defineComponent, markRaw, ref } from 'vue';
+import AdjacencyMatrix from './components/AdjacencyMatrix.vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import { PCS12 } from 'ultra-mega-enumerator';
 
 export default defineComponent({
   name: 'App',
+  components: {
+    AdjacencyMatrix
+  },
   data() {
     const params = new URLSearchParams(window.location.search);
-
+    
     return {
       bpm: parseInt(params.get("bpm") ?? localStorage.getItem("ss3k_bpm")?? "90") ,
       numerator: parseInt(params.get("numerator") ?? localStorage.getItem("ss3k_numerator")?? "4"),
@@ -215,6 +223,7 @@ export default defineComponent({
       appVersion: appVersion,
       pnowMs: -1,
       transportnowMs:-1,
+      activeNotes: [] as number[]
     };
   },
   computed: {
@@ -238,6 +247,18 @@ export default defineComponent({
         // Use a small lookAhead so playback feels immediate while keeping scheduling stable
         o.context.lookAhead = 0.05;
         return o;
+    },
+    noteRange(): { min: number, max: number } {
+      const allNotes = this.actualNotes.flat();
+      if (allNotes.length === 0) return { min: 0, max: 127 };
+      const min = Math.min(...allNotes);
+      const max = Math.max(...allNotes);
+      // Add some padding
+      const padding = Math.max(3, Math.floor((max - min) * 0.1));
+      return { 
+        min: Math.max(0, min - padding), 
+        max: Math.min(127, max + padding) 
+      };
     },
     quant() {return 60.0/(this.bpm*this.denominator);},
     sequence(): number[] {
@@ -279,7 +300,6 @@ export default defineComponent({
 
         });
     },
-    
   },
   methods: {
     formattedDate() {
@@ -431,6 +451,10 @@ export default defineComponent({
     
     async playNote(when : Tone.Unit.Seconds, counter:number) {
       const arr = this.actualNotes[counter%this.actualNotes.length];
+      
+      // Always update activeNotes, even if empty
+      this.activeNotes = [...arr];
+      console.log('Playing notes:', this.activeNotes);
       
       if (arr.length > 0 && this.synth) {
         let dur = 1;
