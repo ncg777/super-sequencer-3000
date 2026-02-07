@@ -1,5 +1,6 @@
 <template>  
 	<v-app>
+		<AdjacencyMatrix class="shader-bg" :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
 		<v-main>
 		  <v-responsive class="align-center mx-auto pa-4 pb-8" max-width="900">
 			<h1>Super Sequencer 3k
@@ -99,9 +100,6 @@
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
       <br />
       <br />
-      <v-row>
-        <AdjacencyMatrix :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
-      </v-row>
       <!-- Help Modal -->
       
 		  </v-responsive>
@@ -512,12 +510,47 @@ export default defineComponent({
 </script>
 
 <style scoped>
-body, * {
-  background-color: #000000;
+.shader-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+:deep(.v-application) {
+  background: transparent !important;
+}
+
+:deep(.v-main) {
+  background: transparent !important;
+  position: relative;
+  z-index: 1;
+}
+
+:deep(.v-responsive) {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+:deep(.v-label),
+:deep(.v-field__input),
+:deep(.v-select__selection-text),
+:deep(.v-autocomplete__selection-text) {
+  color: #ffffff !important;
 }
 h1 {
   text-align: center;
   margin-bottom: 16pt;
+  color: #ffffff;
+}
+
+.downloadmidi,
+.userbutton,
+.stopplay {
+  color: #ffffff;
 }
 
 .downloadmidi {

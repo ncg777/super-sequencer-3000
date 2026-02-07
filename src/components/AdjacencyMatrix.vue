@@ -305,16 +305,12 @@ onBeforeUnmount(() => {
 <style scoped>
 .adjacency-wrapper {
   width: 100%;
-  aspect-ratio: 1;
-  max-width: 512px;
-  margin: 0 auto;
+  height: 100%;
 }
 
 canvas {
   width: 100%;
   height: 100%;
   display: block;
-  border-radius: 12px;
-  box-shadow: 0 0 40px rgba(0, 255, 255, 0.25);
 }
 </style>
