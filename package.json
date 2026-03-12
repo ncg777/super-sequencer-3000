@@ -4,13 +4,18 @@
   "scripts": {
     "build": "run-p type-check \"build-only {@}\" --",
     "build-only": "vite build",
+    "build:cli": "tsc -p tsconfig.cli.json",
     "dev": "vite",
     "preview": "vite preview",
-    "type-check": "vue-tsc --build --force"
+    "type-check": "vue-tsc --build --force",
+    "cli": "tsx cli/cli.ts",
+    "mcp": "tsx cli/mcp.ts"
   },
   "dependencies": {
     "@mdi/font": "7.4.47",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@tonejs/midi": "^2.0.28",
+    "commander": "^14.0.3",
     "register-service-worker": "^1.7.2",
     "roboto-fontface": "*",
     "tone": "^15.0.4",
@@ -28,6 +33,7 @@
     "npm-run-all2": "^7.0.1",
     "sass": "1.77.8",
     "sass-embedded": "^1.77.8",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.3",
     "unplugin-fonts": "^1.1.1",
     "unplugin-vue-components": "^0.27.2",

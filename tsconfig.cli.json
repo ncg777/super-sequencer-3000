@@ -1,0 +1,12 @@
+{
+  "extends": "@tsconfig/node22/tsconfig.json",
+  "include": ["cli/**/*"],
+  "compilerOptions": {
+    "outDir": "dist-cli",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "composite": false,
+    "noEmit": false
+  }
+}
