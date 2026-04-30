@@ -6,8 +6,8 @@ import { generateMidi } from './generate.js';
 const program = new Command();
 
 program
-  .name('super-sequencer-3000')
-  .description('Generate a MIDI file from a Super Sequencer 3000 sequence')
+  .name('gaterunner')
+  .description('Generate a MIDI file from a GateRunner sequence')
   .version('1.0.0')
   .requiredOption('-o, --output <file>', 'Output MIDI file path')
   .option('--bpm <number>', 'Tempo in beats per minute (1-499)', '90')

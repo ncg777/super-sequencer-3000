@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "super-sequencer-3000": {
+    "gaterunner": {
       "command": "node",
       "args": ["${workspaceFolder}/dist-cli/mcp.js"],
-      "description": "Super Sequencer 3000 MCP server — generate MIDI files from binary-encoded note sequences using Forte number pitch-class sets."
+      "description": "GateRunner MCP server — generate MIDI files from binary-encoded note sequences using Forte number pitch-class sets."
     }
   }
 }

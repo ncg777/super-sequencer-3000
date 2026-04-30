@@ -34,6 +34,9 @@ export default defineConfig({
       },
     }),
   ],
+  // TODO: Update base path to '/gaterunner/' after the GitHub repository is renamed from
+  // 'super-sequencer-3000' to 'gaterunner'. Changing it before the rename would break
+  // the current GitHub Pages deployment at ncg777.github.io/super-sequencer-3000/.
   base:'/super-sequencer-3000/',
   define: { 'process.env': {} },
   resolve: {

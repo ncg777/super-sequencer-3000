@@ -10,7 +10,7 @@ import { generateMidi } from './generate.js';
 
 const server = new Server(
   {
-    name: 'super-sequencer-3000',
+    name: 'gaterunner',
     version: '1.0.0',
   },
   {
@@ -26,7 +26,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'generate_midi',
         description:
-          'Generate a MIDI file using Super Sequencer 3000. ' +
+          'Generate a MIDI file using GateRunner. ' +
           'Converts a sequence of integers to MIDI notes using a Forte number (pitch-class set). ' +
           'Each integer is binary-encoded: each set bit maps to a pitch from the chosen scale.',
         inputSchema: {

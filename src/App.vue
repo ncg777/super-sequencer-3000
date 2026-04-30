@@ -107,7 +107,7 @@
       <v-dialog v-model="showHelp" max-width="800px">
           <v-card class="pa-4 bg-black">
             <v-card-title class="pa-4">
-              <span class="text-h5 font-weight-bold">Super Sequencer 3000 <small style="font-size:0.6em; color:#888; margin-left:1em;">v{{ appVersion }}</small></span>
+              <span class="text-h5 font-weight-bold">GateRunner <small style="font-size:0.6em; color:#888; margin-left:1em;">v{{ appVersion }}</small></span>
               <v-spacer></v-spacer>
               <v-btn icon @click="showHelp = false" class="close-btn">
                 <v-icon>mdi-close</v-icon>
@@ -397,6 +397,7 @@ export default defineComponent({
       }
     },
     async copyURL() {
+      // TODO: Update to https://ncg777.github.io/gaterunner after the GitHub repository is renamed.
       await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/super-sequencer-3000?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&lengthFactor=${this.lengthFactor}&sequence=${this.sequenceInput}`));
       window.alert("URL copied to clipboard.");
     },
@@ -482,7 +483,7 @@ export default defineComponent({
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `SSeq3k-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
+      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
       a.click();
 
       // Clean up the URL object
