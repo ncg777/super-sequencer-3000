@@ -1,5 +1,5 @@
 {
-  "name": "super-sequencer-3000",
+  "name": "gaterunner",
   "version": "2026.2.6",
   "scripts": {
     "build": "run-p type-check \"build-only {@}\" --",
@@ -42,7 +42,7 @@
     "vite-plugin-vuetify": "^2.0.3",
     "vue-tsc": "^2.1.10"
   },
-  "homepage": "https://github.com/ncg777/super-sequencer-3000",
+  "homepage": "https://github.com/ncg777/gaterunner",
   "type": "module",
   "packageManager": "yarn@4.9.2"
 }

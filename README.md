@@ -1,4 +1,25 @@
-[https://ncg777.github.io/super-sequencer-3000/](https://ncg777.github.io/super-sequencer-3000/)
+# GateRunner
+
+A browser-based MIDI step sequencer that generates MIDI files from binary-encoded note sequences using Forte number pitch-class sets.
+
+**Live app:** [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/)
+*(Until the GitHub repository is renamed, the app is also accessible at [https://ncg777.github.io/super-sequencer-3000/](https://ncg777.github.io/super-sequencer-3000/))*
+
+---
+
+## Planned GitHub Repository Rename
+
+This project is being renamed from **super-sequencer-3000** to **gaterunner**.
+
+- The GitHub repository will be renamed from `ncg777/super-sequencer-3000` to `ncg777/gaterunner`.
+- GitHub automatically redirects existing clone URLs, issues, and stars from the old name after a rename, so most existing links will continue to work.
+- **Recommended action:** Once the rename is complete, update your local remote with:
+  ```bash
+  git remote set-url origin https://github.com/ncg777/gaterunner.git
+  ```
+- Do **not** create a new repository named `super-sequencer-3000` under the same account after the rename, as this would break GitHub's redirect.
+
+---
 
 ### How Notes Are Computed in the Encoding Scheme
 
