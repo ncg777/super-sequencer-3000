@@ -3,7 +3,7 @@
 		<AdjacencyMatrix class="shader-bg" :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
 		<v-main>
 		  <v-responsive class="align-center mx-auto pa-4 pb-8" max-width="900">
-			<h1>Super Sequencer 3k
+			<h1>GateRunner
       <v-btn 
           icon 
           @click="showHelp = true" 
