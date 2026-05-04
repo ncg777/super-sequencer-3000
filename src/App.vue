@@ -12,6 +12,67 @@
           <v-icon>mdi-help-circle</v-icon>
         </v-btn>
       </h1>
+      <v-row>
+        <v-col cols="12" md="8">
+          <v-select
+            v-model="selectedPresetId"
+            label="Preset"
+            :item-title="'title'"
+            :item-value="'value'"
+            :items="presetOptions"
+            @update:modelValue="handlePresetSelection"
+          />
+        </v-col>
+        <v-col cols="12" md="4" class="preset-summary-col">
+          <div class="preset-summary">
+            <div class="preset-name">{{ currentPresetName }}</div>
+            <div class="preset-state">{{ isDirty ? 'Unsaved changes' : 'Saved' }}</div>
+          </div>
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col cols="12" md="8">
+          <v-text-field
+            v-model="presetNameInput"
+            label="Preset name"
+            placeholder="Type a preset name here"
+            hide-details="auto"
+          />
+        </v-col>
+        <v-col cols="12" md="4">
+          <v-btn block class="preset-action-btn" color="info" variant="outlined" @click="renameCurrentPreset" :disabled="!canRenamePreset">Rename</v-btn>
+        </v-col>
+      </v-row>
+      <v-row class="preset-actions-row">
+        <v-col cols="6" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="primary" @click="saveCurrentPreset" :disabled="!currentPreset || !isDirty">Save</v-btn>
+        </v-col>
+        <v-col cols="6" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="primary" variant="tonal" @click="saveAsPreset">Save As</v-btn>
+        </v-col>
+        <v-col cols="6" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="secondary" variant="tonal" @click="createNewPreset">New</v-btn>
+        </v-col>
+        <v-col cols="6" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="error" variant="tonal" @click="deleteCurrentPreset">Delete</v-btn>
+        </v-col>
+        <v-col cols="6" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="white" variant="outlined" @click="exportCurrentPreset">Export Preset</v-btn>
+        </v-col>
+        <v-col cols="6" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="white" variant="outlined" @click="exportPresetLibrary">Export Library</v-btn>
+        </v-col>
+        <v-col cols="12" sm="4" md="3">
+          <v-btn block class="preset-action-btn" color="white" variant="outlined" @click="triggerPresetImport">Import JSON</v-btn>
+        </v-col>
+      </v-row>
+      <input
+        ref="presetFileInput"
+        type="file"
+        accept=".json,application/json"
+        class="preset-file-input"
+        @change="handlePresetFileImport"
+      />
 			<v-row>
         <v-col cols="6">
           <v-autocomplete
@@ -19,11 +80,11 @@
             v-model="forte"
             :items="allChords"
             placeholder="Forte number..."
-            @update:modelValue="saveSettingsToLocalStorage"
+            @update:modelValue="handleDraftChange"
           />
 				</v-col>
         <v-col cols="6">
-          <v-select v-model="waveform" label="Waveform" :items="['sine','square','triangle','sawtooth']" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-select v-model="waveform" label="Waveform" :items="['sine','square','triangle','sawtooth']" @update:modelValue="handleDraftChange" />
 			  </v-col>
 			</v-row>
       <v-row>
@@ -32,27 +93,27 @@
             :label="`Sequence (${sequence.length})`"
             v-model="sequenceInput" 
             placeholder="e.g. 0 1 2..." 
-            @update:modelValue="saveSettingsToLocalStorage" />
+          @update:modelValue="handleDraftChange" />
 				</v-col>
       </v-row>
 			<v-row class="compact-row">
 			  <v-col cols="12">
-          <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="handleDraftChange" />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col colr="12">
-          <v-slider :label="'Numerator (' + numerator + ')'" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Numerator (' + numerator + ')'" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="handleDraftChange" />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
 			  <v-col cols="12">
-				  <v-slider :label="'Denominator ('+ denominator + ')'" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Denominator ('+ denominator + ')'" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="handleDraftChange" />
 				</v-col>
 			</v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-				  <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="saveSettingsToLocalStorage" />
+          <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="handleDraftChange" />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
@@ -63,7 +124,7 @@
             max="400" 
             step="1" 
             v-model.number="lengthFactor" 
-            @update:modelValue="saveSettingsToLocalStorage" 
+          @update:modelValue="handleDraftChange" 
           />
         </v-col>
       </v-row>
@@ -117,7 +178,9 @@
             <v-card-text class="pa-4">
               <h4 class="mb-2">How the Sequencer Works</h4>
               <p>The sequencer allows you to customize the following parameters:</p>
+              <p>GateRunner now stores your work as named presets. Changes affect the current draft immediately for playback and URL sharing, but the preset itself is only updated when you use <strong>Save</strong> or <strong>Save As</strong>. You can also export a single preset or the full preset library to JSON and import them back later.</p>
               <ul>
+                <li><strong>Preset</strong>: Pick a named preset, create a new one, save your current draft, or delete presets you no longer need.</li>
                 <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
                   <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
                 <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
@@ -128,6 +191,7 @@
                   representation.</li>
                 <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played.</li>
                 <li><strong>Note length</strong>: Multiplies the durations of the notes played.</li>
+                <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
               </ul>
 
               <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
@@ -183,11 +247,47 @@
 <script lang="ts">
 import pkg from '../package.json';
 const appVersion = pkg.version;
-import { defineComponent, markRaw, ref } from 'vue';
+import { defineComponent, markRaw } from 'vue';
 import AdjacencyMatrix from './components/AdjacencyMatrix.vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import { PCS12 } from 'ultra-mega-enumerator';
+import {
+  DEFAULT_PRESET_DATA,
+  arePresetDataEqual,
+  buildDraftFromUrl,
+  buildPresetLibraryExport,
+  buildSinglePresetExport,
+  clonePresetData,
+  createNamedPreset,
+  getSelectedPreset,
+  hasUrlPresetOverrides,
+  loadPresetLibrary,
+  mergeImportedPresets,
+  normalizePresetData,
+  parsePresetImportPayload,
+  sanitizePresetName,
+  savePresetLibrary,
+  updatePresetData,
+  type NamedPreset,
+  type PresetData,
+  type PresetLibrary,
+} from './presets';
+
+function buildInitialState() {
+  const presetLibrary = loadPresetLibrary();
+  const selectedPreset = getSelectedPreset(presetLibrary);
+  const draft = buildDraftFromUrl(window.location.search, selectedPreset.data);
+
+  return {
+    presetLibrary,
+    selectedPresetId: selectedPreset.id,
+    isDirty: hasUrlPresetOverrides(window.location.search) || !arePresetDataEqual(draft, selectedPreset.data),
+    draft,
+  };
+}
+
+const initialState = buildInitialState();
 
 export default defineComponent({
   name: 'App',
@@ -195,20 +295,18 @@ export default defineComponent({
     AdjacencyMatrix
   },
   data() {
-    const params = new URLSearchParams(window.location.search);
-    
     return {
-      bpm: parseInt(params.get("bpm") ?? localStorage.getItem("ss3k_bpm")?? "90") ,
-      numerator: parseInt(params.get("numerator") ?? localStorage.getItem("ss3k_numerator")?? "4"),
-      denominator: parseInt(params.get("denominator") ?? localStorage.getItem("ss3k_denominator") ?? "5"),
-      waveform: params.get("waveform") ?? localStorage.getItem("ss3k_waveform") ?? "sine",
-      sequenceInput: params.get("sequence") ?? localStorage.getItem("ss3k_sequence") ?? '1 2 4 8 16',
-      octave: parseInt(params.get("octave") ?? localStorage.getItem("ss3k_octave") ?? "6"),
-      lengthFactor: parseInt(params.get("lengthFactor") ?? localStorage.getItem("ss3k_lengthFactor") ?? "100"),
+      bpm: initialState.draft.bpm,
+      numerator: initialState.draft.numerator,
+      denominator: initialState.draft.denominator,
+      waveform: initialState.draft.waveform,
+      sequenceInput: initialState.draft.sequenceInput,
+      octave: initialState.draft.octave,
+      lengthFactor: initialState.draft.lengthFactor,
       allChords: [] as string[],
       isRunning: false,
       loop: null as Tone.Loop|null,
-      forte: params.get("forte") ?? localStorage.getItem("ss3k_forte") ?? "5-35.05",
+      forte: initialState.draft.forte,
       counter: 0,
       showHelp: false,
       synth: markRaw(new Tone.PolySynth(Tone.Synth).toDestination()),
@@ -221,10 +319,34 @@ export default defineComponent({
       appVersion: appVersion,
       pnowMs: -1,
       transportnowMs:-1,
-      activeNotes: [] as number[]
+      activeNotes: [] as number[],
+      presetLibrary: initialState.presetLibrary as PresetLibrary,
+      selectedPresetId: initialState.selectedPresetId as string | null,
+      isDirty: initialState.isDirty,
+      presetNameInput: initialState.presetLibrary.presets.find((preset) => preset.id === initialState.selectedPresetId)?.name ?? '',
     };
   },
   computed: {
+    currentPreset(): NamedPreset | null {
+      return this.presetLibrary.presets.find((preset) => preset.id === this.presetLibrary.selectedPresetId) ?? this.presetLibrary.presets[0] ?? null;
+    },
+    currentPresetName(): string {
+      return this.currentPreset?.name ?? 'No preset selected';
+    },
+    presetOptions(): Array<{ title: string; value: string }> {
+      return this.presetLibrary.presets.map((preset) => ({
+        title: preset.name,
+        value: preset.id,
+      }));
+    },
+    canRenamePreset(): boolean {
+      if (!this.currentPreset) {
+        return false;
+      }
+
+      const nextName = sanitizePresetName(this.presetNameInput);
+      return nextName !== this.currentPreset.name;
+    },
     synth():Tone.PolySynth {
       const o = markRaw(new Tone.PolySynth(Tone.Synth,{
           envelope:{
@@ -300,6 +422,306 @@ export default defineComponent({
     },
   },
   methods: {
+    getDraftData(): PresetData {
+      return normalizePresetData({
+        bpm: this.bpm,
+        numerator: this.numerator,
+        denominator: this.denominator,
+        waveform: this.waveform,
+        sequenceInput: this.sequenceInput,
+        octave: this.octave,
+        lengthFactor: this.lengthFactor,
+        forte: this.forte,
+      });
+    },
+    applyDraftData(data: PresetData) {
+      const normalized = clonePresetData(normalizePresetData(data));
+      this.bpm = normalized.bpm;
+      this.numerator = normalized.numerator;
+      this.denominator = normalized.denominator;
+      this.waveform = normalized.waveform;
+      this.sequenceInput = normalized.sequenceInput;
+      this.octave = normalized.octave;
+      this.lengthFactor = normalized.lengthFactor;
+      this.forte = normalized.forte;
+      this.applyRealtimeSettings();
+    },
+    applyRealtimeSettings() {
+      if (this.loop) {
+        this.loop.interval = this.quant.toString() + 's';
+      }
+      Tone.getTransport().bpm.value = this.bpm;
+      Tone.getTransport().timeSignature = [this.numerator, this.denominator];
+      this.updateSynth();
+    },
+    refreshDirtyState() {
+      const currentPreset = this.currentPreset;
+      this.isDirty = currentPreset ? !arePresetDataEqual(this.getDraftData(), currentPreset.data) : false;
+    },
+    syncPresetNameInput(nextName?: string) {
+      this.presetNameInput = nextName ?? this.currentPreset?.name ?? '';
+    },
+    persistPresetLibrary(library: PresetLibrary) {
+      this.presetLibrary = library;
+      savePresetLibrary(library);
+    },
+    loadPresetById(presetId: string, libraryOverride?: PresetLibrary) {
+      const library = libraryOverride ?? this.presetLibrary;
+      const preset = library.presets.find((entry) => entry.id === presetId);
+      if (!preset) {
+        return;
+      }
+
+      const nextLibrary: PresetLibrary = {
+        ...library,
+        selectedPresetId: preset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = preset.id;
+      this.syncPresetNameInput(preset.name);
+      this.applyDraftData(preset.data);
+      this.refreshDirtyState();
+    },
+    handleDraftChange() {
+      this.applyRealtimeSettings();
+      this.refreshDirtyState();
+    },
+    confirmDiscardChanges(actionLabel: string): boolean {
+      if (!this.isDirty) {
+        return true;
+      }
+
+      return window.confirm(`You have unsaved changes. ${actionLabel}?`);
+    },
+    handlePresetSelection(nextPresetId: string | null) {
+      const currentPresetId = this.presetLibrary.selectedPresetId;
+      if (!nextPresetId || nextPresetId === currentPresetId) {
+        return;
+      }
+
+      if (!this.confirmDiscardChanges('Load another preset and discard them')) {
+        this.selectedPresetId = currentPresetId;
+        return;
+      }
+
+      this.loadPresetById(nextPresetId);
+    },
+    buildUniquePresetName(baseName: string, excludedPresetId?: string): string {
+      const existingNames = new Set(
+        this.presetLibrary.presets
+          .filter((preset) => preset.id !== excludedPresetId)
+          .map((preset) => preset.name),
+      );
+      const sanitizedBaseName = sanitizePresetName(baseName);
+      if (!existingNames.has(sanitizedBaseName)) {
+        return sanitizedBaseName;
+      }
+
+      let suffix = 2;
+      while (existingNames.has(`${sanitizedBaseName} (${suffix})`)) {
+        suffix += 1;
+      }
+
+      return `${sanitizedBaseName} (${suffix})`;
+    },
+    renameCurrentPreset() {
+      const currentPreset = this.currentPreset;
+      if (!currentPreset) {
+        return;
+      }
+
+      const nextName = this.buildUniquePresetName(this.presetNameInput, currentPreset.id);
+      if (nextName === currentPreset.name) {
+        this.syncPresetNameInput(currentPreset.name);
+        return;
+      }
+
+      const renamedPreset: NamedPreset = {
+        ...currentPreset,
+        name: nextName,
+      };
+      const nextLibrary: PresetLibrary = {
+        ...this.presetLibrary,
+        presets: this.presetLibrary.presets.map((preset) => preset.id === renamedPreset.id ? renamedPreset : preset),
+        selectedPresetId: renamedPreset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = renamedPreset.id;
+      this.syncPresetNameInput(renamedPreset.name);
+      window.alert(`Renamed preset to "${renamedPreset.name}".`);
+    },
+    saveCurrentPreset() {
+      const currentPreset = this.currentPreset;
+      if (!currentPreset) {
+        return;
+      }
+
+      const updatedPreset = updatePresetData(currentPreset, this.getDraftData());
+      const nextLibrary: PresetLibrary = {
+        ...this.presetLibrary,
+        presets: this.presetLibrary.presets.map((preset) => preset.id === updatedPreset.id ? updatedPreset : preset),
+        selectedPresetId: updatedPreset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = updatedPreset.id;
+      this.syncPresetNameInput(updatedPreset.name);
+      this.refreshDirtyState();
+      window.alert(`Saved preset "${updatedPreset.name}".`);
+    },
+    saveAsPreset() {
+      const name = this.buildUniquePresetName(this.presetNameInput || `${this.currentPreset?.name ?? 'Preset'} Copy`);
+      const newPreset = createNamedPreset(name, this.getDraftData());
+      const nextLibrary: PresetLibrary = {
+        ...this.presetLibrary,
+        presets: [...this.presetLibrary.presets, newPreset],
+        selectedPresetId: newPreset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = newPreset.id;
+      this.syncPresetNameInput(newPreset.name);
+      this.applyDraftData(newPreset.data);
+      this.refreshDirtyState();
+      window.alert(`Created preset "${newPreset.name}".`);
+    },
+    createNewPreset() {
+      if (!this.confirmDiscardChanges('Create a new preset and discard them')) {
+        this.selectedPresetId = this.presetLibrary.selectedPresetId;
+        return;
+      }
+
+      const name = this.buildUniquePresetName(this.presetNameInput || 'New preset');
+      const preset = createNamedPreset(name, DEFAULT_PRESET_DATA);
+      const nextLibrary: PresetLibrary = {
+        ...this.presetLibrary,
+        presets: [...this.presetLibrary.presets, preset],
+        selectedPresetId: preset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = preset.id;
+      this.syncPresetNameInput(preset.name);
+      this.applyDraftData(preset.data);
+      this.refreshDirtyState();
+    },
+    deleteCurrentPreset() {
+      const currentPreset = this.currentPreset;
+      if (!currentPreset) {
+        return;
+      }
+
+      if (!this.confirmDiscardChanges(`Delete preset "${currentPreset.name}" and discard them`)) {
+        this.selectedPresetId = this.presetLibrary.selectedPresetId;
+        return;
+      }
+
+      if (!window.confirm(`Delete preset "${currentPreset.name}"? This cannot be undone.`)) {
+        this.selectedPresetId = this.presetLibrary.selectedPresetId;
+        return;
+      }
+
+      const remainingPresets = this.presetLibrary.presets.filter((preset) => preset.id !== currentPreset.id);
+      const fallbackPreset = remainingPresets[0] ?? createNamedPreset('Default', DEFAULT_PRESET_DATA);
+      const nextPresets = remainingPresets.length > 0 ? remainingPresets : [fallbackPreset];
+      const nextLibrary: PresetLibrary = {
+        ...this.presetLibrary,
+        presets: nextPresets,
+        selectedPresetId: fallbackPreset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = fallbackPreset.id;
+      this.syncPresetNameInput(fallbackPreset.name);
+      this.applyDraftData(fallbackPreset.data);
+      this.refreshDirtyState();
+    },
+    sanitizeFilenamePart(value: string) {
+      return value.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'preset';
+    },
+    downloadJson(filename: string, payload: object) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    },
+    buildLibraryForExport(): PresetLibrary {
+      const currentPreset = this.currentPreset;
+      if (!currentPreset) {
+        return this.presetLibrary;
+      }
+
+      const currentDraft = this.getDraftData();
+      return {
+        ...this.presetLibrary,
+        presets: this.presetLibrary.presets.map((preset) => preset.id === currentPreset.id ? updatePresetData(preset, currentDraft) : preset),
+      };
+    },
+    exportCurrentPreset() {
+      const currentPreset = this.currentPreset;
+      if (!currentPreset) {
+        return;
+      }
+
+      const exportPreset = updatePresetData(currentPreset, this.getDraftData());
+      const filename = `gaterunner-preset-${this.sanitizeFilenamePart(exportPreset.name)}-${this.formattedDate()}.json`;
+      this.downloadJson(filename, buildSinglePresetExport(exportPreset));
+    },
+    exportPresetLibrary() {
+      const libraryForExport = this.buildLibraryForExport();
+      const filename = `gaterunner-preset-library-${this.formattedDate()}.json`;
+      this.downloadJson(filename, buildPresetLibraryExport(libraryForExport));
+    },
+    triggerPresetImport() {
+      (this.$refs.presetFileInput as HTMLInputElement | undefined)?.click();
+    },
+    async handlePresetFileImport(event: Event) {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) {
+        return;
+      }
+
+      try {
+        const payload = parsePresetImportPayload(await file.text());
+        const importedPresets = payload.kind === 'single-preset' ? [payload.preset] : payload.presets;
+        const preferredSelectedPresetId = payload.kind === 'single-preset' ? payload.preset.id : payload.selectedPresetId;
+        const mergeResult = mergeImportedPresets(this.presetLibrary.presets, importedPresets, preferredSelectedPresetId);
+        const nextLibrary: PresetLibrary = {
+          ...this.presetLibrary,
+          presets: mergeResult.presets,
+          selectedPresetId: this.presetLibrary.selectedPresetId,
+        };
+
+        this.persistPresetLibrary(nextLibrary);
+        this.selectedPresetId = this.presetLibrary.selectedPresetId;
+
+        const importedCount = mergeResult.importedPresets.length;
+        if (importedCount === 0) {
+          window.alert('No presets were imported.');
+          return;
+        }
+
+        if (mergeResult.selectedPresetId && this.confirmDiscardChanges('Load the imported preset and discard them')) {
+          this.loadPresetById(mergeResult.selectedPresetId, nextLibrary);
+        } else {
+          this.selectedPresetId = this.presetLibrary.selectedPresetId;
+          this.syncPresetNameInput();
+        }
+
+        window.alert(`Imported ${importedCount} preset${importedCount === 1 ? '' : 's'}.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to import preset file.';
+        window.alert(message);
+      } finally {
+        input.value = '';
+      }
+    },
     formattedDate() {
       return (timestamp => `${new Date(timestamp).getUTCFullYear()}${String(new Date(timestamp).getUTCMonth() + 1).padStart(2, '0')}${String(new Date(timestamp).getUTCDate()).padStart(2, '0')}T${String(new Date(timestamp).getUTCHours()).padStart(2, '0')}${String(new Date(timestamp).getUTCMinutes()).padStart(2, '0')}${String(new Date(timestamp).getUTCSeconds()).padStart(2, '0')}Z`)(Date.now());
     },
@@ -397,8 +819,7 @@ export default defineComponent({
       }
     },
     async copyURL() {
-      // TODO: Update to https://ncg777.github.io/gaterunner after the GitHub repository is renamed.
-      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/super-sequencer-3000?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&lengthFactor=${this.lengthFactor}&sequence=${this.sequenceInput}`));
+      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/gaterunner/?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&lengthFactor=${this.lengthFactor}&sequence=${this.sequenceInput}`));
       window.alert("URL copied to clipboard.");
     },
     async startSequencer() {
@@ -406,9 +827,8 @@ export default defineComponent({
       this.isRunning = true;
       this.counter = 0;
       await Tone.start();
-      this.updateSynth();
+      this.applyRealtimeSettings();
       console.log('Audio context started');
-      this.saveSettingsToLocalStorage();
       const that = this;
       if(this.loop == null) {
         this.loop = new Tone.Loop(async (_) => {
@@ -429,23 +849,6 @@ export default defineComponent({
       Tone.getTransport().stop();
       Tone.getTransport().seconds=0;
       console.log('Stopped');
-    },
-    
-    saveSettingsToLocalStorage() {
-      localStorage.setItem("ss3k_bpm", this.bpm.toString());
-      localStorage.setItem("ss3k_numerator", this.numerator.toString());
-      localStorage.setItem("ss3k_denominator", this.denominator.toString());
-      localStorage.setItem("ss3k_octave", this.octave.toString());
-      localStorage.setItem("ss3k_waveform", this.waveform);
-      localStorage.setItem("ss3k_sequence", this.sequenceInput);
-      localStorage.setItem("ss3k_forte", this.forte);
-      localStorage.setItem("ss3k_lengthFactor", this.lengthFactor.toString());
-      if(!!this.loop){
-        this.loop.interval=this.quant.toString()+"s";
-      }
-      Tone.getTransport().bpm.value = this.bpm;
-      Tone.getTransport().timeSignature = [this.numerator,this.denominator];
-      this.updateSynth();
     },
     
     async playNote(when : Tone.Unit.Seconds, counter:number) {
@@ -478,7 +881,7 @@ export default defineComponent({
 
     async downloadMIDI() {
       const data = (await this.getMidi()).toArray();
-      const blob = new Blob([data], { type: 'audio/midi' });
+      const blob = new Blob([Uint8Array.from(data)], { type: 'audio/midi' });
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement('a');
@@ -495,14 +898,14 @@ export default defineComponent({
       const arr = Array.from(PCS12.getChords()).map(c => c.toString());
       arr.sort(PCS12.ReverseForteStringComparator);
       this.allChords=arr;
-      this.updateSynth();
+      this.applyRealtimeSettings();
   },
   beforeUnmount() {
     this.stopSequencer();
     this.synth.dispose();
   },
   async onMounted() {
-    this.saveSettingsToLocalStorage();
+    this.applyRealtimeSettings();
     if (this.useMidiOutput) {
       await this.initializeMidi();
   }
@@ -552,6 +955,45 @@ h1 {
 .userbutton,
 .stopplay {
   color: #ffffff;
+}
+
+.preset-summary-col {
+  display: flex;
+  align-items: center;
+}
+
+.preset-summary {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.preset-name {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.preset-state {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.9rem;
+}
+
+.preset-actions-row {
+  margin-bottom: 8px;
+}
+
+.preset-action-btn {
+  color: #ffffff !important;
+}
+
+.preset-action-btn:deep(.v-btn__content) {
+  color: #ffffff !important;
+}
+
+.preset-file-input {
+  display: none;
 }
 
 .downloadmidi {

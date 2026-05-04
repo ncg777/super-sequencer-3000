@@ -5,6 +5,26 @@ A browser-based MIDI step sequencer that generates MIDI files from binary-encode
 **Live app:** [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/)
 *(Until the GitHub repository is renamed, the app is also accessible at [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/))*
 
+### Presets
+
+GateRunner stores sequences as named presets in the browser.
+
+- The selected preset loads into the working draft.
+- Editing controls updates the working draft immediately for playback, MIDI export, and URL sharing.
+- Use **Save** to update the selected preset.
+- Use **Save As** to create a new preset from the current draft.
+- Use **New** to create a fresh default preset.
+- Existing single-preset local storage data is migrated automatically the first time the new preset system loads.
+
+### Import And Export
+
+Preset files use JSON.
+
+- **Export Preset** writes the current preset draft to a single-preset JSON file.
+- **Export Library** writes the full preset library to a JSON file.
+- **Import JSON** accepts either file type and adds imported presets without overwriting existing ones.
+- If an imported preset name already exists, GateRunner keeps both presets by renaming the imported one.
+
 ---
 
 ### How Notes Are Computed in the Encoding Scheme
