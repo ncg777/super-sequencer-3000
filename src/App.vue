@@ -657,19 +657,6 @@ export default defineComponent({
 
       return new Uint8Array(wavBuffer);
     },
-    sampleOscillator(phase: number, waveform: string): number {
-      switch (waveform) {
-        case 'square':
-          return phase < 0.5 ? 1 : -1;
-        case 'triangle':
-          return 1 - 4 * Math.abs(phase - 0.5);
-        case 'sawtooth':
-          return 2 * phase - 1;
-        case 'sine':
-        default:
-          return Math.sin(2 * Math.PI * phase);
-      }
-    },
     getRenderDurationSeconds(): number {
       let total = 0;
 
@@ -680,6 +667,7 @@ export default defineComponent({
         }
 
         const trackQuant = this.getTrackQuant(entry.track);
+        const trackPeriod = notesByStep.length * trackQuant;
         let trackMaxEnd = 0;
 
         for (let i = 0; i < notesByStep.length; i += 1) {
@@ -696,8 +684,9 @@ export default defineComponent({
           }
         }
 
-        if (trackMaxEnd > total) {
-          total = trackMaxEnd;
+        const trackCycleDuration = Math.max(trackPeriod, trackMaxEnd);
+        if (trackCycleDuration > total) {
+          total = trackCycleDuration;
         }
       }
 
@@ -705,70 +694,69 @@ export default defineComponent({
     },
     async renderMixWav(): Promise<Uint8Array> {
       const renderDuration = this.getRenderDurationSeconds();
-      const sampleRate = 44100;
-      const frameCount = Math.ceil(renderDuration * sampleRate);
-      const left = new Float32Array(frameCount);
-      const right = new Float32Array(frameCount);
-      const attackSeconds = 0.005;
-      const releaseSeconds = 0.03;
-
-      for (const entry of this.allTrackActualNotes) {
-        if (entry.notes.length === 0) {
-          continue;
-        }
-
-        const trackQuant = this.getTrackQuant(entry.track);
-
-        for (let i = 0; i < entry.notes.length; i += 1) {
-          const notes = entry.notes[i];
-          if (notes.length === 0) {
+      const rendered = await Tone.Offline(() => {
+        for (const entry of this.allTrackActualNotes) {
+          if (entry.notes.length === 0) {
             continue;
           }
 
-          const start = i * trackQuant;
-          const durSteps = this.getTrackStepDuration(entry.notes, i);
-          const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
-          const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
-          const noteAmplitude = velocity * 0.18;
-          const startFrame = Math.max(0, Math.floor(start * sampleRate));
-          const endFrame = Math.min(frameCount, Math.ceil((start + duration) * sampleRate));
+          const trackQuant = this.getTrackQuant(entry.track);
+          const trackPeriod = entry.notes.length * trackQuant;
+          if (trackPeriod <= 0) {
+            continue;
+          }
 
-          for (const midiNote of notes) {
-            const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-            const phaseIncrement = frequency / sampleRate;
-            let phase = 0;
+          const synth = new Tone.PolySynth(Tone.Synth, {
+            envelope: {
+              attackCurve: 'exponential',
+              attack: (trackQuant / 2.0).toString() + 's',
+              decay: 0,
+              releaseCurve: 'exponential',
+              release: (trackQuant / 2.0).toString() + 's',
+              sustain: 1.0,
+            },
+            oscillator: {
+              type: this.getWaveformType(entry.track.waveform),
+            },
+          }).toDestination();
 
-            for (let frame = startFrame; frame < endFrame; frame += 1) {
-              const t = (frame - startFrame) / sampleRate;
-              const releaseTime = duration - t;
-
-              let env = 1;
-              if (t < attackSeconds) {
-                env = t / attackSeconds;
+          for (let loopStart = 0; loopStart < renderDuration; loopStart += trackPeriod) {
+            for (let i = 0; i < entry.notes.length; i += 1) {
+              const notes = entry.notes[i];
+              if (notes.length === 0) {
+                continue;
               }
-              if (releaseTime < releaseSeconds) {
-                env = Math.min(env, Math.max(0, releaseTime / releaseSeconds));
+
+              const eventTime = loopStart + (i * trackQuant);
+              if (eventTime >= renderDuration) {
+                continue;
               }
 
-              const sample = this.sampleOscillator(phase, entry.track.waveform) * noteAmplitude * env;
-              left[frame] += sample;
-              right[frame] += sample;
+              const durSteps = this.getTrackStepDuration(entry.notes, i);
+              const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
+              const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
 
-              phase += phaseIncrement;
-              if (phase >= 1) {
-                phase -= Math.floor(phase);
-              }
+              synth.triggerAttackRelease(
+                notes.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
+                duration,
+                eventTime,
+                velocity,
+              );
             }
           }
         }
+      }, renderDuration);
+
+      const audioBuffer = (rendered as { get?: () => AudioBuffer }).get
+        ? (rendered as { get: () => AudioBuffer }).get()
+        : (rendered as unknown as AudioBuffer);
+
+      const channels: Float32Array[] = [];
+      for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
+        channels.push(audioBuffer.getChannelData(channel));
       }
 
-      for (let i = 0; i < frameCount; i += 1) {
-        left[i] = Math.max(-1, Math.min(1, left[i]));
-        right[i] = Math.max(-1, Math.min(1, right[i]));
-      }
-
-      return this.encodeWavFromChannels([left, right], sampleRate);
+      return this.encodeWavFromChannels(channels, audioBuffer.sampleRate);
     },
     getDraftData(): PresetData {
       return normalizePresetData({
@@ -1122,6 +1110,18 @@ export default defineComponent({
       this.trackSynths[trackId] = synth;
       return synth;
     },
+    getWaveformType(waveform: string): 'sine' | 'square' | 'triangle' | 'sawtooth' {
+      if (waveform === 'triangle') {
+        return 'triangle';
+      }
+      if (waveform === 'sawtooth') {
+        return 'sawtooth';
+      }
+      if (waveform === 'square') {
+        return 'square';
+      }
+      return 'sine';
+    },
     updateSynths() {
       const activeTrackIds = new Set(this.tracks.map((track) => track.id));
       for (const [trackId, synth] of Object.entries(this.trackSynths)) {
@@ -1133,13 +1133,7 @@ export default defineComponent({
 
       for (const track of this.tracks) {
         const synth = this.getOrCreateSynth(track.id);
-        const waveformType = track.waveform === 'triangle'
-          ? 'triangle'
-          : track.waveform === 'sawtooth'
-            ? 'sawtooth'
-            : track.waveform === 'square'
-              ? 'square'
-              : 'sine';
+        const waveformType = this.getWaveformType(track.waveform);
 
         synth.set({
           envelope: {

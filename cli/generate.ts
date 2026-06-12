@@ -303,6 +303,11 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const sampleRate = 44100;
   let totalDuration = 0;
   for (const entry of prepared.tracks) {
+    if (entry.actualNotes.length === 0) {
+      continue;
+    }
+
+    const trackPeriod = entry.actualNotes.length * entry.quant;
     let trackMaxEnd = 0;
     for (let i = 0; i < entry.actualNotes.length; i += 1) {
       const notes = entry.actualNotes[i];
@@ -317,8 +322,9 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
         trackMaxEnd = end;
       }
     }
-    if (trackMaxEnd > totalDuration) {
-      totalDuration = trackMaxEnd;
+    const trackCycleDuration = Math.max(trackPeriod, trackMaxEnd);
+    if (trackCycleDuration > totalDuration) {
+      totalDuration = trackCycleDuration;
     }
   }
   totalDuration = Math.max(1, totalDuration + 0.25);
@@ -327,49 +333,64 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const left = new Float32Array(frameCount);
   const right = new Float32Array(frameCount);
 
-  const attackSeconds = 0.005;
-  const releaseSeconds = 0.03;
-
   for (const entry of prepared.tracks) {
-    for (let i = 0; i < entry.actualNotes.length; i += 1) {
-      const notes = entry.actualNotes[i];
-      if (notes.length === 0) {
-        continue;
-      }
+    if (entry.actualNotes.length === 0) {
+      continue;
+    }
 
-      const start = i * entry.quant;
-      const durSteps = getStepDuration(entry.actualNotes, i);
-      const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
-      const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
-      const noteAmplitude = velocity * 0.18;
+    const trackPeriod = entry.actualNotes.length * entry.quant;
+    if (trackPeriod <= 0) {
+      continue;
+    }
 
-      const startFrame = Math.max(0, Math.floor(start * sampleRate));
-      const endFrame = Math.min(frameCount, Math.ceil((start + duration) * sampleRate));
+    const attackSeconds = entry.quant / 2.0;
+    const releaseSeconds = entry.quant / 2.0;
 
-      for (const midiNote of notes) {
-        const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-        const phaseIncrement = frequency / sampleRate;
-        let phase = 0;
+    for (let loopStart = 0; loopStart < totalDuration; loopStart += trackPeriod) {
+      for (let i = 0; i < entry.actualNotes.length; i += 1) {
+        const notes = entry.actualNotes[i];
+        if (notes.length === 0) {
+          continue;
+        }
 
-        for (let frame = startFrame; frame < endFrame; frame += 1) {
-          const t = (frame - startFrame) / sampleRate;
-          const releaseTime = duration - t;
+        const start = loopStart + (i * entry.quant);
+        if (start >= totalDuration) {
+          continue;
+        }
 
-          let env = 1;
-          if (t < attackSeconds) {
-            env = t / attackSeconds;
-          }
-          if (releaseTime < releaseSeconds) {
-            env = Math.min(env, Math.max(0, releaseTime / releaseSeconds));
-          }
+        const durSteps = getStepDuration(entry.actualNotes, i);
+        const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
+        const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+        const noteAmplitude = velocity * 0.18;
 
-          const sample = sampleOscillator(phase, entry.track.waveform) * noteAmplitude * env;
-          left[frame] += sample;
-          right[frame] += sample;
+        const startFrame = Math.max(0, Math.floor(start * sampleRate));
+        const endFrame = Math.min(frameCount, Math.ceil((start + duration) * sampleRate));
 
-          phase += phaseIncrement;
-          if (phase >= 1) {
-            phase -= Math.floor(phase);
+        for (const midiNote of notes) {
+          const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+          const phaseIncrement = frequency / sampleRate;
+          let phase = 0;
+
+          for (let frame = startFrame; frame < endFrame; frame += 1) {
+            const t = (frame - startFrame) / sampleRate;
+            const releaseTime = duration - t;
+
+            let env = 1;
+            if (t < attackSeconds) {
+              env = t / attackSeconds;
+            }
+            if (releaseTime < releaseSeconds) {
+              env = Math.min(env, Math.max(0, releaseTime / releaseSeconds));
+            }
+
+            const sample = sampleOscillator(phase, entry.track.waveform) * noteAmplitude * env;
+            left[frame] += sample;
+            right[frame] += sample;
+
+            phase += phaseIncrement;
+            if (phase >= 1) {
+              phase -= Math.floor(phase);
+            }
           }
         }
       }
