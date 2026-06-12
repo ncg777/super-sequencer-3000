@@ -455,6 +455,46 @@ export default defineComponent({
     getTrackQuant(track: PresetTrackData): number {
       return 60.0 / (this.bpm * track.denominator);
     },
+    gcdInteger(left: number, right: number): number {
+      let a = Math.abs(Math.trunc(left));
+      let b = Math.abs(Math.trunc(right));
+      while (b !== 0) {
+        const next = a % b;
+        a = b;
+        b = next;
+      }
+      return a === 0 ? 1 : a;
+    },
+    lcmInteger(left: number, right: number): number {
+      const a = Math.abs(Math.trunc(left));
+      const b = Math.abs(Math.trunc(right));
+      if (a === 0 || b === 0) {
+        return 0;
+      }
+      return (a / this.gcdInteger(a, b)) * b;
+    },
+    getLoopDurationSecondsFromTrackLengths(): number {
+      const entries = this.allTrackActualNotes.filter((entry) => entry.notes.length > 0);
+      if (entries.length === 0) {
+        return 1;
+      }
+
+      const denominatorLcm = entries
+        .map((entry) => entry.track.denominator)
+        .reduce((acc, denominator) => this.lcmInteger(acc, denominator), 1);
+
+      const trackUnits = entries
+        .map((entry) => entry.notes.length * (denominatorLcm / entry.track.denominator))
+        .filter((units) => units > 0);
+
+      if (trackUnits.length === 0) {
+        return 1;
+      }
+
+      const globalUnits = trackUnits.reduce((acc, units) => this.lcmInteger(acc, units), 1);
+      const totalBeats = globalUnits / denominatorLcm;
+      return Math.max(1 / denominatorLcm, totalBeats * (60 / this.bpm));
+    },
     parseSequence(sequenceInput: string): number[] {
       return sequenceInput
         .trim()
@@ -658,39 +698,7 @@ export default defineComponent({
       return new Uint8Array(wavBuffer);
     },
     getRenderDurationSeconds(): number {
-      let total = 0;
-
-      for (const entry of this.allTrackActualNotes) {
-        const notesByStep = entry.notes;
-        if (notesByStep.length === 0) {
-          continue;
-        }
-
-        const trackQuant = this.getTrackQuant(entry.track);
-        const trackPeriod = notesByStep.length * trackQuant;
-        let trackMaxEnd = 0;
-
-        for (let i = 0; i < notesByStep.length; i += 1) {
-          const notes = notesByStep[i];
-          if (notes.length === 0) {
-            continue;
-          }
-
-          const durSteps = this.getTrackStepDuration(notesByStep, i);
-          const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
-          const end = i * trackQuant + duration;
-          if (end > trackMaxEnd) {
-            trackMaxEnd = end;
-          }
-        }
-
-        const trackCycleDuration = Math.max(trackPeriod, trackMaxEnd);
-        if (trackCycleDuration > total) {
-          total = trackCycleDuration;
-        }
-      }
-
-      return Math.max(1, total + 0.25);
+      return this.getLoopDurationSecondsFromTrackLengths();
     },
     async renderMixWav(): Promise<Uint8Array> {
       const renderDuration = this.getRenderDurationSeconds();
@@ -1156,6 +1164,7 @@ export default defineComponent({
       const midi = new Midi();
       
       midi.header.setTempo(this.bpm);
+      const totalLoopDuration = this.getLoopDurationSecondsFromTrackLengths();
 
       for (const entry of this.allTrackActualNotes) {
         const notesByStep = entry.notes;
@@ -1166,23 +1175,34 @@ export default defineComponent({
         const track = midi.addTrack();
         track.channel = entry.track.midiChannel - 1;
         const trackQuant = this.getTrackQuant(entry.track);
+        const trackPeriod = notesByStep.length * trackQuant;
+        if (trackPeriod <= 0) {
+          continue;
+        }
 
-        for (let i = 0; i < notesByStep.length; i += 1) {
-          const notes = notesByStep[i];
-          if (notes.length === 0) {
-            continue;
-          }
+        for (let loopStart = 0; loopStart < totalLoopDuration; loopStart += trackPeriod) {
+          for (let i = 0; i < notesByStep.length; i += 1) {
+            const notes = notesByStep[i];
+            if (notes.length === 0) {
+              continue;
+            }
 
-          const dur = this.getTrackStepDuration(notesByStep, i);
-          const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+            const eventTime = loopStart + (i * trackQuant);
+            if (eventTime >= totalLoopDuration) {
+              continue;
+            }
 
-          for (const note of notes) {
-            track.addNote({
-              midi: note,
-              time: i * trackQuant,
-              duration: dur * trackQuant * entry.track.lengthFactor / 100.0,
-              velocity: vel,
-            });
+            const dur = this.getTrackStepDuration(notesByStep, i);
+            const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+
+            for (const note of notes) {
+              track.addNote({
+                midi: note,
+                time: eventTime,
+                duration: dur * trackQuant * entry.track.lengthFactor / 100.0,
+                velocity: vel,
+              });
+            }
           }
         }
       }

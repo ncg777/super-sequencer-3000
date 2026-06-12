@@ -67,6 +67,49 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+function gcdInteger(left: number, right: number): number {
+  let a = Math.abs(Math.trunc(left));
+  let b = Math.abs(Math.trunc(right));
+  while (b !== 0) {
+    const next = a % b;
+    a = b;
+    b = next;
+  }
+  return a === 0 ? 1 : a;
+}
+
+function lcmInteger(left: number, right: number): number {
+  const a = Math.abs(Math.trunc(left));
+  const b = Math.abs(Math.trunc(right));
+  if (a === 0 || b === 0) {
+    return 0;
+  }
+  return (a / gcdInteger(a, b)) * b;
+}
+
+function getLoopDurationSecondsFromTrackLengths(prepared: PreparedRenderData): number {
+  const entries = prepared.tracks.filter((entry) => entry.actualNotes.length > 0);
+  if (entries.length === 0) {
+    return 1;
+  }
+
+  const denominatorLcm = entries
+    .map((entry) => entry.track.denominator)
+    .reduce((acc, denominator) => lcmInteger(acc, denominator), 1);
+
+  const trackUnits = entries
+    .map((entry) => entry.actualNotes.length * (denominatorLcm / entry.track.denominator))
+    .filter((units) => units > 0);
+
+  if (trackUnits.length === 0) {
+    return 1;
+  }
+
+  const globalUnits = trackUnits.reduce((acc, units) => lcmInteger(acc, units), 1);
+  const totalBeats = globalUnits / denominatorLcm;
+  return Math.max(1 / denominatorLcm, totalBeats * (60 / prepared.bpm));
+}
+
 function parseSequence(sequenceInput: string): number[] {
   return sequenceInput
     .trim()
@@ -257,6 +300,7 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
 
   const midi = new Midi();
   midi.header.setTempo(prepared.bpm);
+  const totalLoopDuration = getLoopDurationSecondsFromTrackLengths(prepared);
 
   for (const entry of prepared.tracks) {
     if (entry.actualNotes.length === 0) {
@@ -265,23 +309,34 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
 
     const track = midi.addTrack();
     track.channel = entry.track.midiChannel - 1;
+    const trackPeriod = entry.actualNotes.length * entry.quant;
+    if (trackPeriod <= 0) {
+      continue;
+    }
 
-    for (let i = 0; i < entry.actualNotes.length; i += 1) {
-      const notes = entry.actualNotes[i];
-      if (notes.length === 0) {
-        continue;
-      }
+    for (let loopStart = 0; loopStart < totalLoopDuration; loopStart += trackPeriod) {
+      for (let i = 0; i < entry.actualNotes.length; i += 1) {
+        const notes = entry.actualNotes[i];
+        if (notes.length === 0) {
+          continue;
+        }
 
-      const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
-      const dur = getStepDuration(entry.actualNotes, i);
+        const eventTime = loopStart + (i * entry.quant);
+        if (eventTime >= totalLoopDuration) {
+          continue;
+        }
 
-      for (const note of notes) {
-        track.addNote({
-          midi: note,
-          time: i * entry.quant,
-          duration: (dur * entry.quant * entry.track.lengthFactor) / 100.0,
-          velocity: vel,
-        });
+        const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+        const dur = getStepDuration(entry.actualNotes, i);
+
+        for (const note of notes) {
+          track.addNote({
+            midi: note,
+            time: eventTime,
+            duration: (dur * entry.quant * entry.track.lengthFactor) / 100.0,
+            velocity: vel,
+          });
+        }
       }
     }
   }
@@ -301,33 +356,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   }
 
   const sampleRate = 44100;
-  let totalDuration = 0;
-  for (const entry of prepared.tracks) {
-    if (entry.actualNotes.length === 0) {
-      continue;
-    }
-
-    const trackPeriod = entry.actualNotes.length * entry.quant;
-    let trackMaxEnd = 0;
-    for (let i = 0; i < entry.actualNotes.length; i += 1) {
-      const notes = entry.actualNotes[i];
-      if (notes.length === 0) {
-        continue;
-      }
-
-      const durSteps = getStepDuration(entry.actualNotes, i);
-      const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
-      const end = i * entry.quant + duration;
-      if (end > trackMaxEnd) {
-        trackMaxEnd = end;
-      }
-    }
-    const trackCycleDuration = Math.max(trackPeriod, trackMaxEnd);
-    if (trackCycleDuration > totalDuration) {
-      totalDuration = trackCycleDuration;
-    }
-  }
-  totalDuration = Math.max(1, totalDuration + 0.25);
+  const totalDuration = getLoopDurationSecondsFromTrackLengths(prepared);
 
   const frameCount = Math.ceil(totalDuration * sampleRate);
   const left = new Float32Array(frameCount);
