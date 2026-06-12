@@ -1,12 +1,20 @@
-export interface PresetData {
-  bpm: number;
+export interface PresetTrackData {
+  id: string;
+  name: string;
   numerator: number;
   denominator: number;
   waveform: string;
   sequenceInput: string;
   octave: number;
   lengthFactor: number;
+  midiChannel: number;
+  gain: number;
+}
+
+export interface PresetData {
+  bpm: number;
   forte: string;
+  tracks: PresetTrackData[];
 }
 
 export interface NamedPreset {
@@ -47,15 +55,23 @@ export interface MergeImportedPresetsResult {
   selectedPresetId: string | null;
 }
 
-export const DEFAULT_PRESET_DATA: PresetData = {
-  bpm: 90,
+export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
+  id: 'track-1',
+  name: 'Track 1',
   numerator: 4,
   denominator: 5,
   waveform: 'sine',
   sequenceInput: '1 2 4 8 16',
   octave: 6,
   lengthFactor: 100,
+  midiChannel: 1,
+  gain: 1,
+};
+
+export const DEFAULT_PRESET_DATA: PresetData = {
+  bpm: 90,
   forte: '5-35.05',
+  tracks: [DEFAULT_PRESET_TRACK_DATA],
 };
 
 const STORAGE_KEY = 'ss3k_preset_library_v1';
@@ -72,6 +88,17 @@ const LEGACY_KEYS = {
 
 const WAVEFORMS = new Set(['sine', 'square', 'triangle', 'sawtooth']);
 
+type LegacyTrackFields = {
+  numerator?: number;
+  denominator?: number;
+  waveform?: string;
+  sequenceInput?: string;
+  octave?: number;
+  lengthFactor?: number;
+  midiChannel?: number;
+  gain?: number;
+};
+
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -84,6 +111,10 @@ function createId(): string {
   return `preset-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
+function createTrackId(index: number): string {
+  return `track-${index + 1}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
 function parseInteger(value: string | null | undefined, fallback: number): number {
   if (!value) {
     return fallback;
@@ -93,53 +124,139 @@ function parseInteger(value: string | null | undefined, fallback: number): numbe
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function normalizeWaveform(value: unknown): PresetData['waveform'] {
-  return typeof value === 'string' && WAVEFORMS.has(value) ? value : DEFAULT_PRESET_DATA.waveform;
+function normalizeWaveform(value: unknown): PresetTrackData['waveform'] {
+  return typeof value === 'string' && WAVEFORMS.has(value) ? value : DEFAULT_PRESET_TRACK_DATA.waveform;
+}
+
+export function sanitizeTrackName(name: string | null | undefined, fallbackIndex = 0): string {
+  const trimmed = name?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : `Track ${fallbackIndex + 1}`;
+}
+
+export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
+  return {
+    id: track.id,
+    name: track.name,
+    numerator: track.numerator,
+    denominator: track.denominator,
+    waveform: track.waveform,
+    sequenceInput: track.sequenceInput,
+    octave: track.octave,
+    lengthFactor: track.lengthFactor,
+    midiChannel: track.midiChannel,
+    gain: track.gain,
+  };
+}
+
+export function normalizePresetTrackData(value: unknown, index = 0): PresetTrackData {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<PresetTrackData>;
+
+  return {
+    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : createTrackId(index),
+    name: sanitizeTrackName(raw.name, index),
+    numerator: clamp(parseInteger(raw.numerator?.toString(), DEFAULT_PRESET_TRACK_DATA.numerator), 1, 16),
+    denominator: clamp(parseInteger(raw.denominator?.toString(), DEFAULT_PRESET_TRACK_DATA.denominator), 1, 16),
+    waveform: normalizeWaveform(raw.waveform),
+    sequenceInput: typeof raw.sequenceInput === 'string' && raw.sequenceInput.trim().length > 0
+      ? raw.sequenceInput
+      : DEFAULT_PRESET_TRACK_DATA.sequenceInput,
+    octave: clamp(parseInteger(raw.octave?.toString(), DEFAULT_PRESET_TRACK_DATA.octave), 0, 10),
+    lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_TRACK_DATA.lengthFactor), 1, 400),
+    midiChannel: clamp(parseInteger(raw.midiChannel?.toString(), DEFAULT_PRESET_TRACK_DATA.midiChannel), 1, 16),
+    gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), 0, 4),
+  };
+}
+
+function normalizeLegacyTrack(value: LegacyTrackFields): PresetTrackData {
+  return normalizePresetTrackData({
+    id: 'track-1',
+    name: 'Track 1',
+    numerator: value.numerator,
+    denominator: value.denominator,
+    waveform: value.waveform,
+    sequenceInput: value.sequenceInput,
+    octave: value.octave,
+    lengthFactor: value.lengthFactor,
+    midiChannel: value.midiChannel,
+    gain: value.gain,
+  }, 0);
 }
 
 export function clonePresetData(data: PresetData): PresetData {
   return {
     bpm: data.bpm,
-    numerator: data.numerator,
-    denominator: data.denominator,
-    waveform: data.waveform,
-    sequenceInput: data.sequenceInput,
-    octave: data.octave,
-    lengthFactor: data.lengthFactor,
     forte: data.forte,
+    tracks: data.tracks.map((track) => clonePresetTrackData(track)),
   };
 }
 
 export function normalizePresetData(value: unknown): PresetData {
-  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<PresetData>;
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<PresetData> & {
+    numerator?: number;
+    denominator?: number;
+    waveform?: string;
+    sequenceInput?: string;
+    octave?: number;
+    lengthFactor?: number;
+    midiChannel?: number;
+    gain?: number;
+  };
+
+  const tracks = Array.isArray(raw.tracks)
+    ? raw.tracks.map((track, index) => normalizePresetTrackData(track, index))
+    : [];
 
   return {
     bpm: clamp(parseInteger(raw.bpm?.toString(), DEFAULT_PRESET_DATA.bpm), 1, 499),
-    numerator: clamp(parseInteger(raw.numerator?.toString(), DEFAULT_PRESET_DATA.numerator), 1, 16),
-    denominator: clamp(parseInteger(raw.denominator?.toString(), DEFAULT_PRESET_DATA.denominator), 1, 16),
-    waveform: normalizeWaveform(raw.waveform),
-    sequenceInput: typeof raw.sequenceInput === 'string' && raw.sequenceInput.trim().length > 0
-      ? raw.sequenceInput
-      : DEFAULT_PRESET_DATA.sequenceInput,
-    octave: clamp(parseInteger(raw.octave?.toString(), DEFAULT_PRESET_DATA.octave), 0, 10),
-    lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_DATA.lengthFactor), 1, 400),
     forte: typeof raw.forte === 'string' && raw.forte.trim().length > 0 ? raw.forte : DEFAULT_PRESET_DATA.forte,
+    tracks: tracks.length > 0 ? tracks : [normalizeLegacyTrack(raw)],
   };
 }
 
 export function arePresetDataEqual(left: PresetData, right: PresetData): boolean {
-  return left.bpm === right.bpm
-    && left.numerator === right.numerator
-    && left.denominator === right.denominator
-    && left.waveform === right.waveform
-    && left.sequenceInput === right.sequenceInput
-    && left.octave === right.octave
-    && left.lengthFactor === right.lengthFactor
-    && left.forte === right.forte;
+  if (left.bpm !== right.bpm
+    || left.forte !== right.forte
+    || left.tracks.length !== right.tracks.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.tracks.length; index += 1) {
+    const leftTrack = left.tracks[index];
+    const rightTrack = right.tracks[index];
+    if (leftTrack.id !== rightTrack.id
+      || leftTrack.name !== rightTrack.name
+      || leftTrack.numerator !== rightTrack.numerator
+      || leftTrack.denominator !== rightTrack.denominator
+      || leftTrack.waveform !== rightTrack.waveform
+      || leftTrack.sequenceInput !== rightTrack.sequenceInput
+      || leftTrack.octave !== rightTrack.octave
+      || leftTrack.lengthFactor !== rightTrack.lengthFactor
+      || leftTrack.midiChannel !== rightTrack.midiChannel
+      || leftTrack.gain !== rightTrack.gain) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function createNamedPreset(name: string, data: PresetData, createdAt = isoNow()): NamedPreset {
@@ -281,16 +398,23 @@ export function updatePresetData(preset: NamedPreset, data: PresetData): NamedPr
 
 export function buildDraftFromUrl(search: string, baseData: PresetData): PresetData {
   const params = new URLSearchParams(search);
+  const firstTrack = baseData.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
 
   return normalizePresetData({
     bpm: params.get('bpm') ?? baseData.bpm,
-    numerator: params.get('numerator') ?? baseData.numerator,
-    denominator: params.get('denominator') ?? baseData.denominator,
-    waveform: params.get('waveform') ?? baseData.waveform,
-    sequenceInput: params.get('sequence') ?? baseData.sequenceInput,
-    octave: params.get('octave') ?? baseData.octave,
-    lengthFactor: params.get('lengthFactor') ?? baseData.lengthFactor,
     forte: params.get('forte') ?? baseData.forte,
+    tracks: [
+      {
+        ...firstTrack,
+        numerator: params.get('numerator') ?? firstTrack.numerator,
+        denominator: params.get('denominator') ?? firstTrack.denominator,
+        waveform: params.get('waveform') ?? firstTrack.waveform,
+        sequenceInput: params.get('sequence') ?? firstTrack.sequenceInput,
+        octave: params.get('octave') ?? firstTrack.octave,
+        lengthFactor: params.get('lengthFactor') ?? firstTrack.lengthFactor,
+      },
+      ...baseData.tracks.slice(1),
+    ],
   });
 }
 
@@ -364,7 +488,7 @@ export function parsePresetImportPayload(text: string): PresetImportPayload {
 }
 
 function ensureUniqueName(existingNames: Set<string>, baseName: string): string {
-  let candidate = sanitizePresetName(baseName);
+  const candidate = sanitizePresetName(baseName);
   if (!existingNames.has(candidate)) {
     existingNames.add(candidate);
     return candidate;

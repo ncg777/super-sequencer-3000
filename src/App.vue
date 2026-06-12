@@ -84,47 +84,102 @@
           />
 				</v-col>
         <v-col cols="6">
-          <v-select v-model="waveform" label="Waveform" :items="['sine','square','triangle','sawtooth']" @update:modelValue="handleDraftChange" />
+          <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="handleDraftChange" />
+        </v-col>
+			</v-row>
+      <v-row>
+        <v-col cols="12" md="6">
+          <v-select
+            v-model="selectedTrackId"
+            :items="trackOptions"
+            :item-title="'title'"
+            :item-value="'value'"
+            label="Track"
+            @update:modelValue="handleTrackSelection"
+          />
+			  </v-col>
+			  <v-col cols="6" md="3">
+          <v-btn block class="preset-action-btn" color="secondary" variant="tonal" @click="addTrack">Add Track</v-btn>
+			  </v-col>
+			  <v-col cols="6" md="3">
+          <v-btn block class="preset-action-btn" color="error" variant="tonal" :disabled="tracks.length <= 1" @click="removeCurrentTrack">Remove Track</v-btn>
+			  </v-col>
+			</v-row>
+      <v-row>
+        <v-col cols="12" md="6">
+          <v-text-field
+            v-model="trackNameInput"
+            label="Track name"
+            hide-details="auto"
+            @update:modelValue="handleTrackDraftChange"
+          />
+			  </v-col>
+        <v-col cols="12" md="6">
+          <v-select
+            v-model="trackWaveform"
+            label="Waveform"
+            :items="['sine','square','triangle','sawtooth']"
+            @update:modelValue="handleTrackDraftChange"
+          />
 			  </v-col>
 			</v-row>
       <v-row>
         <v-col cols="12">
 				  <v-text-field 
-            :label="`Sequence (${sequence.length})`"
-            v-model="sequenceInput" 
+            :label="`Sequence (${selectedTrackSequenceLength})`"
+            v-model="trackSequenceInput" 
             placeholder="e.g. 0 1 2..." 
-          @update:modelValue="handleDraftChange" />
-				</v-col>
-      </v-row>
-			<v-row class="compact-row">
-			  <v-col cols="12">
-          <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="handleDraftChange" />
+		  @update:modelValue="handleTrackDraftChange" />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col colr="12">
-          <v-slider :label="'Numerator (' + numerator + ')'" min=1 step=1 max=16 v-model.number="numerator" @update:modelValue="handleDraftChange" />
+          <v-slider :label="'Track Numerator (' + trackNumerator + ')'" min=1 step=1 max=16 v-model.number="trackNumerator" @update:modelValue="handleTrackDraftChange" />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
 			  <v-col cols="12">
-          <v-slider :label="'Denominator ('+ denominator + ')'" min=1 step=1 max=16 v-model.number="denominator" @update:modelValue="handleDraftChange" />
+          <v-slider :label="'Track Denominator ('+ trackDenominator + ')'" min=1 step=1 max=16 v-model.number="trackDenominator" @update:modelValue="handleTrackDraftChange" />
 				</v-col>
 			</v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-          <v-slider :label="'Octave shift ('+ octave + ')'" min=0 step=1 max=10 v-model.number="octave" @update:modelValue="handleDraftChange" />
+				  <v-slider :label="'Octave shift ('+ trackOctave + ')'" min=0 step=1 max=10 v-model.number="trackOctave" @update:modelValue="handleTrackDraftChange" />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col cols="12">
           <v-slider 
-            :label="'Note Length (' + lengthFactor + '%)'" 
+            :label="'Track Note Length (' + trackLengthFactor + '%)'" 
             min="1" 
             max="400" 
             step="1" 
-            v-model.number="lengthFactor" 
-          @update:modelValue="handleDraftChange" 
+            v-model.number="trackLengthFactor" 
+		  @update:modelValue="handleTrackDraftChange" 
+          />
+        </v-col>
+      </v-row>
+      <v-row class="compact-row">
+        <v-col cols="12">
+          <v-slider
+            :label="'Track Gain (' + Number(trackGain).toFixed(2) + 'x)'"
+            min="0"
+            max="4"
+            step="0.05"
+            v-model.number="trackGain"
+            @update:modelValue="handleTrackDraftChange"
+          />
+        </v-col>
+      </v-row>
+      <v-row class="compact-row">
+        <v-col cols="12">
+          <v-slider
+            :label="'Track MIDI Channel (' + trackMidiChannel + ')'"
+            min="1"
+            max="16"
+            step="1"
+            v-model.number="trackMidiChannel"
+            @update:modelValue="handleTrackDraftChange"
           />
         </v-col>
       </v-row>
@@ -143,15 +198,6 @@
             :items="midiDevices" 
             label="MIDI Device" 
             @update:modelValue="updateMidiDevice"
-          />
-        </v-col>
-        <v-col cols="4" v-if="useMidiOutput">
-          <v-slider 
-            :label="'Channel (' + midiChannel + ')'" 
-            min="1" 
-            max="16" 
-            step="1" 
-            v-model.number="midiChannel"
           />
         </v-col>
       </v-row>
@@ -184,13 +230,14 @@
                 <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
                   <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
                 <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
-                <li><strong>Numerator</strong>: The top number of the time signature.</li>
-                <li><strong>Denominator</strong>: The bottom number of the time signature.</li>
-                <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms.</li>
-                <li><strong>Sequence</strong>: Input a sequence of numbers to generate notes based on their binary
+                <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
+                <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, and note length.</li>
+                <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
+                <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
                   representation.</li>
-                <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played.</li>
-                <li><strong>Note length</strong>: Multiplies the durations of the notes played.</li>
+                <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
+                <li><strong>Track Gain</strong>: Multiplies MIDI note velocity per track during export and live playback.</li>
+                <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
                 <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
               </ul>
 
@@ -254,34 +301,41 @@ import { Midi } from '@tonejs/midi';
 import { PCS12 } from 'ultra-mega-enumerator';
 import {
   DEFAULT_PRESET_DATA,
+  DEFAULT_PRESET_TRACK_DATA,
   arePresetDataEqual,
   buildDraftFromUrl,
   buildPresetLibraryExport,
   buildSinglePresetExport,
   clonePresetData,
+  clonePresetTrackData,
   createNamedPreset,
   getSelectedPreset,
   hasUrlPresetOverrides,
   loadPresetLibrary,
   mergeImportedPresets,
   normalizePresetData,
+  normalizePresetTrackData,
   parsePresetImportPayload,
   sanitizePresetName,
+  sanitizeTrackName,
   savePresetLibrary,
   updatePresetData,
   type NamedPreset,
   type PresetData,
   type PresetLibrary,
+  type PresetTrackData,
 } from './presets';
 
 function buildInitialState() {
   const presetLibrary = loadPresetLibrary();
   const selectedPreset = getSelectedPreset(presetLibrary);
   const draft = buildDraftFromUrl(window.location.search, selectedPreset.data);
+  const selectedTrackId = draft.tracks[0]?.id ?? null;
 
   return {
     presetLibrary,
     selectedPresetId: selectedPreset.id,
+    selectedTrackId,
     isDirty: hasUrlPresetOverrides(window.location.search) || !arePresetDataEqual(draft, selectedPreset.data),
     draft,
   };
@@ -295,30 +349,33 @@ export default defineComponent({
     AdjacencyMatrix
   },
   data() {
+    const firstTrack = initialState.draft.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
     return {
       bpm: initialState.draft.bpm,
-      numerator: initialState.draft.numerator,
-      denominator: initialState.draft.denominator,
-      waveform: initialState.draft.waveform,
-      sequenceInput: initialState.draft.sequenceInput,
-      octave: initialState.draft.octave,
-      lengthFactor: initialState.draft.lengthFactor,
+      forte: initialState.draft.forte,
+      tracks: initialState.draft.tracks.map((track) => clonePresetTrackData(track)) as PresetTrackData[],
+      selectedTrackId: initialState.selectedTrackId as string | null,
+      trackNameInput: firstTrack.name,
+      trackNumerator: firstTrack.numerator,
+      trackDenominator: firstTrack.denominator,
+      trackWaveform: firstTrack.waveform,
+      trackSequenceInput: firstTrack.sequenceInput,
+      trackOctave: firstTrack.octave,
+      trackLengthFactor: firstTrack.lengthFactor,
+      trackMidiChannel: firstTrack.midiChannel,
+      trackGain: firstTrack.gain,
       allChords: [] as string[],
       isRunning: false,
-      loop: null as Tone.Loop|null,
-      forte: initialState.draft.forte,
-      counter: 0,
+      trackLoops: {} as Record<string, Tone.Loop>,
+      trackCounters: {} as Record<string, number>,
       showHelp: false,
-      synth: markRaw(new Tone.PolySynth(Tone.Synth).toDestination()),
+      trackSynths: {} as Record<string, Tone.PolySynth>,
       useMidiOutput: false,
       midiDevices: [] as string[],
-      selectedMidiDevice: null,
-      midiChannel: 1,
+      selectedMidiDevice: null as string | null,
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
       appVersion: appVersion,
-      pnowMs: -1,
-      transportnowMs:-1,
       activeNotes: [] as number[],
       presetLibrary: initialState.presetLibrary as PresetLibrary,
       selectedPresetId: initialState.selectedPresetId as string | null,
@@ -333,10 +390,19 @@ export default defineComponent({
     currentPresetName(): string {
       return this.currentPreset?.name ?? 'No preset selected';
     },
+    currentTrack(): PresetTrackData | null {
+      return this.tracks.find((track) => track.id === this.selectedTrackId) ?? this.tracks[0] ?? null;
+    },
     presetOptions(): Array<{ title: string; value: string }> {
       return this.presetLibrary.presets.map((preset) => ({
         title: preset.name,
         value: preset.id,
+      }));
+    },
+    trackOptions(): Array<{ title: string; value: string }> {
+      return this.tracks.map((track) => ({
+        title: `${track.name} (ch ${track.midiChannel})`,
+        value: track.id,
       }));
     },
     canRenamePreset(): boolean {
@@ -347,29 +413,11 @@ export default defineComponent({
       const nextName = sanitizePresetName(this.presetNameInput);
       return nextName !== this.currentPreset.name;
     },
-    synth():Tone.PolySynth {
-      const o = markRaw(new Tone.PolySynth(Tone.Synth,{
-          envelope:{
-            attackCurve: 'exponential',
-            attack: (this.quant/2.0).toString()+"s",
-            decay:0,
-            releaseCurve: 'exponential',
-            release: (this.quant/2.0).toString()+"s",
-            sustain: 1.0
-          },
-          oscillator: {
-                type: 
-                  this.waveform === "triangle" ? 'triangle' : 
-                    this.waveform === "sawtooth" ? 'sawtooth' : 
-                      this.waveform === "square" ? 'square' : 'sine1'
-          }
-        }).toDestination());
-        // Use a small lookAhead so playback feels immediate while keeping scheduling stable
-        o.context.lookAhead = 0.05;
-        return o;
+    selectedTrackSequenceLength(): number {
+      return this.parseSequence(this.trackSequenceInput).length;
     },
     noteRange(): { min: number, max: number } {
-      const allNotes = this.actualNotes.flat();
+      const allNotes = this.allTrackActualNotes.flatMap((entry) => entry.notes.flat());
       if (allNotes.length === 0) return { min: 0, max: 127 };
       const min = Math.min(...allNotes);
       const max = Math.max(...allNotes);
@@ -380,79 +428,212 @@ export default defineComponent({
         max: Math.min(127, max + padding) 
       };
     },
-    quant() {return 60.0/(this.bpm*this.denominator);},
-    sequence(): number[] {
-      return this.sequenceInput
-        .split(' ')
-        .map((n:string) => parseInt(n.trim()))
-        .filter((n:number) => !isNaN(n));
-    },
     scale(): number[] {
       const s = PCS12.parseForte(this.forte);
-      const p = s?.asSequence()||[];
-      const o = [];
+      const p = s?.asSequence() ?? [];
+      const o: number[] = [];
       
-      for(const n of p) {
-        for(let i=0;i<=10;i++) {
-          const t = n+(12*i);
+      for (const n of p) {
+        for (let i = 0; i <= 10; i += 1) {
+          const t = n + (12 * i);
           if(t < 128) o.push(t);
         }
       }
-      o.sort((a,b) => a-b);
+      o.sort((a, b) => a - b);
       return o; 
     },
-    actualNotes():number[][] {
-      const s = PCS12.parseForte(this.forte);
-      if(!s) return [];
-      const k = s?.getK()??0;
-      return this.sequence.map(
-        (n:number) => {
-          const bits = Math.abs(n).toString(2).split('').reverse();
-          const sign = Math.sign(n);
-          return this.scale
-            .filter(
-              (_, idx) => {
-                const bitIndex = (sign*(idx-this.octave*k));
-                
-                return bitIndex >=0 && bitIndex < bits.length && bits[bitIndex] == "1";
-              }
-            );
-
-        });
+    allTrackActualNotes(): Array<{ track: PresetTrackData; notes: number[][] }> {
+      return this.tracks.map((track) => ({
+        track,
+        notes: this.computeActualNotes(track),
+      }));
     },
   },
   methods: {
+    getTrackQuant(track: PresetTrackData): number {
+      return 60.0 / (this.bpm * track.denominator);
+    },
+    parseSequence(sequenceInput: string): number[] {
+      return sequenceInput
+        .trim()
+        .split(/\s+/)
+        .map((n: string) => Number.parseInt(n.trim(), 10))
+        .filter((n: number) => !Number.isNaN(n));
+    },
+    computeActualNotes(track: PresetTrackData): number[][] {
+      const s = PCS12.parseForte(this.forte);
+      if (!s) {
+        return [];
+      }
+
+      const k = s.getK() ?? 0;
+      const sequence = this.parseSequence(track.sequenceInput);
+
+      return sequence.map((n: number) => {
+        const bits = Math.abs(n).toString(2).split('').reverse();
+        const sign = Math.sign(n) || 1;
+
+        return this.scale.filter((_, idx) => {
+          const bitIndex = sign * (idx - track.octave * k);
+          return bitIndex >= 0 && bitIndex < bits.length && bits[bitIndex] === '1';
+        });
+      });
+    },
+    syncTrackEditorFromCurrent() {
+      const track = this.currentTrack;
+      if (!track) {
+        return;
+      }
+
+      this.trackNameInput = track.name;
+      this.trackNumerator = track.numerator;
+      this.trackDenominator = track.denominator;
+      this.trackWaveform = track.waveform;
+      this.trackSequenceInput = track.sequenceInput;
+      this.trackOctave = track.octave;
+      this.trackLengthFactor = track.lengthFactor;
+      this.trackMidiChannel = track.midiChannel;
+      this.trackGain = track.gain;
+    },
+    applyTrackEditorToCurrent() {
+      const currentTrack = this.currentTrack;
+      if (!currentTrack) {
+        return;
+      }
+
+      const normalizedTrack = normalizePresetTrackData({
+        id: currentTrack.id,
+        name: sanitizeTrackName(this.trackNameInput),
+        numerator: this.trackNumerator,
+        denominator: this.trackDenominator,
+        waveform: this.trackWaveform,
+        sequenceInput: this.trackSequenceInput,
+        octave: this.trackOctave,
+        lengthFactor: this.trackLengthFactor,
+        midiChannel: this.trackMidiChannel,
+        gain: this.trackGain,
+      });
+
+      this.tracks = this.tracks.map((track) => track.id === normalizedTrack.id ? normalizedTrack : track);
+    },
+    handleTrackSelection(nextTrackId: string | null) {
+      if (!nextTrackId) {
+        return;
+      }
+
+      this.selectedTrackId = nextTrackId;
+      this.syncTrackEditorFromCurrent();
+    },
+    buildUniqueTrackName(baseName: string, excludedTrackId?: string): string {
+      const existingNames = new Set(
+        this.tracks
+          .filter((track) => track.id !== excludedTrackId)
+          .map((track) => track.name),
+      );
+      const sanitizedBaseName = sanitizeTrackName(baseName, this.tracks.length);
+      if (!existingNames.has(sanitizedBaseName)) {
+        return sanitizedBaseName;
+      }
+
+      let suffix = 2;
+      while (existingNames.has(`${sanitizedBaseName} (${suffix})`)) {
+        suffix += 1;
+      }
+
+      return `${sanitizedBaseName} (${suffix})`;
+    },
+    nextTrackChannel(): number {
+      const used = new Set(this.tracks.map((track) => track.midiChannel));
+      for (let channel = 1; channel <= 16; channel += 1) {
+        if (!used.has(channel)) {
+          return channel;
+        }
+      }
+      return 1;
+    },
+    addTrack() {
+      const nextTrack = normalizePresetTrackData({
+        name: this.buildUniqueTrackName(`Track ${this.tracks.length + 1}`),
+        numerator: this.currentTrack?.numerator ?? DEFAULT_PRESET_TRACK_DATA.numerator,
+        denominator: this.currentTrack?.denominator ?? DEFAULT_PRESET_TRACK_DATA.denominator,
+        waveform: this.currentTrack?.waveform ?? DEFAULT_PRESET_TRACK_DATA.waveform,
+        sequenceInput: this.currentTrack?.sequenceInput ?? DEFAULT_PRESET_TRACK_DATA.sequenceInput,
+        octave: this.currentTrack?.octave ?? DEFAULT_PRESET_TRACK_DATA.octave,
+        lengthFactor: this.currentTrack?.lengthFactor ?? DEFAULT_PRESET_TRACK_DATA.lengthFactor,
+        midiChannel: this.nextTrackChannel(),
+        gain: this.currentTrack?.gain ?? DEFAULT_PRESET_TRACK_DATA.gain,
+      }, this.tracks.length);
+
+      this.tracks = [...this.tracks, nextTrack];
+      this.selectedTrackId = nextTrack.id;
+      this.syncTrackEditorFromCurrent();
+      this.handleDraftChange();
+    },
+    removeCurrentTrack() {
+      const currentTrack = this.currentTrack;
+      if (!currentTrack || this.tracks.length <= 1) {
+        return;
+      }
+
+      if (!window.confirm(`Delete track "${currentTrack.name}"?`)) {
+        return;
+      }
+
+      const nextTracks = this.tracks.filter((track) => track.id !== currentTrack.id);
+      this.tracks = nextTracks;
+      this.selectedTrackId = nextTracks[0]?.id ?? null;
+      this.syncTrackEditorFromCurrent();
+      this.handleDraftChange();
+    },
+    handleTrackDraftChange() {
+      this.applyTrackEditorToCurrent();
+      this.handleDraftChange();
+    },
+    getTrackStepDuration(trackNotes: number[][], index: number): number {
+      if (trackNotes.length === 0) {
+        return 1;
+      }
+
+      for (let offset = 1; offset < trackNotes.length; offset += 1) {
+        if (trackNotes[(index + offset) % trackNotes.length].length > 0) {
+          return offset;
+        }
+      }
+
+      return 1;
+    },
     getDraftData(): PresetData {
       return normalizePresetData({
         bpm: this.bpm,
-        numerator: this.numerator,
-        denominator: this.denominator,
-        waveform: this.waveform,
-        sequenceInput: this.sequenceInput,
-        octave: this.octave,
-        lengthFactor: this.lengthFactor,
         forte: this.forte,
+        tracks: this.tracks.map((track) => clonePresetTrackData(track)),
       });
     },
     applyDraftData(data: PresetData) {
       const normalized = clonePresetData(normalizePresetData(data));
       this.bpm = normalized.bpm;
-      this.numerator = normalized.numerator;
-      this.denominator = normalized.denominator;
-      this.waveform = normalized.waveform;
-      this.sequenceInput = normalized.sequenceInput;
-      this.octave = normalized.octave;
-      this.lengthFactor = normalized.lengthFactor;
       this.forte = normalized.forte;
+
+      const fallbackTrackId = normalized.tracks[0]?.id ?? null;
+      const preferredTrackId = normalized.tracks.some((track) => track.id === this.selectedTrackId)
+        ? this.selectedTrackId
+        : fallbackTrackId;
+      this.tracks = normalized.tracks.map((track) => clonePresetTrackData(track));
+      this.selectedTrackId = preferredTrackId;
+      this.syncTrackEditorFromCurrent();
       this.applyRealtimeSettings();
     },
     applyRealtimeSettings() {
-      if (this.loop) {
-        this.loop.interval = this.quant.toString() + 's';
-      }
       Tone.getTransport().bpm.value = this.bpm;
-      Tone.getTransport().timeSignature = [this.numerator, this.denominator];
-      this.updateSynth();
+      const signatureTrack = this.currentTrack ?? this.tracks[0];
+      if (signatureTrack) {
+        Tone.getTransport().timeSignature = [signatureTrack.numerator, signatureTrack.denominator];
+      }
+      this.updateSynths();
+
+      if (this.isRunning) {
+        this.rebuildTrackLoops();
+      }
     },
     refreshDirtyState() {
       const currentPreset = this.currentPreset;
@@ -746,10 +927,10 @@ export default defineComponent({
         //this.midiOutput = null;
       }
     },
-    async playNoteWithMidi(note: number, velocity: number, duration: Tone.Unit.Seconds, when: number) {
+    async playNoteWithMidi(note: number, velocity: number, duration: Tone.Unit.Seconds, when: number, midiChannel: number) {
       if (this.midiOutput!!) {
-          const noteOn = [0x90 + this.midiChannel-1, note, Math.round(velocity * 127)];
-          const noteOff = [0x80 + this.midiChannel-1, note, 0];
+          const noteOn = [0x90 + midiChannel - 1, note, Math.round(velocity * 127)];
+          const noteOff = [0x80 + midiChannel - 1, note, 0];
 
           // 'when' is in the AudioContext time coordinates; convert to Performance timeline
           const ctxNow = Tone.now();
@@ -763,50 +944,85 @@ export default defineComponent({
           this.midiOutput!.send(noteOff, offTimeMs);
       }
     },
-    updateSynth() {
-      const waveformType = 
-        this.waveform === "triangle" ? 'triangle' :
-        this.waveform === "sawtooth" ? 'sawtooth' :
-        this.waveform === "square" ? 'square' : 'sine';
+    getOrCreateSynth(trackId: string): Tone.PolySynth {
+      const existing = this.trackSynths[trackId];
+      if (existing) {
+        return existing;
+      }
 
-      this.synth.set({
-        envelope: {
-          attackCurve: 'exponential',
-          attack: (this.quant / 2.0).toString() + "s",
-          decay: 0,
-          releaseCurve: 'exponential',
-          release: (this.quant / 2.0).toString() + "s",
-          sustain: 1.0
-        },
-        oscillator: {
-          type: waveformType
-        }
-      });
-      
-      // Use a small lookAhead for a snappier start
-      this.synth.context.lookAhead = 0.05;
+      const synth = markRaw(new Tone.PolySynth(Tone.Synth).toDestination());
+      this.trackSynths[trackId] = synth;
+      return synth;
     },
-    async getMidi():Promise<Midi> {
+    updateSynths() {
+      const activeTrackIds = new Set(this.tracks.map((track) => track.id));
+      for (const [trackId, synth] of Object.entries(this.trackSynths)) {
+        if (!activeTrackIds.has(trackId)) {
+          synth.dispose();
+          delete this.trackSynths[trackId];
+        }
+      }
+
+      for (const track of this.tracks) {
+        const synth = this.getOrCreateSynth(track.id);
+        const waveformType = track.waveform === 'triangle'
+          ? 'triangle'
+          : track.waveform === 'sawtooth'
+            ? 'sawtooth'
+            : track.waveform === 'square'
+              ? 'square'
+              : 'sine';
+
+        synth.set({
+          envelope: {
+            attackCurve: 'exponential',
+            attack: (this.getTrackQuant(track) / 2.0).toString() + 's',
+            decay: 0,
+            releaseCurve: 'exponential',
+            release: (this.getTrackQuant(track) / 2.0).toString() + 's',
+            sustain: 1.0,
+          },
+          oscillator: {
+            type: waveformType,
+          },
+        });
+
+        synth.context.lookAhead = 0.05;
+      }
+    },
+    async getMidi(): Promise<Midi> {
       const midi = new Midi();
-      const track = midi.addTrack();
-      track.channel = this.useMidiOutput ? this.midiChannel-1 : 0;
       
       midi.header.setTempo(this.bpm);
-      for(let i=0;i < this.actualNotes.length;i++) {
-        const notes = this.actualNotes[i];
-        const vel = 0.5*Math.sqrt(1.0/notes.length);
 
-        let dur = 1;
-        while(this.actualNotes[(i+dur)%this.actualNotes.length].length == 0) dur++;
-        
-        for(let note of notes) {
-          track.addNote({
-            midi: note,
-            time: i*this.quant,
-            duration: dur*this.quant*this.lengthFactor/100.0,
-            velocity: vel 
-          });
-        };
+      for (const entry of this.allTrackActualNotes) {
+        const notesByStep = entry.notes;
+        if (notesByStep.length === 0) {
+          continue;
+        }
+
+        const track = midi.addTrack();
+        track.channel = entry.track.midiChannel - 1;
+        const trackQuant = this.getTrackQuant(entry.track);
+
+        for (let i = 0; i < notesByStep.length; i += 1) {
+          const notes = notesByStep[i];
+          if (notes.length === 0) {
+            continue;
+          }
+
+          const dur = this.getTrackStepDuration(notesByStep, i);
+          const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+
+          for (const note of notes) {
+            track.addNote({
+              midi: note,
+              time: i * trackQuant,
+              duration: dur * trackQuant * entry.track.lengthFactor / 100.0,
+              velocity: vel,
+            });
+          }
+        }
       }
       
       return midi;
@@ -819,74 +1035,102 @@ export default defineComponent({
       }
     },
     async copyURL() {
-      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/gaterunner/?bpm=${this.bpm}&numerator=${this.numerator}&denominator=${this.denominator}&waveform=${this.waveform}&octave=${this.octave}&forte=${this.forte}&lengthFactor=${this.lengthFactor}&sequence=${this.sequenceInput}`));
+      const track = this.currentTrack ?? this.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
+      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/gaterunner/?bpm=${this.bpm}&numerator=${track.numerator}&denominator=${track.denominator}&waveform=${track.waveform}&octave=${track.octave}&forte=${this.forte}&lengthFactor=${track.lengthFactor}&sequence=${track.sequenceInput}`));
       window.alert("URL copied to clipboard.");
+    },
+    stopTrackLoops() {
+      for (const loop of Object.values(this.trackLoops)) {
+        loop.stop();
+        loop.dispose();
+      }
+      this.trackLoops = {};
+      this.trackCounters = {};
+    },
+    rebuildTrackLoops() {
+      if (!this.isRunning) {
+        return;
+      }
+
+      this.stopTrackLoops();
+
+      for (const entry of this.allTrackActualNotes) {
+        if (entry.notes.length === 0) {
+          continue;
+        }
+
+        const loop = new Tone.Loop((when) => {
+          const counter = this.trackCounters[entry.track.id] ?? 0;
+          this.playTrackStep(entry.track, entry.notes, counter, when);
+          this.trackCounters[entry.track.id] = (counter + 1) % entry.notes.length;
+        }, this.getTrackQuant(entry.track).toString() + 's');
+
+        this.trackCounters[entry.track.id] = 0;
+        loop.start(0);
+        this.trackLoops[entry.track.id] = loop;
+      }
     },
     async startSequencer() {
       if(this.isRunning) return;
       this.isRunning = true;
-      this.counter = 0;
       await Tone.start();
       this.applyRealtimeSettings();
-      console.log('Audio context started');
-      const that = this;
-      if(this.loop == null) {
-        this.loop = new Tone.Loop(async (_) => {
-          that.playNote(_, that.counter);
-          that.counter = (that.counter + 1) % that.actualNotes.length; 
-        }, this.quant.toString()+"s");
-      }
-      
-      // Start loop and transport immediately; schedule from now without artificial offsets
-      this.loop.start(0);
+      this.rebuildTrackLoops();
       Tone.getTransport().seconds = 0;
       Tone.getTransport().start();
     },
     stopSequencer() {
       if(!this.isRunning) return;
       this.isRunning = false;
-      this.loop?.stop();
+      this.stopTrackLoops();
       Tone.getTransport().stop();
       Tone.getTransport().seconds=0;
-      console.log('Stopped');
+      this.activeNotes = [];
     },
-    
-    async playNote(when : Tone.Unit.Seconds, counter:number) {
-      const arr = this.actualNotes[counter%this.actualNotes.length];
-      
-      // Always update activeNotes, even if empty
-      this.activeNotes = [...arr];
-      console.log('Playing notes:', this.activeNotes);
-      
-      if (arr.length > 0 && this.synth) {
-        let dur = 1;
-        while(this.actualNotes[(counter+dur)%this.actualNotes.length].length == 0) dur++;
-        
-        const vel = 0.5*Math.sqrt(1.0/arr.length);
-        
-        if (this.useMidiOutput) {
-          for (const note of arr) {
-            this.playNoteWithMidi(note, vel, dur * this.quant * this.lengthFactor / 100.0, when);
-          }
-        } else if (this.synth) {
-          this.synth.triggerAttackRelease(
-            arr.map(note => Tone.Frequency(note, 'midi').toFrequency()),
-            (dur * this.quant * this.lengthFactor / 100.0).toString() + "s",
-            when,
-            vel
-          );
-        }
+    playTrackStep(track: PresetTrackData, trackNotes: number[][], counter: number, when: Tone.Unit.Seconds) {
+      const arr = trackNotes[counter % trackNotes.length];
+      this.activeNotes = Array.from(new Set([...this.activeNotes, ...arr])).sort((left, right) => left - right);
+
+      if (arr.length === 0) {
+        return;
       }
+
+      const dur = this.getTrackStepDuration(trackNotes, counter);
+      const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / arr.length) * track.gain);
+      const noteDuration = dur * this.getTrackQuant(track) * track.lengthFactor / 100.0;
+
+      if (this.useMidiOutput) {
+        for (const note of arr) {
+          this.playNoteWithMidi(note, vel, noteDuration, when, track.midiChannel);
+        }
+      } else {
+        const synth = this.getOrCreateSynth(track.id);
+        synth.triggerAttackRelease(
+          arr.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
+          noteDuration.toString() + 's',
+          when,
+          vel,
+        );
+      }
+
+      window.setTimeout(() => {
+        const remaining = new Set(this.activeNotes);
+        for (const note of arr) {
+          remaining.delete(note);
+        }
+        this.activeNotes = Array.from(remaining.values()).sort((left, right) => left - right);
+      }, Math.max(0, Math.floor(noteDuration * 1000)));
     },
 
     async downloadMIDI() {
       const data = (await this.getMidi()).toArray();
       const blob = new Blob([Uint8Array.from(data)], { type: 'audio/midi' });
       const url = URL.createObjectURL(blob);
+      const signatureTrack = this.currentTrack ?? this.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-${this.numerator}on${this.denominator}timesig.mid`;
+      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-${signatureTrack.numerator}on${signatureTrack.denominator}timesig.mid`;
       a.click();
 
       // Clean up the URL object
@@ -898,11 +1142,15 @@ export default defineComponent({
       const arr = Array.from(PCS12.getChords()).map(c => c.toString());
       arr.sort(PCS12.ReverseForteStringComparator);
       this.allChords=arr;
+      this.syncTrackEditorFromCurrent();
       this.applyRealtimeSettings();
   },
   beforeUnmount() {
     this.stopSequencer();
-    this.synth.dispose();
+    for (const synth of Object.values(this.trackSynths)) {
+      synth.dispose();
+    }
+    this.trackSynths = {};
   },
   async onMounted() {
     this.applyRealtimeSettings();

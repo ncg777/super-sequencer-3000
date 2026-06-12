@@ -38,17 +38,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             bpm: {
               type: 'number',
-              description: 'Tempo in beats per minute (1-499). Default: 90.',
+              description: 'Shared tempo in beats per minute (1-499). Default: 90.',
             },
             numerator: {
               type: 'number',
-              description:
-                'Time signature numerator (1-16). Note: has no effect on MIDI generation. Default: 4.',
+              description: 'Legacy single-track numerator (1-16). Used when tracks is omitted. Default: 4.',
             },
             denominator: {
               type: 'number',
-              description:
-                'Time signature denominator (1-16). Controls quantization step size. Default: 5.',
+              description: 'Legacy single-track denominator (1-16). Used when tracks is omitted. Default: 5.',
             },
             forte: {
               type: 'string',
@@ -68,6 +66,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description:
                 'Note length as a percentage of the quantization step (1-400). Default: 100.',
+            },
+            midiChannel: {
+              type: 'number',
+              description: 'Legacy single-track MIDI channel (1-16). Used when tracks is omitted. Default: 1.',
+            },
+            gain: {
+              type: 'number',
+              description: 'Legacy single-track gain multiplier (0-4). Used when tracks is omitted. Default: 1.',
+            },
+            waveform: {
+              type: 'string',
+              description: 'Legacy single-track waveform metadata. Used when tracks is omitted. Default: "sine".',
+            },
+            tracks: {
+              type: 'array',
+              description:
+                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, midiChannel, gain.',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  numerator: { type: 'number' },
+                  denominator: { type: 'number' },
+                  waveform: { type: 'string' },
+                  sequence: { type: 'string' },
+                  octave: { type: 'number' },
+                  lengthFactor: { type: 'number' },
+                  midiChannel: { type: 'number' },
+                  gain: { type: 'number' },
+                },
+              },
             },
           },
           required: ['output'],
@@ -106,6 +135,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       sequence: optStr('sequence'),
       octave: optNum('octave'),
       lengthFactor: optNum('lengthFactor'),
+      midiChannel: optNum('midiChannel'),
+      gain: optNum('gain'),
+      waveform: optStr('waveform'),
+      tracks: Array.isArray(args['tracks']) ? (args['tracks'] as Record<string, unknown>[]) : undefined,
     });
 
     writeFileSync(output, data);
