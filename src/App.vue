@@ -205,6 +205,7 @@
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
+      <button @click="downloadWAV" class="downloadwav">Download WAV</button>
       <br />
       <br />
       <!-- Help Modal -->
@@ -239,6 +240,7 @@
                 <li><strong>Track Gain</strong>: Multiplies MIDI note velocity per track during export and live playback.</li>
                 <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
                 <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
+                <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft.</li>
               </ul>
 
               <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
@@ -601,6 +603,169 @@ export default defineComponent({
       }
 
       return 1;
+    },
+    audioBufferToWavBytes(buffer: AudioBuffer): Uint8Array {
+      const numChannels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const format = 1;
+      const bitDepth = 16;
+      const bytesPerSample = bitDepth / 8;
+      const blockAlign = numChannels * bytesPerSample;
+      const dataLength = buffer.length * blockAlign;
+      const wavBuffer = new ArrayBuffer(44 + dataLength);
+      const view = new DataView(wavBuffer);
+
+      let offset = 0;
+      const writeString = (value: string) => {
+        for (let i = 0; i < value.length; i += 1) {
+          view.setUint8(offset, value.charCodeAt(i));
+          offset += 1;
+        }
+      };
+
+      writeString('RIFF');
+      view.setUint32(offset, 36 + dataLength, true);
+      offset += 4;
+      writeString('WAVE');
+      writeString('fmt ');
+      view.setUint32(offset, 16, true);
+      offset += 4;
+      view.setUint16(offset, format, true);
+      offset += 2;
+      view.setUint16(offset, numChannels, true);
+      offset += 2;
+      view.setUint32(offset, sampleRate, true);
+      offset += 4;
+      view.setUint32(offset, sampleRate * blockAlign, true);
+      offset += 4;
+      view.setUint16(offset, blockAlign, true);
+      offset += 2;
+      view.setUint16(offset, bitDepth, true);
+      offset += 2;
+      writeString('data');
+      view.setUint32(offset, dataLength, true);
+      offset += 4;
+
+      const channels: Float32Array[] = [];
+      for (let channel = 0; channel < numChannels; channel += 1) {
+        channels.push(buffer.getChannelData(channel));
+      }
+
+      for (let i = 0; i < buffer.length; i += 1) {
+        for (let channel = 0; channel < numChannels; channel += 1) {
+          const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+          const intSample = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
+          view.setInt16(offset, intSample, true);
+          offset += 2;
+        }
+      }
+
+      return new Uint8Array(wavBuffer);
+    },
+    getRenderDurationSeconds(): number {
+      let total = 0;
+
+      for (const entry of this.allTrackActualNotes) {
+        const notesByStep = entry.notes;
+        if (notesByStep.length === 0) {
+          continue;
+        }
+
+        const trackQuant = this.getTrackQuant(entry.track);
+        let trackMaxEnd = 0;
+
+        for (let i = 0; i < notesByStep.length; i += 1) {
+          const notes = notesByStep[i];
+          if (notes.length === 0) {
+            continue;
+          }
+
+          const durSteps = this.getTrackStepDuration(notesByStep, i);
+          const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
+          const end = i * trackQuant + duration;
+          if (end > trackMaxEnd) {
+            trackMaxEnd = end;
+          }
+        }
+
+        if (trackMaxEnd > total) {
+          total = trackMaxEnd;
+        }
+      }
+
+      return Math.max(1, total + 0.25);
+    },
+    async renderMixWav(): Promise<Uint8Array> {
+      const renderDuration = this.getRenderDurationSeconds();
+
+      const offlineResult = await Tone.Offline(async () => {
+        const synths = this.tracks.map((track) => {
+          const waveformType = track.waveform === 'triangle'
+            ? 'triangle'
+            : track.waveform === 'sawtooth'
+              ? 'sawtooth'
+              : track.waveform === 'square'
+                ? 'square'
+                : 'sine';
+
+          const quant = this.getTrackQuant(track);
+          const synth = new Tone.PolySynth(Tone.Synth, {
+            envelope: {
+              attackCurve: 'exponential',
+              attack: (quant / 2.0).toString() + 's',
+              decay: 0,
+              releaseCurve: 'exponential',
+              release: (quant / 2.0).toString() + 's',
+              sustain: 1.0,
+            },
+            oscillator: {
+              type: waveformType,
+            },
+          }).toDestination();
+
+          return { track, synth };
+        });
+
+        for (const entry of this.allTrackActualNotes) {
+          if (entry.notes.length === 0) {
+            continue;
+          }
+
+          const synthEntry = synths.find((synthTrack) => synthTrack.track.id === entry.track.id);
+          if (!synthEntry) {
+            continue;
+          }
+
+          const trackQuant = this.getTrackQuant(entry.track);
+          for (let i = 0; i < entry.notes.length; i += 1) {
+            const notes = entry.notes[i];
+            if (notes.length === 0) {
+              continue;
+            }
+
+            const durSteps = this.getTrackStepDuration(entry.notes, i);
+            const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
+            const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+
+            synthEntry.synth.triggerAttackRelease(
+              notes.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
+              duration,
+              i * trackQuant,
+              velocity,
+            );
+          }
+        }
+
+        for (const entry of synths) {
+          entry.synth.dispose();
+        }
+      }, renderDuration);
+
+      const audioBuffer = (offlineResult as { get?: () => AudioBuffer }).get
+        ? (offlineResult as { get: () => AudioBuffer }).get()
+        : (offlineResult as unknown as AudioBuffer);
+
+      return this.audioBufferToWavBytes(audioBuffer);
     },
     getDraftData(): PresetData {
       return normalizePresetData({
@@ -1135,6 +1300,20 @@ export default defineComponent({
 
       // Clean up the URL object
       URL.revokeObjectURL(url);
+    },
+    async downloadWAV() {
+      const data = await this.renderMixWav();
+      const wavBuffer = new ArrayBuffer(data.byteLength);
+      new Uint8Array(wavBuffer).set(data);
+      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-mix.wav`;
+      a.click();
+
+      URL.revokeObjectURL(url);
     }
   },
   async beforeMount() {
@@ -1200,6 +1379,7 @@ h1 {
 }
 
 .downloadmidi,
+.downloadwav,
 .userbutton,
 .stopplay {
   color: #ffffff;
@@ -1245,6 +1425,11 @@ h1 {
 }
 
 .downloadmidi {
+  padding: 10px;
+  font-size: 18px;
+  width: 100%;
+}
+.downloadwav {
   padding: 10px;
   font-size: 18px;
   width: 100%;

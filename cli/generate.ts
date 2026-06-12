@@ -50,6 +50,19 @@ export interface GenerateOptions {
 
 let pcs12Initialized = false;
 
+type NormalizedTrack = Required<GenerateTrackOptions>;
+
+interface TrackRenderData {
+  track: NormalizedTrack;
+  quant: number;
+  actualNotes: number[][];
+}
+
+interface PreparedRenderData {
+  bpm: number;
+  tracks: TrackRenderData[];
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
@@ -107,36 +120,40 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
   }));
 }
 
-/**
- * Generate a MIDI file from the given options.
- * Returns the raw MIDI bytes as a Uint8Array.
- */
-export async function generateMidi(options: GenerateOptions): Promise<Uint8Array> {
+async function ensurePcs12Initialized(): Promise<void> {
   if (!pcs12Initialized) {
     await PCS12.init();
     pcs12Initialized = true;
   }
+}
+
+async function prepareRenderData(options: GenerateOptions): Promise<PreparedRenderData> {
+  await ensurePcs12Initialized();
 
   const bpm = options.bpm ?? 90;
   const forte = options.forte ?? '5-35.05';
   const tracks = normalizeTracks(options);
 
   const pitchClassSet = PCS12.parseForte(forte);
-  if (!pitchClassSet) throw new Error(`Invalid Forte number: ${forte}`);
+  if (!pitchClassSet) {
+    throw new Error(`Invalid Forte number: ${forte}`);
+  }
 
   const pitches: number[] = pitchClassSet.asSequence() || [];
   const scale: number[] = [];
 
   for (const n of pitches) {
-    for (let i = 0; i <= 10; i++) {
+    for (let i = 0; i <= 10; i += 1) {
       const t = n + 12 * i;
-      if (t < 128) scale.push(t);
+      if (t < 128) {
+        scale.push(t);
+      }
     }
   }
   scale.sort((a, b) => a - b);
 
   const pitchClassCount: number = pitchClassSet.getK() ?? 0;
-  const trackActualNotes = tracks.map((track) => {
+  const trackData: TrackRenderData[] = tracks.map((track) => {
     const sequence = parseSequence(track.sequence);
     const actualNotes: number[][] = sequence.map((n: number) => {
       const bits = Math.abs(n).toString(2).split('').reverse();
@@ -154,15 +171,94 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
     };
   });
 
-  const hasNotes = trackActualNotes.some((entry) => entry.actualNotes.some((notes) => notes.length > 0));
+  return {
+    bpm,
+    tracks: trackData,
+  };
+}
+
+function sampleOscillator(phase: number, waveform: string): number {
+  switch (waveform) {
+    case 'square':
+      return phase < 0.5 ? 1 : -1;
+    case 'triangle':
+      return 1 - 4 * Math.abs(phase - 0.5);
+    case 'sawtooth':
+      return 2 * phase - 1;
+    case 'sine':
+    default:
+      return Math.sin(2 * Math.PI * phase);
+  }
+}
+
+function encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
+  const numChannels = channels.length;
+  const frameCount = channels[0]?.length ?? 0;
+  const bitDepth = 16;
+  const bytesPerSample = bitDepth / 8;
+  const blockAlign = numChannels * bytesPerSample;
+  const dataLength = frameCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  let offset = 0;
+  const writeString = (value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset, value.charCodeAt(i));
+      offset += 1;
+    }
+  };
+
+  writeString('RIFF');
+  view.setUint32(offset, 36 + dataLength, true);
+  offset += 4;
+  writeString('WAVE');
+  writeString('fmt ');
+  view.setUint32(offset, 16, true);
+  offset += 4;
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  view.setUint16(offset, numChannels, true);
+  offset += 2;
+  view.setUint32(offset, sampleRate, true);
+  offset += 4;
+  view.setUint32(offset, sampleRate * blockAlign, true);
+  offset += 4;
+  view.setUint16(offset, blockAlign, true);
+  offset += 2;
+  view.setUint16(offset, bitDepth, true);
+  offset += 2;
+  writeString('data');
+  view.setUint32(offset, dataLength, true);
+  offset += 4;
+
+  for (let i = 0; i < frameCount; i += 1) {
+    for (let channel = 0; channel < numChannels; channel += 1) {
+      const sample = clamp(channels[channel][i], -1, 1);
+      const intSample = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
+      view.setInt16(offset, intSample, true);
+      offset += 2;
+    }
+  }
+
+  return new Uint8Array(buffer);
+}
+
+/**
+ * Generate a MIDI file from the given options.
+ * Returns the raw MIDI bytes as a Uint8Array.
+ */
+export async function generateMidi(options: GenerateOptions): Promise<Uint8Array> {
+  const prepared = await prepareRenderData(options);
+  const hasNotes = prepared.tracks.some((entry) => entry.actualNotes.some((notes) => notes.length > 0));
   if (!hasNotes) {
     return new Midi().toArray();
   }
 
   const midi = new Midi();
-  midi.header.setTempo(bpm);
+  midi.header.setTempo(prepared.bpm);
 
-  for (const entry of trackActualNotes) {
+  for (const entry of prepared.tracks) {
     if (entry.actualNotes.length === 0) {
       continue;
     }
@@ -191,4 +287,99 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
   }
 
   return midi.toArray();
+}
+
+/**
+ * Render a WAV file from the given options.
+ * Returns raw WAV bytes as a Uint8Array.
+ */
+export async function generateWav(options: GenerateOptions): Promise<Uint8Array> {
+  const prepared = await prepareRenderData(options);
+  const hasNotes = prepared.tracks.some((entry) => entry.actualNotes.some((notes) => notes.length > 0));
+  if (!hasNotes) {
+    return encodeWavFromChannels([new Float32Array(1), new Float32Array(1)], 44100);
+  }
+
+  const sampleRate = 44100;
+  let totalDuration = 0;
+  for (const entry of prepared.tracks) {
+    let trackMaxEnd = 0;
+    for (let i = 0; i < entry.actualNotes.length; i += 1) {
+      const notes = entry.actualNotes[i];
+      if (notes.length === 0) {
+        continue;
+      }
+
+      const durSteps = getStepDuration(entry.actualNotes, i);
+      const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
+      const end = i * entry.quant + duration;
+      if (end > trackMaxEnd) {
+        trackMaxEnd = end;
+      }
+    }
+    if (trackMaxEnd > totalDuration) {
+      totalDuration = trackMaxEnd;
+    }
+  }
+  totalDuration = Math.max(1, totalDuration + 0.25);
+
+  const frameCount = Math.ceil(totalDuration * sampleRate);
+  const left = new Float32Array(frameCount);
+  const right = new Float32Array(frameCount);
+
+  const attackSeconds = 0.005;
+  const releaseSeconds = 0.03;
+
+  for (const entry of prepared.tracks) {
+    for (let i = 0; i < entry.actualNotes.length; i += 1) {
+      const notes = entry.actualNotes[i];
+      if (notes.length === 0) {
+        continue;
+      }
+
+      const start = i * entry.quant;
+      const durSteps = getStepDuration(entry.actualNotes, i);
+      const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
+      const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+      const noteAmplitude = velocity * 0.18;
+
+      const startFrame = Math.max(0, Math.floor(start * sampleRate));
+      const endFrame = Math.min(frameCount, Math.ceil((start + duration) * sampleRate));
+
+      for (const midiNote of notes) {
+        const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+        const phaseIncrement = frequency / sampleRate;
+        let phase = 0;
+
+        for (let frame = startFrame; frame < endFrame; frame += 1) {
+          const t = (frame - startFrame) / sampleRate;
+          const releaseTime = duration - t;
+
+          let env = 1;
+          if (t < attackSeconds) {
+            env = t / attackSeconds;
+          }
+          if (releaseTime < releaseSeconds) {
+            env = Math.min(env, Math.max(0, releaseTime / releaseSeconds));
+          }
+
+          const sample = sampleOscillator(phase, entry.track.waveform) * noteAmplitude * env;
+          left[frame] += sample;
+          right[frame] += sample;
+
+          phase += phaseIncrement;
+          if (phase >= 1) {
+            phase -= Math.floor(phase);
+          }
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < frameCount; i += 1) {
+    left[i] = clamp(left[i], -1, 1);
+    right[i] = clamp(right[i], -1, 1);
+  }
+
+  return encodeWavFromChannels([left, right], sampleRate);
 }

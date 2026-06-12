@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { writeFileSync } from 'fs';
-import { generateMidi, type GenerateTrackOptions } from './generate.js';
+import { generateMidi, generateWav, type GenerateTrackOptions } from './generate.js';
 
 const program = new Command();
 
@@ -23,6 +23,7 @@ program
   .description('Generate a MIDI file from a GateRunner sequence')
   .version('1.0.0')
   .requiredOption('-o, --output <file>', 'Output MIDI file path')
+  .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
   .option('--numerator <number>', 'Legacy single-track numerator (1-16)', '4')
   .option('--denominator <number>', 'Legacy single-track denominator (1-16)', '5')
@@ -36,7 +37,7 @@ program
   .option('--tracks <json>', 'JSON array of tracks with per-track numerator, denominator, sequence, octave, lengthFactor, midiChannel, gain, waveform', parseTracksJson)
   .action(async (options) => {
     try {
-      const data = await generateMidi({
+      const generatorInput = {
         bpm: parseInt(options.bpm),
         numerator: parseInt(options.numerator),
         denominator: parseInt(options.denominator),
@@ -48,12 +49,22 @@ program
         gain: parseFloat(options.gain),
         waveform: options.waveform,
         tracks: options.tracks,
-      });
+      };
+
+      const normalizedFormat = String(options.format ?? 'midi').toLowerCase();
+      const isWav = normalizedFormat === 'wav';
+      if (!isWav && normalizedFormat !== 'midi') {
+        throw new Error(`Unsupported format: ${options.format}. Use midi or wav.`);
+      }
+
+      const data = isWav
+        ? await generateWav(generatorInput)
+        : await generateMidi(generatorInput);
 
       writeFileSync(options.output, data);
-      console.log(`MIDI file written to: ${options.output}`);
+      console.log(`${isWav ? 'WAV' : 'MIDI'} file written to: ${options.output}`);
     } catch (err) {
-      console.error('Error generating MIDI:', err instanceof Error ? err.message : err);
+      console.error('Error generating output:', err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });
