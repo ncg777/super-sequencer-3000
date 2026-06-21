@@ -205,7 +205,24 @@
 			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
       <button @click="copyURL" class="userbutton">📋Copy URL</button>
 			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
-      <button @click="downloadWAV" class="downloadwav">Download WAV</button>
+      <button @click="downloadWAV" class="downloadwav" :disabled="isExportingWav">{{ isExportingWav ? 'Rendering WAV...' : 'Download WAV' }}</button>
+      <div v-if="isExportingWav || wavExportProgress === 100" class="wav-export-status">
+        <div class="wav-export-status-text">{{ wavExportStatus }}</div>
+        <v-progress-linear
+          v-if="wavExportProgress >= 0"
+          :model-value="wavExportProgress"
+          color="info"
+          height="8"
+          rounded
+        />
+        <v-progress-linear
+          v-else
+          indeterminate
+          color="info"
+          height="8"
+          rounded
+        />
+      </div>
       <br />
       <br />
       <!-- Help Modal -->
@@ -383,6 +400,9 @@ export default defineComponent({
       selectedPresetId: initialState.selectedPresetId as string | null,
       isDirty: initialState.isDirty,
       presetNameInput: initialState.presetLibrary.presets.find((preset) => preset.id === initialState.selectedPresetId)?.name ?? '',
+      isExportingWav: false,
+      wavExportProgress: 0,
+      wavExportStatus: '',
     };
   },
   computed: {
@@ -644,6 +664,16 @@ export default defineComponent({
 
       return 1;
     },
+    getTrackVelocity(notes: number[], gain: number): number {
+      if (notes.length === 0) {
+        return 0;
+      }
+      return Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * gain);
+    },
+    setWavExportProgress(progress: number, status: string) {
+      this.wavExportProgress = Math.max(0, Math.min(100, Math.round(progress)));
+      this.wavExportStatus = status;
+    },
     encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
       const numChannels = channels.length;
       const frameCount = channels[0]?.length ?? 0;
@@ -701,9 +731,28 @@ export default defineComponent({
       return this.getLoopDurationSecondsFromTrackLengths();
     },
     async renderMixWav(): Promise<Uint8Array> {
+      this.setWavExportProgress(8, 'Preparing render...');
+      await this.$nextTick();
+
       const renderDuration = this.getRenderDurationSeconds();
+      const allTrackNotes = this.allTrackActualNotes;
+      this.setWavExportProgress(22, 'Scheduling tracks...');
+
+      let renderProgressTimer: number | null = null;
+      this.wavExportProgress = -1;
+      this.wavExportStatus = 'Rendering audio...';
+
+      renderProgressTimer = window.setInterval(() => {
+        if (this.wavExportProgress < 0) {
+          return;
+        }
+        if (this.wavExportProgress < 85) {
+          this.wavExportProgress += 1;
+        }
+      }, 120);
+
       const rendered = await Tone.Offline(() => {
-        for (const entry of this.allTrackActualNotes) {
+        for (const entry of allTrackNotes) {
           if (entry.notes.length === 0) {
             continue;
           }
@@ -742,7 +791,7 @@ export default defineComponent({
 
               const durSteps = this.getTrackStepDuration(entry.notes, i);
               const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
-              const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+              const velocity = this.getTrackVelocity(notes, entry.track.gain);
 
               synth.triggerAttackRelease(
                 notes.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
@@ -754,6 +803,13 @@ export default defineComponent({
           }
         }
       }, renderDuration);
+
+      if (renderProgressTimer !== null) {
+        window.clearInterval(renderProgressTimer);
+      }
+
+      this.setWavExportProgress(90, 'Encoding WAV...');
+      await this.$nextTick();
 
       const audioBuffer = (rendered as { get?: () => AudioBuffer }).get
         ? (rendered as { get: () => AudioBuffer }).get()
@@ -1193,7 +1249,7 @@ export default defineComponent({
             }
 
             const dur = this.getTrackStepDuration(notesByStep, i);
-            const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+            const vel = this.getTrackVelocity(notes, entry.track.gain);
 
             for (const note of notes) {
               track.addNote({
@@ -1278,7 +1334,7 @@ export default defineComponent({
       }
 
       const dur = this.getTrackStepDuration(trackNotes, counter);
-      const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / arr.length) * track.gain);
+      const vel = this.getTrackVelocity(arr, track.gain);
       const noteDuration = dur * this.getTrackQuant(track) * track.lengthFactor / 100.0;
 
       if (this.useMidiOutput) {
@@ -1319,18 +1375,36 @@ export default defineComponent({
       URL.revokeObjectURL(url);
     },
     async downloadWAV() {
-      const data = await this.renderMixWav();
-      const wavBuffer = new ArrayBuffer(data.byteLength);
-      new Uint8Array(wavBuffer).set(data);
-      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
+      if (this.isExportingWav) {
+        return;
+      }
 
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-mix.wav`;
-      a.click();
+      this.isExportingWav = true;
+      this.setWavExportProgress(4, 'Preparing WAV export...');
 
-      URL.revokeObjectURL(url);
+      try {
+        const data = await this.renderMixWav();
+        this.setWavExportProgress(98, 'Finalizing download...');
+        const wavBuffer = new ArrayBuffer(data.byteLength);
+        new Uint8Array(wavBuffer).set(data);
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-mix.wav`;
+        a.click();
+
+        URL.revokeObjectURL(url);
+        this.setWavExportProgress(100, 'WAV export complete.');
+      } catch (error) {
+        console.error('Failed to export WAV:', error);
+        window.alert('WAV export failed. Please try again.');
+        this.wavExportProgress = 0;
+        this.wavExportStatus = '';
+      } finally {
+        this.isExportingWav = false;
+      }
     }
   },
   async beforeMount() {
@@ -1461,6 +1535,16 @@ h1 {
   font-size: 50px;
   width: 100%;
   margin-bottom: 5px;
+}
+.wav-export-status {
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+.wav-export-status-text {
+  color: #ffffff;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
 }
 .close-btn {
     position: absolute;
