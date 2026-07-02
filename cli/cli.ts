@@ -34,7 +34,9 @@ program
   .option('--midi-channel <number>', 'Legacy single-track MIDI channel (1-16)', '1')
   .option('--gain <number>', 'Legacy single-track gain multiplier (0-4)', '1')
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
-  .option('--tracks <json>', 'JSON array of tracks with per-track numerator, denominator, sequence, octave, lengthFactor, midiChannel, gain, waveform', parseTracksJson)
+  .option('--delay <number>', 'Legacy single-track delay in bars (0-64)', '0')
+  .option('--repeats <number>', 'Legacy single-track number of pattern repetitions (1-64)', '1')
+  .option('--tracks <json>', 'JSON array of tracks with per-track numerator, denominator, sequence, octave, lengthFactor, midiChannel, gain, waveform, delay, repeats', parseTracksJson)
   .action(async (options) => {
     try {
       const generatorInput = {
@@ -48,6 +50,8 @@ program
         midiChannel: parseInt(options.midiChannel),
         gain: parseFloat(options.gain),
         waveform: options.waveform,
+        delay: parseInt(options.delay),
+        repeats: parseInt(options.repeats),
         tracks: options.tracks,
       };
 

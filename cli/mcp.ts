@@ -79,10 +79,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: 'Legacy single-track waveform metadata. Used when tracks is omitted. Default: "sine".',
             },
+            delay: {
+              type: 'number',
+              description: 'Legacy single-track delay in bars before the track starts (0-64). Used when tracks is omitted. Default: 0.',
+            },
+            repeats: {
+              type: 'number',
+              description: 'Legacy single-track number of pattern repetitions (1-64). Used when tracks is omitted. Default: 1.',
+            },
             tracks: {
               type: 'array',
               description:
-                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, midiChannel, gain.',
+                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, midiChannel, gain, delay, repeats.',
               items: {
                 type: 'object',
                 properties: {
@@ -95,6 +103,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                   lengthFactor: { type: 'number' },
                   midiChannel: { type: 'number' },
                   gain: { type: 'number' },
+                  delay: { type: 'number' },
+                  repeats: { type: 'number' },
                 },
               },
             },
@@ -138,6 +148,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       midiChannel: optNum('midiChannel'),
       gain: optNum('gain'),
       waveform: optStr('waveform'),
+      delay: optNum('delay'),
+      repeats: optNum('repeats'),
       tracks: Array.isArray(args['tracks']) ? (args['tracks'] as Record<string, unknown>[]) : undefined,
     });
 

@@ -183,6 +183,30 @@
           />
         </v-col>
       </v-row>
+      <v-row class="compact-row">
+        <v-col cols="12">
+          <v-slider
+            :label="'Track Delay (' + trackDelay + ' bars)'"
+            min="0"
+            max="64"
+            step="1"
+            v-model.number="trackDelay"
+            @update:modelValue="handleTrackDraftChange"
+          />
+        </v-col>
+      </v-row>
+      <v-row class="compact-row">
+        <v-col cols="12">
+          <v-slider
+            :label="'Track Repeats (' + trackRepeats + ')'"
+            min="1"
+            max="64"
+            step="1"
+            v-model.number="trackRepeats"
+            @update:modelValue="handleTrackDraftChange"
+          />
+        </v-col>
+      </v-row>
       
       <v-row>
         <v-col cols="4">
@@ -256,6 +280,8 @@
                 <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
                 <li><strong>Track Gain</strong>: Multiplies MIDI note velocity per track during export and live playback.</li>
                 <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
+                <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
+                <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
                 <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
                 <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft.</li>
               </ul>
@@ -383,10 +409,11 @@ export default defineComponent({
       trackLengthFactor: firstTrack.lengthFactor,
       trackMidiChannel: firstTrack.midiChannel,
       trackGain: firstTrack.gain,
+      trackDelay: firstTrack.delay,
+      trackRepeats: firstTrack.repeats,
       allChords: [] as string[],
       isRunning: false,
-      trackLoops: {} as Record<string, Tone.Loop>,
-      trackCounters: {} as Record<string, number>,
+      trackLoops: {} as Record<string, Tone.Part<{ time: number; step: number }>>,
       showHelp: false,
       trackSynths: {} as Record<string, Tone.PolySynth>,
       useMidiOutput: false,
@@ -475,23 +502,17 @@ export default defineComponent({
     getTrackQuant(track: PresetTrackData): number {
       return 60.0 / (this.bpm * track.denominator);
     },
-    gcdInteger(left: number, right: number): number {
-      let a = Math.abs(Math.trunc(left));
-      let b = Math.abs(Math.trunc(right));
-      while (b !== 0) {
-        const next = a % b;
-        a = b;
-        b = next;
-      }
-      return a === 0 ? 1 : a;
+    getTrackBarSeconds(track: PresetTrackData): number {
+      return track.numerator * (60.0 / this.bpm);
     },
-    lcmInteger(left: number, right: number): number {
-      const a = Math.abs(Math.trunc(left));
-      const b = Math.abs(Math.trunc(right));
-      if (a === 0 || b === 0) {
-        return 0;
-      }
-      return (a / this.gcdInteger(a, b)) * b;
+    getTrackDelaySeconds(track: PresetTrackData): number {
+      return track.delay * this.getTrackBarSeconds(track);
+    },
+    getTrackPatternDuration(track: PresetTrackData, trackNotes: number[][]): number {
+      return trackNotes.length * this.getTrackQuant(track);
+    },
+    getTrackTotalDuration(track: PresetTrackData, trackNotes: number[][]): number {
+      return this.getTrackDelaySeconds(track) + track.repeats * this.getTrackPatternDuration(track, trackNotes);
     },
     getLoopDurationSecondsFromTrackLengths(): number {
       const entries = this.allTrackActualNotes.filter((entry) => entry.notes.length > 0);
@@ -499,21 +520,11 @@ export default defineComponent({
         return 1;
       }
 
-      const denominatorLcm = entries
-        .map((entry) => entry.track.denominator)
-        .reduce((acc, denominator) => this.lcmInteger(acc, denominator), 1);
+      const maxDuration = Math.max(
+        ...entries.map((entry) => this.getTrackTotalDuration(entry.track, entry.notes)),
+      );
 
-      const trackUnits = entries
-        .map((entry) => entry.notes.length * (denominatorLcm / entry.track.denominator))
-        .filter((units) => units > 0);
-
-      if (trackUnits.length === 0) {
-        return 1;
-      }
-
-      const globalUnits = trackUnits.reduce((acc, units) => this.lcmInteger(acc, units), 1);
-      const totalBeats = globalUnits / denominatorLcm;
-      return Math.max(1 / denominatorLcm, totalBeats * (60 / this.bpm));
+      return Math.max(this.getTrackQuant(entries[0].track), maxDuration);
     },
     parseSequence(sequenceInput: string): number[] {
       return sequenceInput
@@ -556,6 +567,8 @@ export default defineComponent({
       this.trackLengthFactor = track.lengthFactor;
       this.trackMidiChannel = track.midiChannel;
       this.trackGain = track.gain;
+      this.trackDelay = track.delay;
+      this.trackRepeats = track.repeats;
     },
     applyTrackEditorToCurrent() {
       const currentTrack = this.currentTrack;
@@ -574,6 +587,8 @@ export default defineComponent({
         lengthFactor: this.trackLengthFactor,
         midiChannel: this.trackMidiChannel,
         gain: this.trackGain,
+        delay: this.trackDelay,
+        repeats: this.trackRepeats,
       });
 
       this.tracks = this.tracks.map((track) => track.id === normalizedTrack.id ? normalizedTrack : track);
@@ -624,6 +639,8 @@ export default defineComponent({
         lengthFactor: this.currentTrack?.lengthFactor ?? DEFAULT_PRESET_TRACK_DATA.lengthFactor,
         midiChannel: this.nextTrackChannel(),
         gain: this.currentTrack?.gain ?? DEFAULT_PRESET_TRACK_DATA.gain,
+        delay: this.currentTrack?.delay ?? DEFAULT_PRESET_TRACK_DATA.delay,
+        repeats: this.currentTrack?.repeats ?? DEFAULT_PRESET_TRACK_DATA.repeats,
       }, this.tracks.length);
 
       this.tracks = [...this.tracks, nextTrack];
@@ -763,6 +780,8 @@ export default defineComponent({
             continue;
           }
 
+          const delaySeconds = this.getTrackDelaySeconds(entry.track);
+
           const synth = new Tone.PolySynth(Tone.Synth, {
             envelope: {
               attackCurve: 'exponential',
@@ -777,7 +796,8 @@ export default defineComponent({
             },
           }).toDestination();
 
-          for (let loopStart = 0; loopStart < renderDuration; loopStart += trackPeriod) {
+          for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
+            const loopStart = delaySeconds + repeat * trackPeriod;
             for (let i = 0; i < entry.notes.length; i += 1) {
               const notes = entry.notes[i];
               if (notes.length === 0) {
@@ -1236,7 +1256,10 @@ export default defineComponent({
           continue;
         }
 
-        for (let loopStart = 0; loopStart < totalLoopDuration; loopStart += trackPeriod) {
+        const delaySeconds = this.getTrackDelaySeconds(entry.track);
+
+        for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
+          const loopStart = delaySeconds + repeat * trackPeriod;
           for (let i = 0; i < notesByStep.length; i += 1) {
             const notes = notesByStep[i];
             if (notes.length === 0) {
@@ -1274,7 +1297,7 @@ export default defineComponent({
     },
     async copyURL() {
       const track = this.currentTrack ?? this.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
-      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/gaterunner/?bpm=${this.bpm}&numerator=${track.numerator}&denominator=${track.denominator}&waveform=${track.waveform}&octave=${track.octave}&forte=${this.forte}&lengthFactor=${track.lengthFactor}&sequence=${track.sequenceInput}`));
+      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/gaterunner/?bpm=${this.bpm}&numerator=${track.numerator}&denominator=${track.denominator}&waveform=${track.waveform}&octave=${track.octave}&forte=${this.forte}&lengthFactor=${track.lengthFactor}&delay=${track.delay}&repeats=${track.repeats}&sequence=${track.sequenceInput}`));
       window.alert("URL copied to clipboard.");
     },
     stopTrackLoops() {
@@ -1283,7 +1306,6 @@ export default defineComponent({
         loop.dispose();
       }
       this.trackLoops = {};
-      this.trackCounters = {};
     },
     rebuildTrackLoops() {
       if (!this.isRunning) {
@@ -1292,20 +1314,36 @@ export default defineComponent({
 
       this.stopTrackLoops();
 
+      const totalLoopDuration = this.getLoopDurationSecondsFromTrackLengths();
+
       for (const entry of this.allTrackActualNotes) {
         if (entry.notes.length === 0) {
           continue;
         }
 
-        const loop = new Tone.Loop((when) => {
-          const counter = this.trackCounters[entry.track.id] ?? 0;
-          this.playTrackStep(entry.track, entry.notes, counter, when);
-          this.trackCounters[entry.track.id] = (counter + 1) % entry.notes.length;
-        }, this.getTrackQuant(entry.track).toString() + 's');
+        const trackQuant = this.getTrackQuant(entry.track);
+        const trackPeriod = entry.notes.length * trackQuant;
+        if (trackPeriod <= 0) {
+          continue;
+        }
 
-        this.trackCounters[entry.track.id] = 0;
-        loop.start(0);
-        this.trackLoops[entry.track.id] = loop;
+        const delaySeconds = this.getTrackDelaySeconds(entry.track);
+        const events: Array<{ time: number; step: number }> = [];
+        for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
+          const repeatStart = delaySeconds + repeat * trackPeriod;
+          for (let i = 0; i < entry.notes.length; i += 1) {
+            events.push({ time: repeatStart + (i * trackQuant), step: i });
+          }
+        }
+
+        const part = markRaw(new Tone.Part<{ time: number; step: number }>((when, event) => {
+          this.playTrackStep(entry.track, entry.notes, event.step, when);
+        }, events));
+        part.loop = true;
+        part.loopStart = 0;
+        part.loopEnd = totalLoopDuration;
+        part.start(0);
+        this.trackLoops[entry.track.id] = part;
       }
     },
     async startSequencer() {
