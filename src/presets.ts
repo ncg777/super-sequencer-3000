@@ -9,6 +9,8 @@ export interface PresetTrackData {
   lengthFactor: number;
   midiChannel: number;
   gain: number;
+  delay: number;
+  repeats: number;
 }
 
 export interface PresetData {
@@ -66,6 +68,8 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   lengthFactor: 100,
   midiChannel: 1,
   gain: 1,
+  delay: 0,
+  repeats: 1,
 };
 
 export const DEFAULT_PRESET_DATA: PresetData = {
@@ -97,6 +101,8 @@ type LegacyTrackFields = {
   lengthFactor?: number;
   midiChannel?: number;
   gain?: number;
+  delay?: number;
+  repeats?: number;
 };
 
 function isoNow(): string {
@@ -164,6 +170,8 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     lengthFactor: track.lengthFactor,
     midiChannel: track.midiChannel,
     gain: track.gain,
+    delay: track.delay,
+    repeats: track.repeats,
   };
 }
 
@@ -183,6 +191,8 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_TRACK_DATA.lengthFactor), 1, 400),
     midiChannel: clamp(parseInteger(raw.midiChannel?.toString(), DEFAULT_PRESET_TRACK_DATA.midiChannel), 1, 16),
     gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), 0, 4),
+    delay: clamp(parseInteger(raw.delay?.toString(), DEFAULT_PRESET_TRACK_DATA.delay), 0, 64),
+    repeats: clamp(parseInteger(raw.repeats?.toString(), DEFAULT_PRESET_TRACK_DATA.repeats), 1, 64),
   };
 }
 
@@ -198,6 +208,8 @@ function normalizeLegacyTrack(value: LegacyTrackFields): PresetTrackData {
     lengthFactor: value.lengthFactor,
     midiChannel: value.midiChannel,
     gain: value.gain,
+    delay: value.delay,
+    repeats: value.repeats,
   }, 0);
 }
 
@@ -251,7 +263,9 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.octave !== rightTrack.octave
       || leftTrack.lengthFactor !== rightTrack.lengthFactor
       || leftTrack.midiChannel !== rightTrack.midiChannel
-      || leftTrack.gain !== rightTrack.gain) {
+      || leftTrack.gain !== rightTrack.gain
+      || leftTrack.delay !== rightTrack.delay
+      || leftTrack.repeats !== rightTrack.repeats) {
       return false;
     }
   }
@@ -412,6 +426,8 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
         sequenceInput: params.get('sequence') ?? firstTrack.sequenceInput,
         octave: params.get('octave') ?? firstTrack.octave,
         lengthFactor: params.get('lengthFactor') ?? firstTrack.lengthFactor,
+        delay: params.get('delay') ?? firstTrack.delay,
+        repeats: params.get('repeats') ?? firstTrack.repeats,
       },
       ...baseData.tracks.slice(1),
     ],
@@ -421,7 +437,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 export function hasUrlPresetOverrides(search: string): boolean {
   const params = new URLSearchParams(search);
 
-  return ['bpm', 'numerator', 'denominator', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte']
+  return ['bpm', 'numerator', 'denominator', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats']
     .some((key) => params.has(key));
 }
 

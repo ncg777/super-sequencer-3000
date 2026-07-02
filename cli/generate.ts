@@ -21,6 +21,10 @@ export interface GenerateTrackOptions {
   midiChannel?: number;
   /** Velocity multiplier (0-4), clamped to 1 after velocity math. */
   gain?: number;
+  /** Number of bars to wait before the track starts (0-64). */
+  delay?: number;
+  /** Number of repetitions of the pattern (1-64). */
+  repeats?: number;
 }
 
 export interface GenerateOptions {
@@ -44,6 +48,10 @@ export interface GenerateOptions {
   gain?: number;
   /** Legacy single-track waveform metadata used when tracks is omitted. */
   waveform?: string;
+  /** Legacy single-track delay in bars used when tracks is omitted. */
+  delay?: number;
+  /** Legacy single-track number of pattern repetitions used when tracks is omitted. */
+  repeats?: number;
   /** Multi-track definition. If omitted, legacy single-track fields are used. */
   tracks?: GenerateTrackOptions[];
 }
@@ -67,47 +75,21 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function gcdInteger(left: number, right: number): number {
-  let a = Math.abs(Math.trunc(left));
-  let b = Math.abs(Math.trunc(right));
-  while (b !== 0) {
-    const next = a % b;
-    a = b;
-    b = next;
-  }
-  return a === 0 ? 1 : a;
-}
-
-function lcmInteger(left: number, right: number): number {
-  const a = Math.abs(Math.trunc(left));
-  const b = Math.abs(Math.trunc(right));
-  if (a === 0 || b === 0) {
-    return 0;
-  }
-  return (a / gcdInteger(a, b)) * b;
-}
-
 function getLoopDurationSecondsFromTrackLengths(prepared: PreparedRenderData): number {
   const entries = prepared.tracks.filter((entry) => entry.actualNotes.length > 0);
   if (entries.length === 0) {
     return 1;
   }
 
-  const denominatorLcm = entries
-    .map((entry) => entry.track.denominator)
-    .reduce((acc, denominator) => lcmInteger(acc, denominator), 1);
+  const maxDuration = Math.max(
+    ...entries.map((entry) => getTrackDelaySeconds(prepared.bpm, entry.track) + entry.track.repeats * entry.actualNotes.length * entry.quant),
+  );
 
-  const trackUnits = entries
-    .map((entry) => entry.actualNotes.length * (denominatorLcm / entry.track.denominator))
-    .filter((units) => units > 0);
+  return Math.max(entries[0].quant, maxDuration);
+}
 
-  if (trackUnits.length === 0) {
-    return 1;
-  }
-
-  const globalUnits = trackUnits.reduce((acc, units) => lcmInteger(acc, units), 1);
-  const totalBeats = globalUnits / denominatorLcm;
-  return Math.max(1 / denominatorLcm, totalBeats * (60 / prepared.bpm));
+function getTrackDelaySeconds(bpm: number, track: NormalizedTrack): number {
+  return track.delay * track.numerator * (60 / bpm);
 }
 
 function parseSequence(sequenceInput: string): number[] {
@@ -143,6 +125,8 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     lengthFactor: clamp(options.lengthFactor ?? 100, 1, 400),
     midiChannel: clamp(options.midiChannel ?? 1, 1, 16),
     gain: clamp(options.gain ?? 1, 0, 4),
+    delay: clamp(options.delay ?? 0, 0, 64),
+    repeats: clamp(options.repeats ?? 1, 1, 64),
   };
 
   const incoming = options.tracks;
@@ -160,6 +144,8 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 1, 400),
     midiChannel: clamp(track.midiChannel ?? clamp(index + 1, 1, 16), 1, 16),
     gain: clamp(track.gain ?? fallbackTrack.gain, 0, 4),
+    delay: clamp(track.delay ?? fallbackTrack.delay, 0, 64),
+    repeats: clamp(track.repeats ?? fallbackTrack.repeats, 1, 64),
   }));
 }
 
@@ -314,7 +300,10 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
       continue;
     }
 
-    for (let loopStart = 0; loopStart < totalLoopDuration; loopStart += trackPeriod) {
+    const delaySeconds = getTrackDelaySeconds(prepared.bpm, entry.track);
+
+    for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
+      const loopStart = delaySeconds + repeat * trackPeriod;
       for (let i = 0; i < entry.actualNotes.length; i += 1) {
         const notes = entry.actualNotes[i];
         if (notes.length === 0) {
@@ -374,8 +363,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
     const attackSeconds = entry.quant / 2.0;
     const releaseSeconds = entry.quant / 2.0;
+    const delaySeconds = getTrackDelaySeconds(prepared.bpm, entry.track);
 
-    for (let loopStart = 0; loopStart < totalDuration; loopStart += trackPeriod) {
+    for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
+      const loopStart = delaySeconds + repeat * trackPeriod;
       for (let i = 0; i < entry.actualNotes.length; i += 1) {
         const notes = entry.actualNotes[i];
         if (notes.length === 0) {
