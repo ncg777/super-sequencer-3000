@@ -1402,11 +1402,10 @@ export default defineComponent({
       const data = (await this.getMidi()).toArray();
       const blob = new Blob([Uint8Array.from(data)], { type: 'audio/midi' });
       const url = URL.createObjectURL(blob);
-      const signatureTrack = this.currentTrack ?? this.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-${signatureTrack.numerator}on${signatureTrack.denominator}timesig.mid`;
+      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm.mid`;
       a.click();
 
       // Clean up the URL object
