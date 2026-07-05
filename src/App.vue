@@ -86,7 +86,14 @@
 			</v-row>
       <v-row>
         <v-col cols="12">
-          <v-slider :label="'Tempo (' + bpm + ' BPM)'" min=1 step=1 max=499 v-model.number="bpm" @update:modelValue="handleDraftChange" />
+          <EditableSlider
+            :label="'Tempo (' + bpm + ' BPM)'"
+            :min="1"
+            :step="1"
+            :max="499"
+            v-model="bpm"
+            @update:modelValue="handleDraftChange"
+          />
         </v-col>
 			</v-row>
       <v-row>
@@ -136,75 +143,96 @@
       </v-row>
       <v-row class="compact-row">
         <v-col colr="12">
-          <v-slider :label="'Track Numerator (' + trackNumerator + ')'" min=1 step=1 max=16 v-model.number="trackNumerator" @update:modelValue="handleTrackDraftChange" />
+				  <EditableSlider
+            :label="'Track Numerator (' + trackNumerator + ')'"
+            :min="1"
+            :step="1"
+            :max="16"
+            v-model="trackNumerator"
+            @update:modelValue="handleTrackDraftChange"
+          />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
 			  <v-col cols="12">
-          <v-slider :label="'Track Denominator ('+ trackDenominator + ')'" min=1 step=1 max=16 v-model.number="trackDenominator" @update:modelValue="handleTrackDraftChange" />
+          <EditableSlider
+            :label="'Track Denominator ('+ trackDenominator + ')'"
+            :min="1"
+            :step="1"
+            :max="16"
+            v-model="trackDenominator"
+            @update:modelValue="handleTrackDraftChange"
+          />
 				</v-col>
 			</v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-				  <v-slider :label="'Octave shift ('+ trackOctave + ')'" min=0 step=1 max=10 v-model.number="trackOctave" @update:modelValue="handleTrackDraftChange" />
+				  <EditableSlider
+            :label="'Octave shift ('+ trackOctave + ')'"
+            :min="0"
+            :step="1"
+            :max="10"
+            v-model="trackOctave"
+            @update:modelValue="handleTrackDraftChange"
+          />
 				</v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-          <v-slider 
+          <EditableSlider
             :label="'Track Note Length (' + trackLengthFactor + '%)'" 
-            min="1" 
-            max="400" 
-            step="1" 
-            v-model.number="trackLengthFactor" 
-		  @update:modelValue="handleTrackDraftChange" 
+            :min="1"
+            :max="400"
+            :step="1"
+            v-model="trackLengthFactor"
+		  @update:modelValue="handleTrackDraftChange"
           />
         </v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-          <v-slider
+          <EditableSlider
             :label="'Track Gain (' + Number(trackGain).toFixed(2) + 'x)'"
-            min="0"
-            max="4"
-            step="0.05"
-            v-model.number="trackGain"
+            :min="0"
+            :max="4"
+            :step="0.05"
+            v-model="trackGain"
             @update:modelValue="handleTrackDraftChange"
           />
         </v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-          <v-slider
+          <EditableSlider
             :label="'Track MIDI Channel (' + trackMidiChannel + ')'"
-            min="1"
-            max="16"
-            step="1"
-            v-model.number="trackMidiChannel"
+            :min="1"
+            :max="16"
+            :step="1"
+            v-model="trackMidiChannel"
             @update:modelValue="handleTrackDraftChange"
           />
         </v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-          <v-slider
+          <EditableSlider
             :label="'Track Delay (' + trackDelay + ' bars)'"
-            min="0"
-            max="64"
-            step="1"
-            v-model.number="trackDelay"
+            :min="0"
+            :max="64"
+            :step="1"
+            v-model="trackDelay"
             @update:modelValue="handleTrackDraftChange"
           />
         </v-col>
       </v-row>
       <v-row class="compact-row">
         <v-col cols="12">
-          <v-slider
+          <EditableSlider
             :label="'Track Repeats (' + trackRepeats + ')'"
-            min="1"
-            max="64"
-            step="1"
-            v-model.number="trackRepeats"
+            :min="1"
+            :max="64"
+            :step="1"
+            v-model="trackRepeats"
             @update:modelValue="handleTrackDraftChange"
           />
         </v-col>
@@ -343,6 +371,7 @@ import pkg from '../package.json';
 const appVersion = pkg.version;
 import { defineComponent, markRaw } from 'vue';
 import AdjacencyMatrix from './components/AdjacencyMatrix.vue';
+import EditableSlider from './components/EditableSlider.vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import { PCS12 } from 'ultra-mega-enumerator';
@@ -393,7 +422,8 @@ const initialState = buildInitialState();
 export default defineComponent({
   name: 'App',
   components: {
-    AdjacencyMatrix
+    AdjacencyMatrix,
+    EditableSlider,
   },
   data() {
     const firstTrack = initialState.draft.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;

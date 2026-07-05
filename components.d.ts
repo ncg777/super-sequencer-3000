@@ -8,5 +8,6 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AdjacencyMatrix: typeof import('./src/components/AdjacencyMatrix.vue')['default']
+    EditableSlider: typeof import('./src/components/EditableSlider.vue')['default']
   }
 }
