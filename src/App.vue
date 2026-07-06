@@ -1983,8 +1983,40 @@ export default defineComponent({
     min-width: 0;
   }
 
+  .preset-panel {
+    overflow-x: visible;
+  }
+
   .preset-inline-row {
-    min-width: 640px;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "selector state"
+      "rename menu";
+    column-gap: 6px;
+    row-gap: 8px;
+  }
+
+  .preset-select {
+    grid-area: selector;
+  }
+
+  .preset-state-pill {
+    grid-area: state;
+    font-size: 0.75rem;
+    padding: 6px 10px;
+  }
+
+  .preset-rename-btn {
+    grid-area: rename;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .preset-menu-btn {
+    grid-area: menu;
+    width: 100%;
+    min-width: 0;
   }
 
   .track-strip {
