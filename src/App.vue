@@ -1,71 +1,171 @@
-<template>  
-	<v-app>
-		<AdjacencyMatrix class="shader-bg" :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
-		<v-main>
-		  <v-responsive class="align-center mx-auto pa-4 pb-8" max-width="900">
-			<h1>GateRunner
-      <v-btn 
-          icon 
-          @click="showHelp = true" 
-          class="help-button"
-        >
-          <v-icon>mdi-help-circle</v-icon>
-        </v-btn>
-      </h1>
-      <v-row>
-        <v-col cols="12" md="8">
-          <v-select
-            v-model="selectedPresetId"
-            label="Preset"
-            :item-title="'title'"
-            :item-value="'value'"
-            :items="presetOptions"
-            @update:modelValue="handlePresetSelection"
-          />
-        </v-col>
-        <v-col cols="12" md="4" class="preset-summary-col">
-          <div class="preset-summary">
-            <div class="preset-name">{{ currentPresetName }}</div>
-            <div class="preset-state">{{ isDirty ? 'Unsaved changes' : 'Saved' }}</div>
+<template>
+  <v-app class="app-shell">
+    <AdjacencyMatrix class="shader-bg" :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
+    <v-main class="workspace-main">
+      <div ref="controlDeck" class="control-deck">
+        <div class="toolbar-panel transport-panel">
+          <div class="transport-header">
+            <div class="brand-group">
+              <h1 class="app-title">GateRunner</h1>
+              <span class="version-pill">v{{ appVersion }}</span>
+            </div>
+            <v-btn
+              icon
+              variant="text"
+              size="small"
+              class="toolbar-icon-btn"
+              @click="showHelp = true"
+            >
+              <v-icon>mdi-help-circle</v-icon>
+            </v-btn>
           </div>
-        </v-col>
-      </v-row>
-      <v-row>
-        <v-col cols="12" md="8">
-          <v-text-field
-            v-model="presetNameInput"
-            label="Preset name"
-            placeholder="Type a preset name here"
-            hide-details="auto"
-          />
-        </v-col>
-        <v-col cols="12" md="4">
-          <v-btn block class="preset-action-btn" color="info" variant="outlined" @click="renameCurrentPreset" :disabled="!canRenamePreset">Rename</v-btn>
-        </v-col>
-      </v-row>
-      <v-row class="preset-actions-row">
-        <v-col cols="6" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="primary" @click="saveCurrentPreset" :disabled="!currentPreset || !isDirty">Save</v-btn>
-        </v-col>
-        <v-col cols="6" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="primary" variant="tonal" @click="saveAsPreset">Save As</v-btn>
-        </v-col>
-        <v-col cols="6" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="secondary" variant="tonal" @click="createNewPreset">New</v-btn>
-        </v-col>
-        <v-col cols="6" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="error" variant="tonal" @click="deleteCurrentPreset">Delete</v-btn>
-        </v-col>
-        <v-col cols="6" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="white" variant="outlined" @click="exportCurrentPreset">Export Preset</v-btn>
-        </v-col>
-        <v-col cols="6" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="white" variant="outlined" @click="exportPresetLibrary">Export Library</v-btn>
-        </v-col>
-        <v-col cols="12" sm="4" md="3">
-          <v-btn block class="preset-action-btn" color="white" variant="outlined" @click="triggerPresetImport">Import JSON</v-btn>
-        </v-col>
-      </v-row>
+          <div class="transport-actions">
+            <v-btn
+              class="transport-play-btn"
+              color="success"
+              :prepend-icon="isRunning ? 'mdi-stop-circle-outline' : 'mdi-play-circle-outline'"
+              @click="toggleSequencer"
+            >
+              {{ isRunning ? 'Stop' : 'Play' }}
+            </v-btn>
+            <v-btn class="transport-btn" variant="tonal" color="primary" prepend-icon="mdi-link-variant" @click="copyURL">Copy URL</v-btn>
+            <v-btn class="transport-btn" variant="tonal" color="primary" prepend-icon="mdi-music-note" @click="downloadMIDI">MIDI</v-btn>
+            <v-btn
+              class="transport-btn"
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-waveform"
+              :disabled="isExportingWav"
+              @click="downloadWAV"
+            >
+              {{ isExportingWav ? 'Rendering WAV...' : 'WAV' }}
+            </v-btn>
+          </div>
+          <div class="forte-control-top">
+            <v-autocomplete
+              label="Forte number"
+              v-model="forte"
+              :items="allChords"
+              placeholder="Forte number..."
+              hide-details
+              density="compact"
+              variant="outlined"
+              prepend-inner-icon="mdi-piano"
+              @update:modelValue="handleDraftChange"
+            />
+          </div>
+          <div class="tempo-midi-row">
+            <div class="tempo-control">
+              <EditableSlider
+                :label="'Tempo (' + bpm + ' BPM)'"
+                :min="1"
+                :step="1"
+                :max="499"
+                v-model="bpm"
+                @update:modelValue="handleDraftChange"
+              />
+            </div>
+            <div class="midi-control-row">
+              <v-switch
+                v-model="useMidiOutput"
+                label="MIDI Output"
+                hide-details
+                density="compact"
+                inset
+                @update:modelValue="updateMidiMode"
+              />
+              <v-select
+                v-if="useMidiOutput"
+                v-model="selectedMidiDevice"
+                :items="midiDevices"
+                label="MIDI Device"
+                hide-details
+                density="compact"
+                variant="outlined"
+                class="midi-device-select"
+                @update:modelValue="updateMidiDevice"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar-panel preset-panel">
+          <div class="preset-row">
+            <v-select
+              v-model="selectedPresetId"
+              label="Preset"
+              :item-title="'title'"
+              :item-value="'value'"
+              :items="presetOptions"
+              hide-details
+              density="compact"
+              variant="outlined"
+              prepend-inner-icon="mdi-bookmark-multiple-outline"
+              class="preset-select"
+              @update:modelValue="handlePresetSelection"
+            />
+            <div class="preset-state-pill" :class="{ dirty: isDirty }">
+              <v-icon size="16">{{ isDirty ? 'mdi-circle-edit-outline' : 'mdi-check-circle-outline' }}</v-icon>
+              <span>{{ isDirty ? 'Unsaved changes' : 'Saved' }}</span>
+            </div>
+          </div>
+          <div class="preset-actions-compact">
+            <v-btn
+              class="preset-rename-btn"
+              color="info"
+              variant="outlined"
+              prepend-icon="mdi-form-textbox"
+              @click="openRenamePresetDialog"
+              :disabled="!currentPreset"
+            >
+              Rename Preset
+            </v-btn>
+            <v-menu location="bottom end">
+              <template #activator="{ props }">
+                <v-btn v-bind="props" class="preset-menu-btn" color="secondary" variant="tonal" append-icon="mdi-chevron-down">
+                  Preset Actions
+                </v-btn>
+              </template>
+              <v-list density="compact" class="preset-action-menu">
+                <v-list-item
+                  title="Save"
+                  prepend-icon="mdi-content-save-outline"
+                  :disabled="!currentPreset || !isDirty"
+                  @click="saveCurrentPreset"
+                />
+                <v-list-item title="Save As" prepend-icon="mdi-content-save-edit-outline" @click="saveAsPreset" />
+                <v-list-item title="New" prepend-icon="mdi-plus-box-outline" @click="createNewPreset" />
+                <v-list-item title="Delete" prepend-icon="mdi-delete-outline" @click="deleteCurrentPreset" />
+                <v-divider class="my-1" />
+                <v-list-item title="Export Preset" prepend-icon="mdi-export-variant" @click="exportCurrentPreset" />
+                <v-list-item title="Export Library" prepend-icon="mdi-database-export-outline" @click="exportPresetLibrary" />
+                <v-list-item title="Import JSON" prepend-icon="mdi-file-import-outline" @click="triggerPresetImport" />
+              </v-list>
+            </v-menu>
+          </div>
+        </div>
+
+        <div class="toolbar-panel track-strip-panel">
+          <div class="track-strip">
+            <v-select
+              v-model="selectedTrackId"
+              :items="trackOptions"
+              :item-title="'title'"
+              :item-value="'value'"
+              label="Track"
+              hide-details
+              density="compact"
+              variant="outlined"
+              prepend-inner-icon="mdi-playlist-music"
+              class="track-select"
+              @update:modelValue="handleTrackSelection"
+            />
+            <v-btn class="track-strip-btn" color="secondary" variant="tonal" @click="addTrack">Add Track</v-btn>
+            <v-btn class="track-strip-btn" color="error" variant="tonal" :disabled="tracks.length <= 1" @click="removeCurrentTrack">Remove Track</v-btn>
+          </div>
+        </div>
+      </div>
+
       <input
         ref="presetFileInput"
         type="file"
@@ -73,296 +173,272 @@
         class="preset-file-input"
         @change="handlePresetFileImport"
       />
-			<v-row>
-        <v-col cols="12">
-          <v-autocomplete
-            label="Forte number"
-            v-model="forte"
-            :items="allChords"
-            placeholder="Forte number..."
-            @update:modelValue="handleDraftChange"
+
+      <div class="control-deck-spacer" :style="{ height: `${controlDeckHeight + 12}px` }"></div>
+
+      <v-responsive class="editor-surface align-center mx-auto pa-4 pb-8" max-width="980">
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="trackNameInput"
+              label="Track name"
+              hide-details="auto"
+              density="comfortable"
+              variant="outlined"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-select
+              v-model="trackWaveform"
+              label="Waveform"
+              :items="['sine', 'square', 'triangle', 'sawtooth']"
+              hide-details="auto"
+              density="comfortable"
+              variant="outlined"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row>
+          <v-col cols="12">
+            <v-text-field
+              :label="`Sequence (${selectedTrackSequenceLength})`"
+              v-model="trackSequenceInput"
+              placeholder="e.g. 0 1 2..."
+              hide-details="auto"
+              density="comfortable"
+              variant="outlined"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track Numerator (' + trackNumerator + ')'"
+              :min="1"
+              :step="1"
+              :max="16"
+              v-model="trackNumerator"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track Denominator (' + trackDenominator + ')'"
+              :min="1"
+              :step="1"
+              :max="16"
+              v-model="trackDenominator"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Octave shift (' + trackOctave + ')'"
+              :min="0"
+              :step="1"
+              :max="10"
+              v-model="trackOctave"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track Note Length (' + trackLengthFactor + '%)'"
+              :min="1"
+              :max="400"
+              :step="1"
+              v-model="trackLengthFactor"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track Gain (' + Number(trackGain).toFixed(2) + 'x)'"
+              :min="0"
+              :max="4"
+              :step="0.05"
+              v-model="trackGain"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track MIDI Channel (' + trackMidiChannel + ')'"
+              :min="1"
+              :max="16"
+              :step="1"
+              v-model="trackMidiChannel"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track Delay (' + trackDelay + ' bars)'"
+              :min="0"
+              :max="64"
+              :step="1"
+              v-model="trackDelay"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
+              :label="'Track Repeats (' + trackRepeats + ')'"
+              :min="1"
+              :max="64"
+              :step="1"
+              v-model="trackRepeats"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <div v-if="isExportingWav || wavExportProgress === 100" class="wav-export-status">
+          <div class="wav-export-status-text">{{ wavExportStatus }}</div>
+          <v-progress-linear
+            v-if="wavExportProgress >= 0"
+            :model-value="wavExportProgress"
+            color="info"
+            height="8"
+            rounded
           />
-				</v-col>
-			</v-row>
-      <v-row>
-        <v-col cols="12">
-          <EditableSlider
-            :label="'Tempo (' + bpm + ' BPM)'"
-            :min="1"
-            :step="1"
-            :max="499"
-            v-model="bpm"
-            @update:modelValue="handleDraftChange"
+          <v-progress-linear
+            v-else
+            indeterminate
+            color="info"
+            height="8"
+            rounded
           />
-        </v-col>
-			</v-row>
-      <v-row>
-        <v-col cols="12" md="6">
-          <v-select
-            v-model="selectedTrackId"
-            :items="trackOptions"
-            :item-title="'title'"
-            :item-value="'value'"
-            label="Track"
-            @update:modelValue="handleTrackSelection"
-          />
-			  </v-col>
-			  <v-col cols="6" md="3">
-          <v-btn block class="preset-action-btn" color="secondary" variant="tonal" @click="addTrack">Add Track</v-btn>
-			  </v-col>
-			  <v-col cols="6" md="3">
-          <v-btn block class="preset-action-btn" color="error" variant="tonal" :disabled="tracks.length <= 1" @click="removeCurrentTrack">Remove Track</v-btn>
-			  </v-col>
-			</v-row>
-      <v-row>
-        <v-col cols="12" md="6">
-          <v-text-field
-            v-model="trackNameInput"
-            label="Track name"
-            hide-details="auto"
-            @update:modelValue="handleTrackDraftChange"
-          />
-			  </v-col>
-        <v-col cols="12" md="6">
-          <v-select
-            v-model="trackWaveform"
-            label="Waveform"
-            :items="['sine','square','triangle','sawtooth']"
-            @update:modelValue="handleTrackDraftChange"
-          />
-			  </v-col>
-			</v-row>
-      <v-row>
-        <v-col cols="12">
-				  <v-text-field 
-            :label="`Sequence (${selectedTrackSequenceLength})`"
-            v-model="trackSequenceInput" 
-            placeholder="e.g. 0 1 2..." 
-		  @update:modelValue="handleTrackDraftChange" />
-				</v-col>
-      </v-row>
-      <v-row class="compact-row">
-        <v-col colr="12">
-				  <EditableSlider
-            :label="'Track Numerator (' + trackNumerator + ')'"
-            :min="1"
-            :step="1"
-            :max="16"
-            v-model="trackNumerator"
-            @update:modelValue="handleTrackDraftChange"
-          />
-				</v-col>
-      </v-row>
-      <v-row class="compact-row">
-			  <v-col cols="12">
-          <EditableSlider
-            :label="'Track Denominator ('+ trackDenominator + ')'"
-            :min="1"
-            :step="1"
-            :max="16"
-            v-model="trackDenominator"
-            @update:modelValue="handleTrackDraftChange"
-          />
-				</v-col>
-			</v-row>
-      <v-row class="compact-row">
-        <v-col cols="12">
-				  <EditableSlider
-            :label="'Octave shift ('+ trackOctave + ')'"
-            :min="0"
-            :step="1"
-            :max="10"
-            v-model="trackOctave"
-            @update:modelValue="handleTrackDraftChange"
-          />
-				</v-col>
-      </v-row>
-      <v-row class="compact-row">
-        <v-col cols="12">
-          <EditableSlider
-            :label="'Track Note Length (' + trackLengthFactor + '%)'" 
-            :min="1"
-            :max="400"
-            :step="1"
-            v-model="trackLengthFactor"
-		  @update:modelValue="handleTrackDraftChange"
-          />
-        </v-col>
-      </v-row>
-      <v-row class="compact-row">
-        <v-col cols="12">
-          <EditableSlider
-            :label="'Track Gain (' + Number(trackGain).toFixed(2) + 'x)'"
-            :min="0"
-            :max="4"
-            :step="0.05"
-            v-model="trackGain"
-            @update:modelValue="handleTrackDraftChange"
-          />
-        </v-col>
-      </v-row>
-      <v-row class="compact-row">
-        <v-col cols="12">
-          <EditableSlider
-            :label="'Track MIDI Channel (' + trackMidiChannel + ')'"
-            :min="1"
-            :max="16"
-            :step="1"
-            v-model="trackMidiChannel"
-            @update:modelValue="handleTrackDraftChange"
-          />
-        </v-col>
-      </v-row>
-      <v-row class="compact-row">
-        <v-col cols="12">
-          <EditableSlider
-            :label="'Track Delay (' + trackDelay + ' bars)'"
-            :min="0"
-            :max="64"
-            :step="1"
-            v-model="trackDelay"
-            @update:modelValue="handleTrackDraftChange"
-          />
-        </v-col>
-      </v-row>
-      <v-row class="compact-row">
-        <v-col cols="12">
-          <EditableSlider
-            :label="'Track Repeats (' + trackRepeats + ')'"
-            :min="1"
-            :max="64"
-            :step="1"
-            v-model="trackRepeats"
-            @update:modelValue="handleTrackDraftChange"
-          />
-        </v-col>
-      </v-row>
-      
-      <v-row>
-        <v-col cols="4">
-          <v-switch 
-            v-model="useMidiOutput" 
-            label="MIDI" 
-            @update:modelValue="updateMidiMode"
-          />
-        </v-col>
-        <v-col cols="4" v-if="useMidiOutput">
-          <v-select 
-            v-model="selectedMidiDevice" 
-            :items="midiDevices" 
-            label="MIDI Device" 
-            @update:modelValue="updateMidiDevice"
-          />
-        </v-col>
-      </v-row>
-      
-			<button @click="toggleSequencer" class="stopplay">{{ isRunning ? '⏹️' : '▶️' }}</button>
-      <button @click="copyURL" class="userbutton">📋Copy URL</button>
-			<button @click="downloadMIDI" class="downloadmidi">Download MIDI</button>
-      <button @click="downloadWAV" class="downloadwav" :disabled="isExportingWav">{{ isExportingWav ? 'Rendering WAV...' : 'Download WAV' }}</button>
-      <div v-if="isExportingWav || wavExportProgress === 100" class="wav-export-status">
-        <div class="wav-export-status-text">{{ wavExportStatus }}</div>
-        <v-progress-linear
-          v-if="wavExportProgress >= 0"
-          :model-value="wavExportProgress"
-          color="info"
-          height="8"
-          rounded
-        />
-        <v-progress-linear
-          v-else
-          indeterminate
-          color="info"
-          height="8"
-          rounded
-        />
-      </div>
-      <br />
-      <br />
-      <!-- Help Modal -->
-      
-		  </v-responsive>
-      <!-- Help Modal -->
+        </div>
+      </v-responsive>
+
+      <v-dialog v-model="showRenamePresetDialog" max-width="460px">
+        <v-card class="rename-dialog-card">
+          <v-card-title class="text-h6">Rename Preset</v-card-title>
+          <v-card-text>
+            <v-text-field
+              v-model="renamePresetInput"
+              label="Preset name"
+              density="comfortable"
+              variant="outlined"
+              autofocus
+              @keydown.enter.prevent="confirmPresetRename"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="cancelPresetRename">Cancel</v-btn>
+            <v-btn color="primary" @click="confirmPresetRename" :disabled="!canSubmitPresetRename">Rename</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
       <v-dialog v-model="showHelp" max-width="800px">
-          <v-card class="pa-4 bg-black">
-            <v-card-title class="pa-4">
-              <span class="text-h5 font-weight-bold">GateRunner <small style="font-size:0.6em; color:#888; margin-left:1em;">v{{ appVersion }}</small></span>
-              <v-spacer></v-spacer>
-              <v-btn icon @click="showHelp = false" class="close-btn">
-                <v-icon>mdi-close</v-icon>
-              </v-btn>
-            </v-card-title>
-            <v-divider></v-divider>
-            <v-card-text class="pa-4">
-              <h4 class="mb-2">How the Sequencer Works</h4>
-              <p>The sequencer allows you to customize the following parameters:</p>
-              <p>GateRunner now stores your work as named presets. Changes affect the current draft immediately for playback and URL sharing, but the preset itself is only updated when you use <strong>Save</strong> or <strong>Save As</strong>. You can also export a single preset or the full preset library to JSON and import them back later.</p>
-              <ul>
-                <li><strong>Preset</strong>: Pick a named preset, create a new one, save your current draft, or delete presets you no longer need.</li>
-                <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
-                  <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
-                <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
-                <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-                <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, and note length.</li>
-                <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
-                <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
-                  representation.</li>
-                <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
-                <li><strong>Track Gain</strong>: Multiplies MIDI note velocity per track during export and live playback.</li>
-                <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
-                <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
-                <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
-                <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
-                <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft.</li>
-              </ul>
+        <v-card class="pa-4 bg-black">
+          <v-card-title class="pa-4">
+            <span class="text-h5 font-weight-bold">GateRunner <small style="font-size:0.6em; color:#888; margin-left:1em;">v{{ appVersion }}</small></span>
+            <v-spacer></v-spacer>
+            <v-btn icon @click="showHelp = false" class="close-btn">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </v-card-title>
+          <v-divider></v-divider>
+          <v-card-text class="pa-4">
+            <h4 class="mb-2">How the Sequencer Works</h4>
+            <p>The sequencer allows you to customize the following parameters:</p>
+            <p>GateRunner now stores your work as named presets. Changes affect the current draft immediately for playback and URL sharing, but the preset itself is only updated when you use <strong>Save</strong> or <strong>Save As</strong>. You can also export a single preset or the full preset library to JSON and import them back later.</p>
+            <ul>
+              <li><strong>Preset</strong>: Pick a named preset, create a new one, save your current draft, or delete presets you no longer need.</li>
+              <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
+                <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
+              <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
+              <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
+              <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, and note length.</li>
+              <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
+              <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
+                representation.</li>
+              <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
+              <li><strong>Track Gain</strong>: Multiplies MIDI note velocity per track during export and live playback.</li>
+              <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
+              <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
+              <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
+              <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
+              <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft.</li>
+            </ul>
 
-              <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
-              <p>This application uses a binary-based encoding system to determine which notes are played from numerical
-                values. Here's how it works:</p>
+            <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
+            <p>This application uses a binary-based encoding system to determine which notes are played from numerical
+              values. Here's how it works:</p>
 
-              <ol>
-                <li><strong>Binary Representation of Numbers:</strong>
+            <ol>
+              <li><strong>Binary Representation of Numbers:</strong>
+                <ul>
+                  <li>Each number's absolute value is converted into binary, with bit 0 at position 0, bit 1 at
+                    position 1, and so on. For example:</li>
                   <ul>
-                    <li>Each number's absolute value is converted into binary, with bit 0 at position 0, bit 1 at
-                      position 1, and so on. For example:</li>
+                    <li>The number <code>5</code> becomes <code>101</code>.</li>
+                    <li>The number <code>10</code> becomes <code>0101</code>.</li>
+                  </ul>
+                  <li>Negative numbers are supported and in this case the note indices are computed as you would
+                    expect.</li>
+                </ul>
+              </li>
+              <li><strong>Pitch Class Assignment:</strong>
+                <ul>
+                  <li>Each binary digit corresponds to a position in the selected pitch class set, with the octave shift, going up and down octavewise
+                    to the minimal and maximal midi pitch. For example, to give a general idea without considering the octave, for 3-11B.00 you would get:
                     <ul>
-                      <li>The number <code>5</code> becomes <code>101</code>.</li>
-                      <li>The number <code>10</code> becomes <code>0101</code>.</li>
+                      <li>Position 0 = C</li>
+                      <li>Position 1 = E</li>
+                      <li>Position 2 = G</li>
+                      <li>Position 3 = C</li>
+                      <li>...</li>
                     </ul>
-                    <li>Negative numbers are supported and in this case the note indices are computed as you would
-                      expect.</li>
-                  </ul>
-                </li>
-                <li><strong>Pitch Class Assignment:</strong>
-                  <ul>
-                    <li>Each binary digit corresponds to a position in the selected pitch class set, with the octave shift, going up and down octavewise
-                      to the minimal and maximal midi pitch. For example, to give a general idea without considering the octave, for 3-11B.00 you would get:
-                      <ul>
-                        <li>Position 0 = C</li>
-                        <li>Position 1 = E</li>
-                        <li>Position 2 = G</li>
-                        <li>Position 3 = C</li>
-                        <li>...</li>
-                      </ul>
-                    </li>
-                  </ul>
-                </li>
-                <li><strong>Chords:</strong>
-                  <ul>
-                    <li>If multiple <code>1</code>s are present, the corresponding notes form a chord.</li>
-                    <li>Example: The number <code>7</code> (<code>111</code>) maps to C, E, and G.</li>
-                  </ul>
-                </li>
-              </ol>
-            </v-card-text>
-            <v-divider></v-divider>
-            <v-card-actions class="pa-4">
-              <v-spacer></v-spacer>
-              <v-btn color="primary" @click="showHelp = false">Close</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
-      </v-main>
+                  </li>
+                </ul>
+              </li>
+              <li><strong>Chords:</strong>
+                <ul>
+                  <li>If multiple <code>1</code>s are present, the corresponding notes form a chord.</li>
+                  <li>Example: The number <code>7</code> (<code>111</code>) maps to C, E, and G.</li>
+                </ul>
+              </li>
+            </ol>
+          </v-card-text>
+          <v-divider></v-divider>
+          <v-card-actions class="pa-4">
+            <v-spacer></v-spacer>
+            <v-btn color="primary" @click="showHelp = false">Close</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+    </v-main>
   </v-app>
 </template>
 
@@ -458,18 +534,17 @@ export default defineComponent({
       presetLibrary: initialState.presetLibrary as PresetLibrary,
       selectedPresetId: initialState.selectedPresetId as string | null,
       isDirty: initialState.isDirty,
-      presetNameInput: initialState.presetLibrary.presets.find((preset) => preset.id === initialState.selectedPresetId)?.name ?? '',
+      showRenamePresetDialog: false,
+      renamePresetInput: '',
       isExportingWav: false,
       wavExportProgress: 0,
       wavExportStatus: '',
+      controlDeckHeight: 0,
     };
   },
   computed: {
     currentPreset(): NamedPreset | null {
       return this.presetLibrary.presets.find((preset) => preset.id === this.presetLibrary.selectedPresetId) ?? this.presetLibrary.presets[0] ?? null;
-    },
-    currentPresetName(): string {
-      return this.currentPreset?.name ?? 'No preset selected';
     },
     currentTrack(): PresetTrackData | null {
       return this.tracks.find((track) => track.id === this.selectedTrackId) ?? this.tracks[0] ?? null;
@@ -486,12 +561,12 @@ export default defineComponent({
         value: track.id,
       }));
     },
-    canRenamePreset(): boolean {
+    canSubmitPresetRename(): boolean {
       if (!this.currentPreset) {
         return false;
       }
 
-      const nextName = sanitizePresetName(this.presetNameInput);
+      const nextName = sanitizePresetName(this.renamePresetInput);
       return nextName !== this.currentPreset.name;
     },
     selectedTrackSequenceLength(): number {
@@ -723,6 +798,14 @@ export default defineComponent({
       this.wavExportProgress = Math.max(0, Math.min(100, Math.round(progress)));
       this.wavExportStatus = status;
     },
+    updateControlDeckHeight() {
+      const deck = this.$refs.controlDeck as HTMLElement | undefined;
+      if (!deck) {
+        return;
+      }
+
+      this.controlDeckHeight = Math.ceil(deck.getBoundingClientRect().height);
+    },
     encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
       const numChannels = channels.length;
       const frameCount = channels[0]?.length ?? 0;
@@ -911,8 +994,31 @@ export default defineComponent({
       const currentPreset = this.currentPreset;
       this.isDirty = currentPreset ? !arePresetDataEqual(this.getDraftData(), currentPreset.data) : false;
     },
-    syncPresetNameInput(nextName?: string) {
-      this.presetNameInput = nextName ?? this.currentPreset?.name ?? '';
+    openRenamePresetDialog() {
+      const currentPreset = this.currentPreset;
+      if (!currentPreset) {
+        return;
+      }
+
+      this.renamePresetInput = currentPreset.name;
+      this.showRenamePresetDialog = true;
+    },
+    cancelPresetRename() {
+      this.showRenamePresetDialog = false;
+      this.renamePresetInput = '';
+    },
+    confirmPresetRename() {
+      if (!this.currentPreset) {
+        return;
+      }
+
+      if (!this.canSubmitPresetRename) {
+        this.cancelPresetRename();
+        return;
+      }
+
+      this.renameCurrentPreset(this.renamePresetInput);
+      this.cancelPresetRename();
     },
     persistPresetLibrary(library: PresetLibrary) {
       this.presetLibrary = library;
@@ -932,7 +1038,6 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = preset.id;
-      this.syncPresetNameInput(preset.name);
       this.applyDraftData(preset.data);
       this.refreshDirtyState();
     },
@@ -978,15 +1083,14 @@ export default defineComponent({
 
       return `${sanitizedBaseName} (${suffix})`;
     },
-    renameCurrentPreset() {
+    renameCurrentPreset(baseName?: string) {
       const currentPreset = this.currentPreset;
       if (!currentPreset) {
         return;
       }
 
-      const nextName = this.buildUniquePresetName(this.presetNameInput, currentPreset.id);
+      const nextName = this.buildUniquePresetName(baseName ?? currentPreset.name, currentPreset.id);
       if (nextName === currentPreset.name) {
-        this.syncPresetNameInput(currentPreset.name);
         return;
       }
 
@@ -1002,7 +1106,6 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = renamedPreset.id;
-      this.syncPresetNameInput(renamedPreset.name);
       window.alert(`Renamed preset to "${renamedPreset.name}".`);
     },
     saveCurrentPreset() {
@@ -1020,12 +1123,17 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = updatedPreset.id;
-      this.syncPresetNameInput(updatedPreset.name);
       this.refreshDirtyState();
       window.alert(`Saved preset "${updatedPreset.name}".`);
     },
     saveAsPreset() {
-      const name = this.buildUniquePresetName(this.presetNameInput || `${this.currentPreset?.name ?? 'Preset'} Copy`);
+      const suggestedName = this.buildUniquePresetName(`${this.currentPreset?.name ?? 'Preset'} Copy`);
+      const requestedName = window.prompt('Name for the new preset copy:', suggestedName);
+      if (requestedName === null) {
+        return;
+      }
+
+      const name = this.buildUniquePresetName(requestedName);
       const newPreset = createNamedPreset(name, this.getDraftData());
       const nextLibrary: PresetLibrary = {
         ...this.presetLibrary,
@@ -1035,7 +1143,6 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = newPreset.id;
-      this.syncPresetNameInput(newPreset.name);
       this.applyDraftData(newPreset.data);
       this.refreshDirtyState();
       window.alert(`Created preset "${newPreset.name}".`);
@@ -1046,7 +1153,13 @@ export default defineComponent({
         return;
       }
 
-      const name = this.buildUniquePresetName(this.presetNameInput || 'New preset');
+      const suggestedName = this.buildUniquePresetName('New preset');
+      const requestedName = window.prompt('Name for the new preset:', suggestedName);
+      if (requestedName === null) {
+        return;
+      }
+
+      const name = this.buildUniquePresetName(requestedName);
       const preset = createNamedPreset(name, DEFAULT_PRESET_DATA);
       const nextLibrary: PresetLibrary = {
         ...this.presetLibrary,
@@ -1056,7 +1169,6 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = preset.id;
-      this.syncPresetNameInput(preset.name);
       this.applyDraftData(preset.data);
       this.refreshDirtyState();
     },
@@ -1087,7 +1199,6 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = fallbackPreset.id;
-      this.syncPresetNameInput(fallbackPreset.name);
       this.applyDraftData(fallbackPreset.data);
       this.refreshDirtyState();
     },
@@ -1164,7 +1275,6 @@ export default defineComponent({
           this.loadPresetById(mergeResult.selectedPresetId, nextLibrary);
         } else {
           this.selectedPresetId = this.presetLibrary.selectedPresetId;
-          this.syncPresetNameInput();
         }
 
         window.alert(`Imported ${importedCount} preset${importedCount === 1 ? '' : 's'}.`);
@@ -1184,6 +1294,9 @@ export default defineComponent({
         this.midiAccess = access;
         
         this.midiDevices = Array.from(access.outputs.values()).map(output => output.name!);
+        this.$nextTick(() => {
+          this.updateControlDeckHeight();
+        });
       } catch (error) {
         console.error("Failed to initialize MIDI:", error);
       }
@@ -1198,6 +1311,10 @@ export default defineComponent({
       } else {
         //this.midiOutput = null;
       }
+
+      this.$nextTick(() => {
+        this.updateControlDeckHeight();
+      });
     },
     async playNoteWithMidi(note: number, velocity: number, duration: Tone.Unit.Seconds, when: number, midiChannel: number) {
       if (this.midiOutput!!) {
@@ -1485,17 +1602,23 @@ export default defineComponent({
       this.applyRealtimeSettings();
   },
   beforeUnmount() {
+    window.removeEventListener('resize', this.updateControlDeckHeight);
     this.stopSequencer();
     for (const synth of Object.values(this.trackSynths)) {
       synth.dispose();
     }
     this.trackSynths = {};
   },
-  async onMounted() {
+  async mounted() {
     this.applyRealtimeSettings();
     if (this.useMidiOutput) {
       await this.initializeMidi();
-  }
+    }
+
+    this.$nextTick(() => {
+      this.updateControlDeckHeight();
+    });
+    window.addEventListener('resize', this.updateControlDeckHeight);
   }
 });
 </script>
@@ -1516,113 +1639,342 @@ export default defineComponent({
 
 :deep(.v-main) {
   background: transparent !important;
+}
+
+.app-shell {
+  color: #e8f5ff;
+}
+
+.workspace-main {
   position: relative;
   z-index: 1;
+  padding: 0 12px 16px;
 }
 
-:deep(.v-responsive) {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 16px;
-  padding: 16px;
+.control-deck {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1120px, calc(100vw - 20px));
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-:deep(.v-label),
-:deep(.v-field__input),
-:deep(.v-select__selection-text),
-:deep(.v-autocomplete__selection-text) {
-  color: #ffffff !important;
-}
-h1 {
-  text-align: center;
-  margin-bottom: 16pt;
-  color: #ffffff;
-}
-
-.downloadmidi,
-.downloadwav,
-.userbutton,
-.stopplay {
-  color: #ffffff;
+.toolbar-panel {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(111, 214, 231, 0.32);
+  background:
+    linear-gradient(135deg, rgba(7, 14, 20, 0.92), rgba(9, 25, 34, 0.9)),
+    radial-gradient(circle at top right, rgba(225, 167, 73, 0.18), transparent 45%);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
 }
 
-.preset-summary-col {
+.transport-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.preset-summary {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.18);
+.brand-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
-.preset-name {
-  color: #ffffff;
+.app-title {
+  margin: 0;
+  color: #f4fbff;
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.version-pill {
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  color: rgba(208, 243, 255, 0.88);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(138, 215, 235, 0.4);
+  background: rgba(15, 45, 59, 0.52);
+}
+
+.toolbar-icon-btn {
+  color: #d5f5ff;
+}
+
+.transport-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.transport-play-btn {
+  min-width: 120px;
   font-weight: 700;
 }
 
-.preset-state {
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 0.9rem;
+.transport-btn {
+  min-width: 104px;
 }
 
-.preset-actions-row {
-  margin-bottom: 8px;
+.forte-control-top {
+  margin-top: 8px;
+  max-width: 460px;
 }
 
-.preset-action-btn {
-  color: #ffffff !important;
+.tempo-midi-row {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(220px, 1fr);
+  gap: 10px;
+  align-items: center;
 }
 
-.preset-action-btn:deep(.v-btn__content) {
-  color: #ffffff !important;
+.tempo-control {
+  min-width: 0;
+}
+
+.midi-control-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.midi-device-select {
+  min-width: 200px;
+  max-width: 260px;
+}
+
+.preset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.preset-state-pill {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgba(135, 211, 230, 0.35);
+  border-radius: 999px;
+  background: rgba(8, 23, 32, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(220, 247, 255, 0.8);
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.preset-state-pill.dirty {
+  color: #ffd39a;
+  border-color: rgba(244, 176, 88, 0.48);
+  background: rgba(47, 27, 8, 0.56);
+}
+
+.preset-actions-compact {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: end;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-rename-btn {
+  min-width: 136px;
+}
+
+.preset-menu-btn {
+  min-width: 164px;
+}
+
+.preset-action-menu {
+  min-width: 240px;
+  border: 1px solid rgba(139, 213, 231, 0.3);
+  background: rgba(4, 12, 17, 0.96);
+}
+
+.track-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.track-strip-btn {
+  min-width: 108px;
 }
 
 .preset-file-input {
   display: none;
 }
 
-.downloadmidi {
-  padding: 10px;
-  font-size: 18px;
+.control-deck-spacer {
   width: 100%;
+  pointer-events: none;
 }
-.downloadwav {
-  padding: 10px;
-  font-size: 18px;
-  width: 100%;
+
+.editor-surface {
+  background:
+    linear-gradient(145deg, rgba(9, 22, 30, 0.78), rgba(3, 10, 14, 0.88)),
+    radial-gradient(circle at 80% 0%, rgba(228, 171, 77, 0.16), transparent 52%);
+  border: 1px solid rgba(122, 206, 226, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 24px 40px rgba(0, 0, 0, 0.32);
 }
-.userbutton {
-  padding: 10px;
-  font-size: 18px;
-  width: 100%;
+
+:deep(.v-label),
+:deep(.v-field__input),
+:deep(.v-select__selection-text),
+:deep(.v-autocomplete__selection-text),
+:deep(.v-list-item-title),
+:deep(.v-switch__label) {
+  color: #ecf8ff !important;
 }
-.stopplay {
-  padding: 2px;
-  font-size: 50px;
-  width: 100%;
-  margin-bottom: 5px;
+
+:deep(.v-field) {
+  border-radius: 12px;
+  background: rgba(3, 11, 16, 0.6);
 }
+
+:deep(.v-field--variant-outlined .v-field__outline) {
+  color: rgba(124, 208, 228, 0.58) !important;
+}
+
+:deep(.v-btn__content) {
+  text-transform: none;
+  letter-spacing: 0.015em;
+}
+
 .wav-export-status {
-  margin-top: 10px;
-  margin-bottom: 4px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(145, 220, 238, 0.32);
+  background: rgba(7, 18, 25, 0.62);
 }
 
 .wav-export-status-text {
-  color: #ffffff;
+  color: #eefbff;
   font-size: 0.9rem;
   margin-bottom: 6px;
 }
-.close-btn {
-    position: absolute;
-    top: 16px;
-    right: 16px;
+
+.rename-dialog-card {
+  border: 1px solid rgba(132, 209, 228, 0.32);
+  background:
+    linear-gradient(145deg, rgba(11, 28, 38, 0.95), rgba(6, 18, 26, 0.97)),
+    radial-gradient(circle at top right, rgba(226, 164, 77, 0.16), transparent 55%);
 }
-.compact-row * {
-  padding:0;
-  margin-bottom: 0;
-  margin-top: 0;
+
+.close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.compact-row {
+  margin-top: -4px;
+}
+
+@media (max-width: 960px) {
+  .control-deck {
+    width: calc(100vw - 16px);
+    top: 8px;
+  }
+
+  .tempo-midi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .midi-control-row {
+    justify-content: flex-start;
+  }
+
+  .preset-row {
+    grid-template-columns: 1fr;
+  }
+
+  .preset-actions-compact {
+    justify-content: start;
+  }
+
+  .preset-menu-btn {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .workspace-main {
+    padding: 0 6px 10px;
+  }
+
+  .control-deck {
+    width: calc(100vw - 10px);
+    top: 6px;
+    gap: 6px;
+  }
+
+  .toolbar-panel {
+    padding: 8px 9px;
+    border-radius: 12px;
+  }
+
+  .brand-group {
+    gap: 8px;
+  }
+
+  .version-pill {
+    font-size: 0.7rem;
+  }
+
+  .transport-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .forte-control-top {
+    max-width: 100%;
+  }
+
+  .transport-play-btn {
+    grid-column: 1 / -1;
+  }
+
+  .transport-btn,
+  .track-strip-btn,
+  .preset-rename-btn,
+  .preset-menu-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .preset-actions-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .track-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-surface {
+    border-radius: 14px;
+    padding: 12px !important;
+  }
 }
 </style>
