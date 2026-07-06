@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 8
+  version: 10
   cacheKey: 10c0
 
 "@antfu/utils@npm:^0.7.10":
@@ -3764,7 +3764,7 @@ __metadata:
     tone: "npm:^15.0.4"
     tsx: "npm:^4.21.0"
     typescript: "npm:^5.8.3"
-    ultra-mega-enumerator: "npm:^2026.6.20"
+    ultra-mega-enumerator: "npm:^2026.7.4"
     unplugin-fonts: "npm:^1.1.1"
     unplugin-vue-components: "npm:^0.27.2"
     vite: "npm:^5.4.10"
@@ -6233,13 +6233,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ultra-mega-enumerator@npm:^2026.6.20":
-  version: 2026.6.20
-  resolution: "ultra-mega-enumerator@npm:2026.6.20"
+"ultra-mega-enumerator@npm:^2026.7.4":
+  version: 2026.7.4
+  resolution: "ultra-mega-enumerator@npm:2026.7.4"
   dependencies:
     "@types/node": "npm:^22.5.1"
     yarn: "npm:^1.22.22"
-  checksum: 10c0/c7979ee69960b8b6fc0c14f35a013a0d0577bc3d0dda23dfa3743e7cd016bbc0bddc0616c0e1c3d9ea13e63c8f2ad194e5e0e066e31be7d4608c884dcf2b44a9
+  checksum: 10c0/cbffdc760b4df846ffaa104ab3ff30411d4bed7ffcc17d96b1818cd7372f6b78372f723e2208ec08c7810f580615d6e97528ffe6bd0a0badd3d48fd72f83dfda
   languageName: node
   linkType: hard
 
