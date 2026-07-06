@@ -187,9 +187,25 @@
               class="track-select"
               @update:modelValue="handleTrackSelection"
             />
-            <v-btn class="track-strip-btn" color="secondary" variant="tonal" @click="addTrack">Add</v-btn>
-            <v-btn class="track-strip-btn" color="info" variant="tonal" :disabled="!currentTrack" @click="renameCurrentTrack">Rename</v-btn>
-            <v-btn class="track-strip-btn" color="error" variant="tonal" :disabled="tracks.length <= 1" @click="removeCurrentTrack">Remove</v-btn>
+            <v-menu location="bottom end">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  class="track-actions-menu-btn"
+                  color="secondary"
+                  variant="tonal"
+                  prepend-icon="mdi-tune-variant"
+                  append-icon="mdi-chevron-down"
+                >
+                  Track Actions
+                </v-btn>
+              </template>
+              <v-list density="compact" class="track-action-menu">
+                <v-list-item title="Add Track" prepend-icon="mdi-plus" @click="addTrack" />
+                <v-list-item title="Rename Track" prepend-icon="mdi-form-textbox" :disabled="!currentTrack" @click="renameCurrentTrack" />
+                <v-list-item title="Remove Track" prepend-icon="mdi-delete-outline" :disabled="tracks.length <= 1" @click="removeCurrentTrack" />
+              </v-list>
+            </v-menu>
           </div>
         </div>
       </div>
@@ -1847,13 +1863,19 @@ export default defineComponent({
 
 .track-strip {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
 }
 
-.track-strip-btn {
-  min-width: 108px;
+.track-actions-menu-btn {
+  min-width: 168px;
+}
+
+.track-action-menu {
+  min-width: 220px;
+  border: 1px solid rgba(139, 213, 231, 0.3);
+  background: rgba(4, 12, 17, 0.96);
 }
 
 .preset-file-input {
@@ -1978,7 +2000,7 @@ export default defineComponent({
   }
 
   .transport-actions-menu-btn,
-  .track-strip-btn {
+  .track-actions-menu-btn {
     width: 100%;
     min-width: 0;
   }
