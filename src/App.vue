@@ -28,69 +28,70 @@
             >
               {{ isRunning ? 'Stop' : 'Play' }}
             </v-btn>
-            <v-btn class="transport-btn" variant="tonal" color="primary" prepend-icon="mdi-link-variant" @click="copyURL">Copy URL</v-btn>
-            <v-btn class="transport-btn" variant="tonal" color="primary" prepend-icon="mdi-music-note" @click="downloadMIDI">MIDI</v-btn>
-            <v-btn
-              class="transport-btn"
-              variant="tonal"
-              color="primary"
-              prepend-icon="mdi-waveform"
-              :disabled="isExportingWav"
-              @click="downloadWAV"
-            >
-              {{ isExportingWav ? 'Rendering WAV...' : 'WAV' }}
-            </v-btn>
-          </div>
-          <div class="forte-control-top">
-            <v-autocomplete
-              label="Forte number"
-              v-model="forte"
-              :items="allChords"
-              placeholder="Forte number..."
-              hide-details
-              density="compact"
-              variant="outlined"
-              prepend-inner-icon="mdi-piano"
-              @update:modelValue="handleDraftChange"
-            />
-          </div>
-          <div class="tempo-midi-row">
-            <div class="tempo-control">
-              <EditableSlider
-                :label="'Tempo (' + bpm + ' BPM)'"
-                :min="1"
-                :step="1"
-                :max="499"
-                v-model="bpm"
-                @update:modelValue="handleDraftChange"
-              />
-            </div>
-            <div class="midi-control-row">
-              <v-switch
-                v-model="useMidiOutput"
-                label="MIDI Output"
-                hide-details
-                density="compact"
-                inset
-                @update:modelValue="updateMidiMode"
-              />
-              <v-select
-                v-if="useMidiOutput"
-                v-model="selectedMidiDevice"
-                :items="midiDevices"
-                label="MIDI Device"
-                hide-details
-                density="compact"
-                variant="outlined"
-                class="midi-device-select"
-                @update:modelValue="updateMidiDevice"
-              />
-            </div>
+            <v-menu location="bottom end" :close-on-content-click="false">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  class="transport-actions-menu-btn"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-tune-variant"
+                  append-icon="mdi-chevron-down"
+                >
+                  Actions
+                </v-btn>
+              </template>
+              <v-list density="compact" class="transport-action-menu">
+                <v-list-item title="Copy URL" prepend-icon="mdi-link-variant" @click="copyURL" />
+                <v-list-item title="Download MIDI" prepend-icon="mdi-music-note" @click="downloadMIDI" />
+                <v-list-item
+                  :title="isExportingWav ? 'Rendering WAV...' : 'Download WAV'"
+                  prepend-icon="mdi-waveform"
+                  :disabled="isExportingWav"
+                  @click="downloadWAV"
+                />
+                <v-divider class="my-1" />
+                <v-list-subheader>MIDI</v-list-subheader>
+                <v-list-item class="midi-menu-item" :ripple="false">
+                  <template #prepend>
+                    <v-icon>mdi-midi-port</v-icon>
+                  </template>
+                  <template #default>
+                    <v-switch
+                      v-model="useMidiOutput"
+                      label="MIDI Output"
+                      hide-details
+                      density="compact"
+                      inset
+                      class="midi-menu-switch"
+                      @update:modelValue="updateMidiMode"
+                    />
+                  </template>
+                </v-list-item>
+                <v-list-item v-if="useMidiOutput" class="midi-menu-item" :ripple="false">
+                  <template #prepend>
+                    <v-icon>mdi-usb-port</v-icon>
+                  </template>
+                  <template #default>
+                    <v-select
+                      v-model="selectedMidiDevice"
+                      :items="midiDevices"
+                      label="MIDI Device"
+                      hide-details
+                      density="compact"
+                      variant="outlined"
+                      class="midi-menu-device-select"
+                      @update:modelValue="updateMidiDevice"
+                    />
+                  </template>
+                </v-list-item>
+              </v-list>
+            </v-menu>
           </div>
         </div>
 
         <div class="toolbar-panel preset-panel">
-          <div class="preset-row">
+          <div class="preset-inline-row">
             <v-select
               v-model="selectedPresetId"
               label="Preset"
@@ -108,8 +109,6 @@
               <v-icon size="16">{{ isDirty ? 'mdi-circle-edit-outline' : 'mdi-check-circle-outline' }}</v-icon>
               <span>{{ isDirty ? 'Unsaved changes' : 'Saved' }}</span>
             </div>
-          </div>
-          <div class="preset-actions-compact">
             <v-btn
               class="preset-rename-btn"
               color="info"
@@ -118,7 +117,7 @@
               @click="openRenamePresetDialog"
               :disabled="!currentPreset"
             >
-              Rename Preset
+              Rename
             </v-btn>
             <v-menu location="bottom end">
               <template #activator="{ props }">
@@ -145,6 +144,34 @@
           </div>
         </div>
 
+        <div class="toolbar-panel dependent-settings-panel">
+          <div class="dependent-settings-row">
+            <div class="forte-control-top">
+              <v-autocomplete
+                label="Forte number"
+                v-model="forte"
+                :items="allChords"
+                placeholder="Forte number..."
+                hide-details
+                density="compact"
+                variant="outlined"
+                prepend-inner-icon="mdi-piano"
+                @update:modelValue="handleDraftChange"
+              />
+            </div>
+            <div class="tempo-control">
+              <EditableSlider
+                :label="'Tempo (' + bpm + ' BPM)'"
+                :min="1"
+                :step="1"
+                :max="499"
+                v-model="bpm"
+                @update:modelValue="handleDraftChange"
+              />
+            </div>
+          </div>
+        </div>
+
         <div class="toolbar-panel track-strip-panel">
           <div class="track-strip">
             <v-select
@@ -160,8 +187,9 @@
               class="track-select"
               @update:modelValue="handleTrackSelection"
             />
-            <v-btn class="track-strip-btn" color="secondary" variant="tonal" @click="addTrack">Add Track</v-btn>
-            <v-btn class="track-strip-btn" color="error" variant="tonal" :disabled="tracks.length <= 1" @click="removeCurrentTrack">Remove Track</v-btn>
+            <v-btn class="track-strip-btn" color="secondary" variant="tonal" @click="addTrack">Add</v-btn>
+            <v-btn class="track-strip-btn" color="info" variant="tonal" :disabled="!currentTrack" @click="renameCurrentTrack">Rename</v-btn>
+            <v-btn class="track-strip-btn" color="error" variant="tonal" :disabled="tracks.length <= 1" @click="removeCurrentTrack">Remove</v-btn>
           </div>
         </div>
       </div>
@@ -178,17 +206,7 @@
 
       <v-responsive class="editor-surface align-center mx-auto pa-4 pb-8" max-width="980">
         <v-row>
-          <v-col cols="12" md="6">
-            <v-text-field
-              v-model="trackNameInput"
-              label="Track name"
-              hide-details="auto"
-              density="comfortable"
-              variant="outlined"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-          <v-col cols="12" md="6">
+          <v-col cols="12">
             <v-select
               v-model="trackWaveform"
               label="Waveform"
@@ -508,7 +526,6 @@ export default defineComponent({
       forte: initialState.draft.forte,
       tracks: initialState.draft.tracks.map((track) => clonePresetTrackData(track)) as PresetTrackData[],
       selectedTrackId: initialState.selectedTrackId as string | null,
-      trackNameInput: firstTrack.name,
       trackNumerator: firstTrack.numerator,
       trackDenominator: firstTrack.denominator,
       trackWaveform: firstTrack.waveform,
@@ -665,7 +682,6 @@ export default defineComponent({
         return;
       }
 
-      this.trackNameInput = track.name;
       this.trackNumerator = track.numerator;
       this.trackDenominator = track.denominator;
       this.trackWaveform = track.waveform;
@@ -685,7 +701,7 @@ export default defineComponent({
 
       const normalizedTrack = normalizePresetTrackData({
         id: currentTrack.id,
-        name: sanitizeTrackName(this.trackNameInput),
+        name: currentTrack.name,
         numerator: this.trackNumerator,
         denominator: this.trackDenominator,
         waveform: this.trackWaveform,
@@ -769,6 +785,26 @@ export default defineComponent({
       this.tracks = nextTracks;
       this.selectedTrackId = nextTracks[0]?.id ?? null;
       this.syncTrackEditorFromCurrent();
+      this.handleDraftChange();
+    },
+    renameCurrentTrack() {
+      const currentTrack = this.currentTrack;
+      if (!currentTrack) {
+        return;
+      }
+
+      const suggestedName = this.buildUniqueTrackName(currentTrack.name, currentTrack.id);
+      const requestedName = window.prompt(`Rename track "${currentTrack.name}"`, suggestedName);
+      if (requestedName === null) {
+        return;
+      }
+
+      const nextName = this.buildUniqueTrackName(requestedName, currentTrack.id);
+      if (nextName === currentTrack.name) {
+        return;
+      }
+
+      this.tracks = this.tracks.map((track) => track.id === currentTrack.id ? { ...track, name: nextName } : track);
       this.handleDraftChange();
     },
     handleTrackDraftChange() {
@@ -1712,8 +1748,9 @@ export default defineComponent({
 
 .transport-actions {
   margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
   gap: 8px;
 }
 
@@ -1722,19 +1759,36 @@ export default defineComponent({
   font-weight: 700;
 }
 
-.transport-btn {
-  min-width: 104px;
+.transport-actions-menu-btn {
+  min-width: 132px;
+}
+
+.transport-action-menu {
+  min-width: 220px;
+  border: 1px solid rgba(139, 213, 231, 0.3);
+  background: rgba(4, 12, 17, 0.96);
+}
+
+.midi-menu-item {
+  align-items: flex-start;
+}
+
+.midi-menu-switch {
+  margin-top: 0;
+}
+
+.midi-menu-device-select {
+  min-width: 220px;
 }
 
 .forte-control-top {
-  margin-top: 8px;
-  max-width: 460px;
+  min-width: 0;
 }
 
-.tempo-midi-row {
+.dependent-settings-row {
   margin-top: 8px;
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.25fr);
   gap: 10px;
   align-items: center;
 }
@@ -1743,24 +1797,16 @@ export default defineComponent({
   min-width: 0;
 }
 
-.midi-control-row {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+.preset-panel {
+  overflow-x: auto;
 }
 
-.midi-device-select {
-  min-width: 200px;
-  max-width: 260px;
-}
-
-.preset-row {
+.preset-inline-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(260px, 1fr) auto auto auto;
+  gap: 8px;
   align-items: center;
+  min-width: 760px;
 }
 
 .preset-state-pill {
@@ -1785,15 +1831,6 @@ export default defineComponent({
   background: rgba(47, 27, 8, 0.56);
 }
 
-.preset-actions-compact {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: end;
-  align-items: center;
-  gap: 8px;
-}
-
 .preset-rename-btn {
   min-width: 136px;
 }
@@ -1810,7 +1847,7 @@ export default defineComponent({
 
 .track-strip {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -1897,24 +1934,12 @@ export default defineComponent({
     top: 8px;
   }
 
-  .tempo-midi-row {
-    grid-template-columns: 1fr;
+  .dependent-settings-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .midi-control-row {
-    justify-content: flex-start;
-  }
-
-  .preset-row {
-    grid-template-columns: 1fr;
-  }
-
-  .preset-actions-compact {
-    justify-content: start;
-  }
-
-  .preset-menu-btn {
-    grid-column: auto;
+  .preset-inline-row {
+    min-width: 700px;
   }
 }
 
@@ -1943,29 +1968,23 @@ export default defineComponent({
   }
 
   .transport-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px;
   }
 
-  .forte-control-top {
-    max-width: 100%;
+  .dependent-settings-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
-  .transport-play-btn {
-    grid-column: 1 / -1;
-  }
-
-  .transport-btn,
-  .track-strip-btn,
-  .preset-rename-btn,
-  .preset-menu-btn {
+  .transport-actions-menu-btn,
+  .track-strip-btn {
     width: 100%;
     min-width: 0;
   }
 
-  .preset-actions-compact {
-    grid-template-columns: 1fr;
+  .preset-inline-row {
+    min-width: 640px;
   }
 
   .track-strip {
