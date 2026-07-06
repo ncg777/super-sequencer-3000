@@ -2045,6 +2045,24 @@ export default defineComponent({
     grid-template-columns: 1fr;
   }
 
+  .compact-row {
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
+    touch-action: pan-y;
+  }
+
+  .compact-row :deep(.v-col) {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .compact-row :deep(.v-slider) {
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+
   .editor-surface {
     border-radius: 14px;
     padding: 12px !important;
