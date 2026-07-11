@@ -43,7 +43,6 @@
                 </v-btn>
               </template>
               <v-list density="compact" class="transport-action-menu">
-                <v-list-item title="Copy URL" prepend-icon="mdi-link-variant" @click="copyURL" />
                 <v-list-item title="Download MIDI" prepend-icon="mdi-music-note" @click="downloadMIDI" />
                 <v-list-item
                   :title="isExportingWav ? 'Rendering WAV...' : 'Download WAV'"
@@ -1973,11 +1972,6 @@ export default defineComponent({
       } else {
         this.startSequencer();
       }
-    },
-    async copyURL() {
-      const track = this.currentTrack ?? this.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
-      await navigator.clipboard.writeText(encodeURI(`https://ncg777.github.io/gaterunner/?bpm=${this.bpm}&numerator=${track.numerator}&denominator=${track.denominator}&waveform=${track.waveform}&octave=${track.octave}&forte=${this.forte}&lengthFactor=${track.lengthFactor}&delay=${track.delay}&repeats=${track.repeats}&sequence=${track.sequenceInput}`));
-      window.alert("URL copied to clipboard.");
     },
     stopTrackLoops() {
       for (const loop of Object.values(this.trackLoops)) {
