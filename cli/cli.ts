@@ -50,7 +50,7 @@ program
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
   .option('--delay <number>', 'Legacy single-track delay in bars (0-64)', '0')
   .option('--repeats <number>', 'Legacy single-track number of pattern repetitions (1-64)', '1')
-  .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echo, and reverb send controls', parseTracksJson)
+  .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echoDelay notation (1/1..1/16T), and reverb send controls', parseTracksJson)
   .option('--reverb <json>', 'JSON object with global reverb enabled, decay, preDelay, wet, lowCut, highCut', parseReverbJson)
   .action(async (options) => {
     try {

@@ -42,12 +42,34 @@ export interface GenerateTrackOptions {
   filterGain?: number;
   filterKeyFollow?: number;
   echoEnabled?: boolean;
-  echoDelay?: number;
+  echoDelay?: EchoDelayValue | number;
   echoFeedback?: number;
   echoWet?: number;
   echoPingPong?: boolean;
   reverbWet?: number;
 }
+
+type EchoDelayValue = typeof ECHO_DELAY_OPTIONS[number];
+
+const ECHO_DELAY_OPTIONS = [
+  '1/1',
+  '1/1D',
+  '1/1T',
+  '1/2',
+  '1/2D',
+  '1/2T',
+  '1/4',
+  '1/4D',
+  '1/4T',
+  '1/8',
+  '1/8D',
+  '1/8T',
+  '1/16',
+  '1/16D',
+  '1/16T',
+] as const;
+
+const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 
 export interface GenerateReverbOptions {
   enabled?: boolean;
@@ -107,6 +129,34 @@ interface PreparedRenderData {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function normalizeEchoDelay(value: EchoDelayValue | number | undefined, fallback: EchoDelayValue | number): EchoDelayValue | number {
+  if (typeof value === 'string' && ECHO_DELAY_VALUES.has(value)) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return clamp(value, 0.01, 4);
+  }
+  return fallback;
+}
+
+function getEchoDelaySeconds(bpm: number, delay: EchoDelayValue | number): number {
+  if (typeof delay === 'number') {
+    return delay;
+  }
+
+  const match = delay.match(/^1\/(\d+)([DT])?$/);
+  if (!match) {
+    return 60 / bpm;
+  }
+
+  const denominator = Number.parseInt(match[1], 10);
+  const modifier = match[2];
+  const quarterNoteSeconds = 60 / bpm;
+  const wholeNoteSeconds = quarterNoteSeconds * 4;
+  const modifierRatio = modifier === 'D' ? 1.5 : modifier === 'T' ? 2 / 3 : 1;
+  return (wholeNoteSeconds / denominator) * modifierRatio;
 }
 
 function getLoopDurationSecondsFromTrackLengths(prepared: PreparedRenderData): number {
@@ -178,7 +228,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     filterGain: 0,
     filterKeyFollow: 0,
     echoEnabled: false,
-    echoDelay: 0.25,
+    echoDelay: '1/4',
     echoFeedback: 0.25,
     echoWet: 0.25,
     echoPingPong: true,
@@ -219,7 +269,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     filterGain: clamp(track.filterGain ?? fallbackTrack.filterGain, -48, 48),
     filterKeyFollow: clamp(track.filterKeyFollow ?? fallbackTrack.filterKeyFollow, -200, 200),
     echoEnabled: Boolean(track.echoEnabled ?? fallbackTrack.echoEnabled),
-    echoDelay: clamp(track.echoDelay ?? fallbackTrack.echoDelay, 0.01, 4),
+    echoDelay: normalizeEchoDelay(track.echoDelay, fallbackTrack.echoDelay),
     echoFeedback: clamp(track.echoFeedback ?? fallbackTrack.echoFeedback, 0, 0.95),
     echoWet: clamp(track.echoWet ?? fallbackTrack.echoWet, 0, 1),
     echoPingPong: Boolean(track.echoPingPong ?? fallbackTrack.echoPingPong),
@@ -315,9 +365,12 @@ function getRenderTrailSeconds(prepared: PreparedRenderData): number {
   const releaseTrail = Math.max(0, ...prepared.tracks.map((entry) => entry.track.release));
   const echoTrail = Math.max(
     0,
-    ...prepared.tracks.map((entry) => entry.track.echoEnabled ? entry.track.echoDelay * (1 + entry.track.echoFeedback * 8) : 0),
+    ...prepared.tracks.map((entry) => entry.track.echoEnabled ? getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay) * (1 + entry.track.echoFeedback * 8) : 0),
   );
-  const reverbTrail = prepared.reverb.enabled ? prepared.reverb.preDelay + prepared.reverb.decay : 0;
+  const hasReverbSend = prepared.reverb.enabled
+    && prepared.reverb.wet > 0
+    && prepared.tracks.some((entry) => entry.track.reverbWet > 0);
+  const reverbTrail = hasReverbSend ? prepared.reverb.preDelay + prepared.reverb.decay : 0;
   return Math.max(2, releaseTrail, echoTrail, reverbTrail);
 }
 
@@ -363,12 +416,12 @@ function applySimpleFilter(sample: number, state: { low: number; high: number; b
   }
 }
 
-function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: NormalizedTrack, sampleRate: number): void {
+function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: NormalizedTrack, sampleRate: number, delaySeconds: number): void {
   if (!track.echoEnabled || track.echoWet <= 0) {
     return;
   }
 
-  const delayFrames = Math.max(1, Math.round(track.echoDelay * sampleRate));
+  const delayFrames = Math.max(1, Math.round(delaySeconds * sampleRate));
   for (let frame = delayFrames; frame < left.length; frame += 1) {
     const echoLeft = (track.echoPingPong ? right[frame - delayFrames] : left[frame - delayFrames]) * track.echoFeedback;
     const echoRight = (track.echoPingPong ? left[frame - delayFrames] : right[frame - delayFrames]) * track.echoFeedback;
@@ -536,8 +589,11 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const frameCount = Math.ceil(renderDuration * sampleRate);
   const left = new Float32Array(frameCount);
   const right = new Float32Array(frameCount);
-  const reverbLeft = new Float32Array(frameCount);
-  const reverbRight = new Float32Array(frameCount);
+  const hasReverbSend = prepared.reverb.enabled
+    && prepared.reverb.wet > 0
+    && prepared.tracks.some((entry) => entry.track.reverbWet > 0);
+  const reverbLeft = hasReverbSend ? new Float32Array(frameCount) : null;
+  const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
 
   for (const entry of prepared.tracks) {
     if (entry.actualNotes.length === 0) {
@@ -627,16 +683,23 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
       }
     }
 
-    applyFeedbackEcho(trackLeft, trackRight, entry.track, sampleRate);
+    applyFeedbackEcho(trackLeft, trackRight, entry.track, sampleRate, getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay));
+    const sendWet = hasReverbSend ? entry.track.reverbWet : 0;
     for (let frame = 0; frame < frameCount; frame += 1) {
-      left[frame] += trackLeft[frame];
-      right[frame] += trackRight[frame];
-      reverbLeft[frame] += trackLeft[frame] * entry.track.reverbWet;
-      reverbRight[frame] += trackRight[frame] * entry.track.reverbWet;
+      const trackLeftSample = trackLeft[frame];
+      const trackRightSample = trackRight[frame];
+      left[frame] += trackLeftSample;
+      right[frame] += trackRightSample;
+      if (reverbLeft && reverbRight && sendWet > 0) {
+        reverbLeft[frame] += trackLeftSample * sendWet;
+        reverbRight[frame] += trackRightSample * sendWet;
+      }
     }
   }
 
-  applyReverbSend(left, right, reverbLeft, reverbRight, prepared.reverb, sampleRate);
+  if (reverbLeft && reverbRight) {
+    applyReverbSend(left, right, reverbLeft, reverbRight, prepared.reverb, sampleRate);
+  }
 
   for (let i = 0; i < frameCount; i += 1) {
     left[i] = clamp(left[i], -1, 1);

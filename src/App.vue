@@ -465,7 +465,7 @@
         </v-row>
         <v-row class="compact-row">
           <v-col cols="12" md="4">
-            <EditableSlider :label="'Echo Delay (' + Number(trackEchoDelay).toFixed(2) + 's)'" :min="0.01" :max="4" :step="0.01" v-model="trackEchoDelay" @update:modelValue="handleTrackDraftChange" />
+            <v-select v-model="trackEchoDelay" label="Echo Delay" :items="echoDelayOptions" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
           </v-col>
           <v-col cols="12" md="4">
             <EditableSlider :label="'Echo Feedback (' + Number(trackEchoFeedback).toFixed(2) + ')'" :min="0" :max="0.95" :step="0.01" v-model="trackEchoFeedback" @update:modelValue="handleTrackDraftChange" />
@@ -650,6 +650,7 @@ import { PCS12 } from 'ultra-mega-enumerator';
 import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
+  ECHO_DELAY_OPTIONS,
   arePresetDataEqual,
   buildDraftFromUrl,
   buildPresetLibraryExport,
@@ -669,6 +670,7 @@ import {
   savePresetLibrary,
   updatePresetData,
   type NamedPreset,
+  type EchoDelayValue,
   type PresetData,
   type PresetLibrary,
   type PresetTrackData,
@@ -752,6 +754,7 @@ export default defineComponent({
       trackFilterKeyFollow: firstTrack.filterKeyFollow,
       trackEchoEnabled: firstTrack.echoEnabled,
       trackEchoDelay: firstTrack.echoDelay,
+      echoDelayOptions: ECHO_DELAY_OPTIONS,
       trackEchoFeedback: firstTrack.echoFeedback,
       trackEchoWet: firstTrack.echoWet,
       trackEchoPingPong: firstTrack.echoPingPong,
@@ -1197,10 +1200,11 @@ export default defineComponent({
     getRenderDurationSeconds(): number {
       const echoTrail = Math.max(
         0,
-        ...this.tracks.map((track) => track.echoEnabled ? track.echoDelay * (1 + track.echoFeedback * 8) : 0),
+        ...this.tracks.map((track) => track.echoEnabled ? this.getEchoDelaySeconds(track.echoDelay) * (1 + track.echoFeedback * 8) : 0),
       );
       const releaseTrail = Math.max(0, ...this.tracks.map((track) => track.release));
-      const reverbTrail = this.reverbEnabled ? this.reverbPreDelay + this.reverbDecay : 0;
+      const hasReverbSend = this.reverbEnabled && this.reverbWet > 0 && this.tracks.some((track) => track.reverbWet > 0);
+      const reverbTrail = hasReverbSend ? this.reverbPreDelay + this.reverbDecay : 0;
       return this.getLoopDurationSecondsFromTrackLengths() + Math.max(2, releaseTrail, echoTrail, reverbTrail);
     },
     async renderMixWav(): Promise<Uint8Array> {
@@ -1774,6 +1778,19 @@ export default defineComponent({
       const followed = track.filterFrequency * Math.pow(noteFrequency / 440, track.filterKeyFollow / 100);
       return Math.max(20, Math.min(20000, followed));
     },
+    getEchoDelaySeconds(delay: EchoDelayValue): number {
+      const match = delay.match(/^1\/(\d+)([DT])?$/);
+      if (!match) {
+        return 60 / this.bpm;
+      }
+
+      const denominator = Number.parseInt(match[1], 10);
+      const modifier = match[2];
+      const quarterNoteSeconds = 60 / this.bpm;
+      const wholeNoteSeconds = quarterNoteSeconds * 4;
+      const modifierRatio = modifier === 'D' ? 1.5 : modifier === 'T' ? 2 / 3 : 1;
+      return (wholeNoteSeconds / denominator) * modifierRatio;
+    },
     disposeTrackChain(chain: TrackAudioChain) {
       chain.synth.dispose();
       chain.filter.dispose();
@@ -1832,7 +1849,7 @@ export default defineComponent({
         wet: track.vibratoEnabled ? 1 : 0,
       });
       chain.echo.set({
-        delayTime: track.echoDelay,
+        delayTime: this.getEchoDelaySeconds(track.echoDelay),
         feedback: track.echoFeedback,
         wet: track.echoEnabled ? track.echoWet : 0,
       });

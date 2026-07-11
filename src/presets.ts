@@ -30,12 +30,32 @@ export interface PresetTrackData {
   filterGain: number;
   filterKeyFollow: number;
   echoEnabled: boolean;
-  echoDelay: number;
+  echoDelay: EchoDelayValue;
   echoFeedback: number;
   echoWet: number;
   echoPingPong: boolean;
   reverbWet: number;
 }
+
+export type EchoDelayValue = typeof ECHO_DELAY_OPTIONS[number];
+
+export const ECHO_DELAY_OPTIONS = [
+  '1/1',
+  '1/1D',
+  '1/1T',
+  '1/2',
+  '1/2D',
+  '1/2T',
+  '1/4',
+  '1/4D',
+  '1/4T',
+  '1/8',
+  '1/8D',
+  '1/8T',
+  '1/16',
+  '1/16D',
+  '1/16T',
+] as const;
 
 export interface PresetReverbData {
   enabled: boolean;
@@ -123,7 +143,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   filterGain: 0,
   filterKeyFollow: 0,
   echoEnabled: false,
-  echoDelay: 0.25,
+  echoDelay: '1/4',
   echoFeedback: 0.25,
   echoWet: 0.25,
   echoPingPong: true,
@@ -159,6 +179,7 @@ const LEGACY_KEYS = {
 const WAVEFORMS = new Set(['sine', 'square', 'triangle', 'sawtooth']);
 const FILTER_TYPES = new Set(['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']);
 const FILTER_ROLLOFFS = new Set([-12, -24, -48, -96]);
+const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 
 type LegacyTrackFields = {
   numerator?: number;
@@ -228,6 +249,10 @@ function normalizeFilterType(value: unknown): PresetTrackData['filterType'] {
 function normalizeFilterRolloff(value: unknown): PresetTrackData['filterRolloff'] {
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   return FILTER_ROLLOFFS.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.filterRolloff;
+}
+
+function normalizeEchoDelay(value: unknown): EchoDelayValue {
+  return typeof value === 'string' && ECHO_DELAY_VALUES.has(value) ? value as EchoDelayValue : DEFAULT_PRESET_TRACK_DATA.echoDelay;
 }
 
 export function clonePresetReverbData(reverb: PresetReverbData): PresetReverbData {
@@ -336,7 +361,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     filterGain: clamp(parseNumber(raw.filterGain, DEFAULT_PRESET_TRACK_DATA.filterGain), -48, 48),
     filterKeyFollow: clamp(parseNumber(raw.filterKeyFollow, DEFAULT_PRESET_TRACK_DATA.filterKeyFollow), -200, 200),
     echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
-    echoDelay: clamp(parseNumber(raw.echoDelay, DEFAULT_PRESET_TRACK_DATA.echoDelay), 0.01, 4),
+    echoDelay: normalizeEchoDelay(raw.echoDelay),
     echoFeedback: clamp(parseNumber(raw.echoFeedback, DEFAULT_PRESET_TRACK_DATA.echoFeedback), 0, 0.95),
     echoWet: clamp(parseNumber(raw.echoWet, DEFAULT_PRESET_TRACK_DATA.echoWet), 0, 1),
     echoPingPong: Boolean(raw.echoPingPong ?? DEFAULT_PRESET_TRACK_DATA.echoPingPong),
