@@ -11,12 +11,66 @@ export interface PresetTrackData {
   gain: number;
   delay: number;
   repeats: number;
+  attack: number;
+  release: number;
+  unisonVoices: number;
+  unisonDetune: number;
+  tremoloEnabled: boolean;
+  tremoloFrequency: number;
+  tremoloDepth: number;
+  tremoloSpread: number;
+  vibratoEnabled: boolean;
+  vibratoFrequency: number;
+  vibratoDepth: number;
+  filterEnabled: boolean;
+  filterType: string;
+  filterFrequency: number;
+  filterRolloff: number;
+  filterQ: number;
+  filterGain: number;
+  filterKeyFollow: number;
+  echoEnabled: boolean;
+  echoDelay: EchoDelayValue;
+  echoFeedback: number;
+  echoWet: number;
+  echoPingPong: boolean;
+  reverbWet: number;
+}
+
+export type EchoDelayValue = typeof ECHO_DELAY_OPTIONS[number];
+
+export const ECHO_DELAY_OPTIONS = [
+  '1/1',
+  '1/1D',
+  '1/1T',
+  '1/2',
+  '1/2D',
+  '1/2T',
+  '1/4',
+  '1/4D',
+  '1/4T',
+  '1/8',
+  '1/8D',
+  '1/8T',
+  '1/16',
+  '1/16D',
+  '1/16T',
+] as const;
+
+export interface PresetReverbData {
+  enabled: boolean;
+  decay: number;
+  preDelay: number;
+  wet: number;
+  lowCut: number;
+  highCut: number;
 }
 
 export interface PresetData {
   bpm: number;
   forte: string;
   tracks: PresetTrackData[];
+  reverb: PresetReverbData;
 }
 
 export interface NamedPreset {
@@ -70,12 +124,44 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   gain: 1,
   delay: 0,
   repeats: 1,
+  attack: 0.01,
+  release: 0.12,
+  unisonVoices: 1,
+  unisonDetune: 12,
+  tremoloEnabled: false,
+  tremoloFrequency: 5,
+  tremoloDepth: 0.35,
+  tremoloSpread: 180,
+  vibratoEnabled: false,
+  vibratoFrequency: 5,
+  vibratoDepth: 0.08,
+  filterEnabled: false,
+  filterType: 'lowpass',
+  filterFrequency: 12000,
+  filterRolloff: -24,
+  filterQ: 1,
+  filterGain: 0,
+  filterKeyFollow: 0,
+  echoEnabled: false,
+  echoDelay: '1/4',
+  echoFeedback: 0.25,
+  echoWet: 0.25,
+  echoPingPong: true,
+  reverbWet: 0.2,
 };
 
 export const DEFAULT_PRESET_DATA: PresetData = {
   bpm: 90,
   forte: '5-35.05',
   tracks: [DEFAULT_PRESET_TRACK_DATA],
+  reverb: {
+  enabled: true,
+  decay: 3,
+  preDelay: 0.02,
+  wet: 0.45,
+  lowCut: 120,
+  highCut: 12000,
+  },
 };
 
 const STORAGE_KEY = 'ss3k_preset_library_v1';
@@ -91,6 +177,9 @@ const LEGACY_KEYS = {
 } as const;
 
 const WAVEFORMS = new Set(['sine', 'square', 'triangle', 'sawtooth']);
+const FILTER_TYPES = new Set(['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']);
+const FILTER_ROLLOFFS = new Set([-12, -24, -48, -96]);
+const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 
 type LegacyTrackFields = {
   numerator?: number;
@@ -153,6 +242,42 @@ function normalizeWaveform(value: unknown): PresetTrackData['waveform'] {
   return typeof value === 'string' && WAVEFORMS.has(value) ? value : DEFAULT_PRESET_TRACK_DATA.waveform;
 }
 
+function normalizeFilterType(value: unknown): PresetTrackData['filterType'] {
+  return typeof value === 'string' && FILTER_TYPES.has(value) ? value : DEFAULT_PRESET_TRACK_DATA.filterType;
+}
+
+function normalizeFilterRolloff(value: unknown): PresetTrackData['filterRolloff'] {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  return FILTER_ROLLOFFS.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.filterRolloff;
+}
+
+function normalizeEchoDelay(value: unknown): EchoDelayValue {
+  return typeof value === 'string' && ECHO_DELAY_VALUES.has(value) ? value as EchoDelayValue : DEFAULT_PRESET_TRACK_DATA.echoDelay;
+}
+
+export function clonePresetReverbData(reverb: PresetReverbData): PresetReverbData {
+  return {
+    enabled: reverb.enabled,
+    decay: reverb.decay,
+    preDelay: reverb.preDelay,
+    wet: reverb.wet,
+    lowCut: reverb.lowCut,
+    highCut: reverb.highCut,
+  };
+}
+
+export function normalizePresetReverbData(value: unknown): PresetReverbData {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<PresetReverbData>;
+  return {
+    enabled: raw.enabled ?? DEFAULT_PRESET_DATA.reverb.enabled,
+    decay: clamp(parseNumber(raw.decay, DEFAULT_PRESET_DATA.reverb.decay), 0.1, 30),
+    preDelay: clamp(parseNumber(raw.preDelay, DEFAULT_PRESET_DATA.reverb.preDelay), 0, 1),
+    wet: clamp(parseNumber(raw.wet, DEFAULT_PRESET_DATA.reverb.wet), 0, 1),
+    lowCut: clamp(parseNumber(raw.lowCut, DEFAULT_PRESET_DATA.reverb.lowCut), 20, 20000),
+    highCut: clamp(parseNumber(raw.highCut, DEFAULT_PRESET_DATA.reverb.highCut), 20, 20000),
+  };
+}
+
 export function sanitizeTrackName(name: string | null | undefined, fallbackIndex = 0): string {
   const trimmed = name?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : `Track ${fallbackIndex + 1}`;
@@ -172,6 +297,30 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     gain: track.gain,
     delay: track.delay,
     repeats: track.repeats,
+    attack: track.attack,
+    release: track.release,
+    unisonVoices: track.unisonVoices,
+    unisonDetune: track.unisonDetune,
+    tremoloEnabled: track.tremoloEnabled,
+    tremoloFrequency: track.tremoloFrequency,
+    tremoloDepth: track.tremoloDepth,
+    tremoloSpread: track.tremoloSpread,
+    vibratoEnabled: track.vibratoEnabled,
+    vibratoFrequency: track.vibratoFrequency,
+    vibratoDepth: track.vibratoDepth,
+    filterEnabled: track.filterEnabled,
+    filterType: track.filterType,
+    filterFrequency: track.filterFrequency,
+    filterRolloff: track.filterRolloff,
+    filterQ: track.filterQ,
+    filterGain: track.filterGain,
+    filterKeyFollow: track.filterKeyFollow,
+    echoEnabled: track.echoEnabled,
+    echoDelay: track.echoDelay,
+    echoFeedback: track.echoFeedback,
+    echoWet: track.echoWet,
+    echoPingPong: track.echoPingPong,
+    reverbWet: track.reverbWet,
   };
 }
 
@@ -193,6 +342,30 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), 0, 4),
     delay: clamp(parseInteger(raw.delay?.toString(), DEFAULT_PRESET_TRACK_DATA.delay), 0, 64),
     repeats: clamp(parseInteger(raw.repeats?.toString(), DEFAULT_PRESET_TRACK_DATA.repeats), 1, 64),
+    attack: clamp(parseNumber(raw.attack, DEFAULT_PRESET_TRACK_DATA.attack), 0, 10),
+    release: clamp(parseNumber(raw.release, DEFAULT_PRESET_TRACK_DATA.release), 0, 20),
+    unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
+    unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
+    tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
+    tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
+    tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
+    tremoloSpread: clamp(parseNumber(raw.tremoloSpread, DEFAULT_PRESET_TRACK_DATA.tremoloSpread), 0, 360),
+    vibratoEnabled: Boolean(raw.vibratoEnabled ?? DEFAULT_PRESET_TRACK_DATA.vibratoEnabled),
+    vibratoFrequency: clamp(parseNumber(raw.vibratoFrequency, DEFAULT_PRESET_TRACK_DATA.vibratoFrequency), 0.01, 40),
+    vibratoDepth: clamp(parseNumber(raw.vibratoDepth, DEFAULT_PRESET_TRACK_DATA.vibratoDepth), 0, 1),
+    filterEnabled: Boolean(raw.filterEnabled ?? DEFAULT_PRESET_TRACK_DATA.filterEnabled),
+    filterType: normalizeFilterType(raw.filterType),
+    filterFrequency: clamp(parseNumber(raw.filterFrequency, DEFAULT_PRESET_TRACK_DATA.filterFrequency), 20, 20000),
+    filterRolloff: normalizeFilterRolloff(raw.filterRolloff),
+    filterQ: clamp(parseNumber(raw.filterQ, DEFAULT_PRESET_TRACK_DATA.filterQ), 0.0001, 30),
+    filterGain: clamp(parseNumber(raw.filterGain, DEFAULT_PRESET_TRACK_DATA.filterGain), -48, 48),
+    filterKeyFollow: clamp(parseNumber(raw.filterKeyFollow, DEFAULT_PRESET_TRACK_DATA.filterKeyFollow), -200, 200),
+    echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
+    echoDelay: normalizeEchoDelay(raw.echoDelay),
+    echoFeedback: clamp(parseNumber(raw.echoFeedback, DEFAULT_PRESET_TRACK_DATA.echoFeedback), 0, 0.95),
+    echoWet: clamp(parseNumber(raw.echoWet, DEFAULT_PRESET_TRACK_DATA.echoWet), 0, 1),
+    echoPingPong: Boolean(raw.echoPingPong ?? DEFAULT_PRESET_TRACK_DATA.echoPingPong),
+    reverbWet: clamp(parseNumber(raw.reverbWet, DEFAULT_PRESET_TRACK_DATA.reverbWet), 0, 1),
   };
 }
 
@@ -218,6 +391,7 @@ export function clonePresetData(data: PresetData): PresetData {
     bpm: data.bpm,
     forte: data.forte,
     tracks: data.tracks.map((track) => clonePresetTrackData(track)),
+    reverb: clonePresetReverbData(data.reverb),
   };
 }
 
@@ -241,13 +415,20 @@ export function normalizePresetData(value: unknown): PresetData {
     bpm: clamp(parseInteger(raw.bpm?.toString(), DEFAULT_PRESET_DATA.bpm), 1, 499),
     forte: typeof raw.forte === 'string' && raw.forte.trim().length > 0 ? raw.forte : DEFAULT_PRESET_DATA.forte,
     tracks: tracks.length > 0 ? tracks : [normalizeLegacyTrack(raw)],
+    reverb: normalizePresetReverbData(raw.reverb),
   };
 }
 
 export function arePresetDataEqual(left: PresetData, right: PresetData): boolean {
   if (left.bpm !== right.bpm
     || left.forte !== right.forte
-    || left.tracks.length !== right.tracks.length) {
+    || left.tracks.length !== right.tracks.length
+    || left.reverb.enabled !== right.reverb.enabled
+    || left.reverb.decay !== right.reverb.decay
+    || left.reverb.preDelay !== right.reverb.preDelay
+    || left.reverb.wet !== right.reverb.wet
+    || left.reverb.lowCut !== right.reverb.lowCut
+    || left.reverb.highCut !== right.reverb.highCut) {
     return false;
   }
 
@@ -265,7 +446,31 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.midiChannel !== rightTrack.midiChannel
       || leftTrack.gain !== rightTrack.gain
       || leftTrack.delay !== rightTrack.delay
-      || leftTrack.repeats !== rightTrack.repeats) {
+      || leftTrack.repeats !== rightTrack.repeats
+      || leftTrack.attack !== rightTrack.attack
+      || leftTrack.release !== rightTrack.release
+      || leftTrack.unisonVoices !== rightTrack.unisonVoices
+      || leftTrack.unisonDetune !== rightTrack.unisonDetune
+      || leftTrack.tremoloEnabled !== rightTrack.tremoloEnabled
+      || leftTrack.tremoloFrequency !== rightTrack.tremoloFrequency
+      || leftTrack.tremoloDepth !== rightTrack.tremoloDepth
+      || leftTrack.tremoloSpread !== rightTrack.tremoloSpread
+      || leftTrack.vibratoEnabled !== rightTrack.vibratoEnabled
+      || leftTrack.vibratoFrequency !== rightTrack.vibratoFrequency
+      || leftTrack.vibratoDepth !== rightTrack.vibratoDepth
+      || leftTrack.filterEnabled !== rightTrack.filterEnabled
+      || leftTrack.filterType !== rightTrack.filterType
+      || leftTrack.filterFrequency !== rightTrack.filterFrequency
+      || leftTrack.filterRolloff !== rightTrack.filterRolloff
+      || leftTrack.filterQ !== rightTrack.filterQ
+      || leftTrack.filterGain !== rightTrack.filterGain
+      || leftTrack.filterKeyFollow !== rightTrack.filterKeyFollow
+      || leftTrack.echoEnabled !== rightTrack.echoEnabled
+      || leftTrack.echoDelay !== rightTrack.echoDelay
+      || leftTrack.echoFeedback !== rightTrack.echoFeedback
+      || leftTrack.echoWet !== rightTrack.echoWet
+      || leftTrack.echoPingPong !== rightTrack.echoPingPong
+      || leftTrack.reverbWet !== rightTrack.reverbWet) {
       return false;
     }
   }
