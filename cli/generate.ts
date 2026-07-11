@@ -19,8 +19,10 @@ export interface GenerateTrackOptions {
   lengthFactor?: number;
   /** MIDI channel (1-16). */
   midiChannel?: number;
-  /** Velocity multiplier (0-4), clamped to 1 after velocity math. */
+  /** Audio level in dB (-96 to +24). */
   gain?: number;
+  /** Velocity multiplier (0-4), clamped to 1 after velocity math. */
+  velocityMultiplier?: number;
   /** Number of bars to wait before the track starts (0-64). */
   delay?: number;
   /** Number of repetitions of the pattern (1-64). */
@@ -37,6 +39,7 @@ export interface GenerateTrackOptions {
   vibratoDepth?: number;
   filterEnabled?: boolean;
   filterType?: string;
+  /** Filter cutoff as a MIDI note pitch (0-127). */
   filterFrequency?: number;
   filterQ?: number;
   filterGain?: number;
@@ -44,8 +47,10 @@ export interface GenerateTrackOptions {
   echoEnabled?: boolean;
   echoDelay?: EchoDelayValue | number;
   echoFeedback?: number;
+  /** Echo level in dB (-96 to 0). */
   echoWet?: number;
   echoPingPong?: boolean;
+  /** Reverb send level in dB (-96 to 0). */
   reverbWet?: number;
 }
 
@@ -75,8 +80,11 @@ export interface GenerateReverbOptions {
   enabled?: boolean;
   decay?: number;
   preDelay?: number;
+  /** Reverb level in dB (-96 to 0). */
   wet?: number;
+  /** Reverb high-pass cutoff as a MIDI note pitch (0-127). */
   lowCut?: number;
+  /** Reverb low-pass cutoff as a MIDI note pitch (0-127). */
   highCut?: number;
 }
 
@@ -97,7 +105,7 @@ export interface GenerateOptions {
   lengthFactor?: number;
   /** Legacy single-track midi channel used when tracks is omitted. */
   midiChannel?: number;
-  /** Legacy single-track gain used when tracks is omitted. */
+  /** Legacy single-track audio gain in dB used when tracks is omitted. */
   gain?: number;
   /** Legacy single-track waveform metadata used when tracks is omitted. */
   waveform?: string;
@@ -208,7 +216,8 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     octave: clamp(options.octave ?? 6, 0, 10),
     lengthFactor: clamp(options.lengthFactor ?? 100, 1, 400),
     midiChannel: clamp(options.midiChannel ?? 1, 1, 16),
-    gain: clamp(options.gain ?? 1, 0, 4),
+    gain: clamp(options.gain ?? 0, -96, 24),
+    velocityMultiplier: 1,
     delay: clamp(options.delay ?? 0, 0, 64),
     repeats: clamp(options.repeats ?? 1, 1, 64),
     attack: 0.01,
@@ -223,16 +232,16 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     vibratoDepth: 0.08,
     filterEnabled: false,
     filterType: 'lowpass',
-    filterFrequency: 12000,
+    filterFrequency: 119,
     filterQ: 1,
     filterGain: 0,
     filterKeyFollow: 0,
     echoEnabled: false,
     echoDelay: '1/4',
     echoFeedback: 0.25,
-    echoWet: 0.25,
+    echoWet: -12,
     echoPingPong: true,
-    reverbWet: 0.2,
+    reverbWet: -14,
   };
 
   const incoming = options.tracks;
@@ -249,7 +258,8 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     octave: clamp(track.octave ?? fallbackTrack.octave, 0, 10),
     lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 1, 400),
     midiChannel: clamp(track.midiChannel ?? clamp(index + 1, 1, 16), 1, 16),
-    gain: clamp(track.gain ?? fallbackTrack.gain, 0, 4),
+    gain: clamp(track.gain ?? fallbackTrack.gain, -96, 24),
+    velocityMultiplier: clamp(track.velocityMultiplier ?? fallbackTrack.velocityMultiplier, 0, 4),
     delay: clamp(track.delay ?? fallbackTrack.delay, 0, 64),
     repeats: clamp(track.repeats ?? fallbackTrack.repeats, 1, 64),
     attack: clamp(track.attack ?? fallbackTrack.attack, 0, 10),
@@ -264,16 +274,16 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     vibratoDepth: clamp(track.vibratoDepth ?? fallbackTrack.vibratoDepth, 0, 1),
     filterEnabled: Boolean(track.filterEnabled ?? fallbackTrack.filterEnabled),
     filterType: track.filterType ?? fallbackTrack.filterType,
-    filterFrequency: clamp(track.filterFrequency ?? fallbackTrack.filterFrequency, 20, 20000),
+    filterFrequency: clamp(track.filterFrequency ?? fallbackTrack.filterFrequency, 0, 127),
     filterQ: clamp(track.filterQ ?? fallbackTrack.filterQ, 0.0001, 30),
     filterGain: clamp(track.filterGain ?? fallbackTrack.filterGain, -48, 48),
     filterKeyFollow: clamp(track.filterKeyFollow ?? fallbackTrack.filterKeyFollow, -200, 200),
     echoEnabled: Boolean(track.echoEnabled ?? fallbackTrack.echoEnabled),
     echoDelay: normalizeEchoDelay(track.echoDelay, fallbackTrack.echoDelay),
     echoFeedback: clamp(track.echoFeedback ?? fallbackTrack.echoFeedback, 0, 0.95),
-    echoWet: clamp(track.echoWet ?? fallbackTrack.echoWet, 0, 1),
+    echoWet: clamp(track.echoWet ?? fallbackTrack.echoWet, -96, 0),
     echoPingPong: Boolean(track.echoPingPong ?? fallbackTrack.echoPingPong),
-    reverbWet: clamp(track.reverbWet ?? fallbackTrack.reverbWet, 0, 1),
+    reverbWet: clamp(track.reverbWet ?? fallbackTrack.reverbWet, -96, 0),
   }));
 }
 
@@ -283,9 +293,9 @@ function normalizeReverb(options: GenerateOptions): NormalizedReverb {
     enabled: Boolean(reverb.enabled ?? true),
     decay: clamp(reverb.decay ?? 3, 0.1, 30),
     preDelay: clamp(reverb.preDelay ?? 0.02, 0, 1),
-    wet: clamp(reverb.wet ?? 0.45, 0, 1),
-    lowCut: clamp(reverb.lowCut ?? 120, 20, 20000),
-    highCut: clamp(reverb.highCut ?? 12000, 20, 20000),
+    wet: clamp(reverb.wet ?? -7, -96, 0),
+    lowCut: clamp(reverb.lowCut ?? 39, 0, 127),
+    highCut: clamp(reverb.highCut ?? 119, 0, 127),
   };
 }
 
@@ -368,19 +378,24 @@ function getRenderTrailSeconds(prepared: PreparedRenderData): number {
     ...prepared.tracks.map((entry) => entry.track.echoEnabled ? getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay) * (1 + entry.track.echoFeedback * 8) : 0),
   );
   const hasReverbSend = prepared.reverb.enabled
-    && prepared.reverb.wet > 0
-    && prepared.tracks.some((entry) => entry.track.reverbWet > 0);
+    && prepared.reverb.wet > -96
+    && prepared.tracks.some((entry) => entry.track.reverbWet > -96);
   const reverbTrail = hasReverbSend ? prepared.reverb.preDelay + prepared.reverb.decay : 0;
   return Math.max(2, releaseTrail, echoTrail, reverbTrail);
 }
 
 function getFilterFrequency(track: NormalizedTrack, midiNotes: number[]): number {
+  const baseFrequency = 440 * Math.pow(2, (track.filterFrequency - 69) / 12);
   if (!track.filterEnabled || midiNotes.length === 0 || track.filterKeyFollow === 0) {
-    return track.filterFrequency;
+    return baseFrequency;
   }
   const averageMidi = midiNotes.reduce((sum, note) => sum + note, 0) / midiNotes.length;
-  const noteFrequency = 440 * Math.pow(2, (averageMidi - 69) / 12);
-  return clamp(track.filterFrequency * Math.pow(noteFrequency / 440, track.filterKeyFollow / 100), 20, 20000);
+  const followedMidi = clamp(track.filterFrequency + (averageMidi - 69) * track.filterKeyFollow / 100, 0, 127);
+  return 440 * Math.pow(2, (followedMidi - 69) / 12);
+}
+
+function dbToGain(db: number): number {
+  return Math.pow(10, db / 20);
 }
 
 function applySimpleFilter(sample: number, state: { low: number; high: number; band: number }, track: NormalizedTrack, cutoff: number, sampleRate: number): number {
@@ -417,7 +432,7 @@ function applySimpleFilter(sample: number, state: { low: number; high: number; b
 }
 
 function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: NormalizedTrack, sampleRate: number, delaySeconds: number): void {
-  if (!track.echoEnabled || track.echoWet <= 0) {
+  if (!track.echoEnabled || track.echoWet <= -96) {
     return;
   }
 
@@ -425,13 +440,13 @@ function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: Norma
   for (let frame = delayFrames; frame < left.length; frame += 1) {
     const echoLeft = (track.echoPingPong ? right[frame - delayFrames] : left[frame - delayFrames]) * track.echoFeedback;
     const echoRight = (track.echoPingPong ? left[frame - delayFrames] : right[frame - delayFrames]) * track.echoFeedback;
-    left[frame] += echoLeft * track.echoWet;
-    right[frame] += echoRight * track.echoWet;
+    left[frame] += echoLeft * dbToGain(track.echoWet);
+    right[frame] += echoRight * dbToGain(track.echoWet);
   }
 }
 
 function applyReverbSend(left: Float32Array, right: Float32Array, sendLeft: Float32Array, sendRight: Float32Array, reverb: NormalizedReverb, sampleRate: number): void {
-  if (!reverb.enabled || reverb.wet <= 0) {
+  if (!reverb.enabled || reverb.wet <= -96) {
     return;
   }
 
@@ -453,8 +468,8 @@ function applyReverbSend(left: Float32Array, right: Float32Array, sendLeft: Floa
       wetLeft += (sendLeft[sourceFrame] * pan + sendRight[sourceFrame] * (1 - pan)) * envelope;
       wetRight += (sendRight[sourceFrame] * pan + sendLeft[sourceFrame] * (1 - pan)) * envelope;
     }
-    left[frame] += wetLeft * reverb.wet;
-    right[frame] += wetRight * reverb.wet;
+    left[frame] += wetLeft * dbToGain(reverb.wet);
+    right[frame] += wetRight * dbToGain(reverb.wet);
   }
 }
 
@@ -553,7 +568,7 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
           continue;
         }
 
-        const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
+        const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier);
         const dur = getStepDuration(entry.actualNotes, i);
 
         for (const note of notes) {
@@ -590,8 +605,8 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const left = new Float32Array(frameCount);
   const right = new Float32Array(frameCount);
   const hasReverbSend = prepared.reverb.enabled
-    && prepared.reverb.wet > 0
-    && prepared.tracks.some((entry) => entry.track.reverbWet > 0);
+    && prepared.reverb.wet > -96
+    && prepared.tracks.some((entry) => entry.track.reverbWet > -96);
   const reverbLeft = hasReverbSend ? new Float32Array(frameCount) : null;
   const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
 
@@ -624,8 +639,8 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
         const durSteps = getStepDuration(entry.actualNotes, i);
         const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
-        const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.gain);
-        const noteAmplitude = velocity * 0.12;
+        const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier);
+        const noteAmplitude = velocity * 0.12 * dbToGain(entry.track.gain);
         const filterCutoff = getFilterFrequency(entry.track, notes);
 
         const startFrame = Math.max(0, Math.floor(start * sampleRate));
@@ -684,7 +699,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     }
 
     applyFeedbackEcho(trackLeft, trackRight, entry.track, sampleRate, getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay));
-    const sendWet = hasReverbSend ? entry.track.reverbWet : 0;
+    const sendWet = hasReverbSend ? dbToGain(entry.track.reverbWet) : 0;
     for (let frame = 0; frame < frameCount; frame += 1) {
       const trackLeftSample = trackLeft[frame];
       const trackRightSample = trackRight[frame];
