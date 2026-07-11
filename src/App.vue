@@ -2020,10 +2020,10 @@ export default defineComponent({
           throw new Error('Audio context did not resume.');
         }
         this.applyRealtimeSettings();
+        this.isRunning = true;
         this.rebuildTrackLoops();
         Tone.getTransport().seconds = 0;
         Tone.getTransport().start();
-        this.isRunning = true;
       } catch (error) {
         console.error('Unable to start audio playback:', error);
         this.isRunning = false;
