@@ -46,7 +46,7 @@ program
   .option('--octave <number>', 'Legacy single-track octave (0-10)', '6')
   .option('--length-factor <number>', 'Legacy single-track note length percent (1-400)', '100')
   .option('--midi-channel <number>', 'Legacy single-track MIDI channel (1-16)', '1')
-  .option('--gain <number>', 'Legacy single-track gain multiplier (0-4)', '1')
+  .option('--gain <number>', 'Legacy single-track audio gain in dB (-96 to +24)', '0')
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
   .option('--delay <number>', 'Legacy single-track delay in bars (0-64)', '0')
   .option('--repeats <number>', 'Legacy single-track number of pattern repetitions (1-64)', '1')

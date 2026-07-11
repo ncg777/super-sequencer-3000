@@ -9,6 +9,7 @@ export interface PresetTrackData {
   lengthFactor: number;
   midiChannel: number;
   gain: number;
+  velocityMultiplier: number;
   delay: number;
   repeats: number;
   attack: number;
@@ -121,7 +122,8 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   octave: 6,
   lengthFactor: 100,
   midiChannel: 1,
-  gain: 1,
+  gain: 0,
+  velocityMultiplier: 1,
   delay: 0,
   repeats: 1,
   attack: 0.01,
@@ -137,7 +139,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   vibratoDepth: 0.08,
   filterEnabled: false,
   filterType: 'lowpass',
-  filterFrequency: 12000,
+  filterFrequency: 119,
   filterRolloff: -24,
   filterQ: 1,
   filterGain: 0,
@@ -145,9 +147,9 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   echoEnabled: false,
   echoDelay: '1/4',
   echoFeedback: 0.25,
-  echoWet: 0.25,
+  echoWet: -12,
   echoPingPong: true,
-  reverbWet: 0.2,
+  reverbWet: -14,
 };
 
 export const DEFAULT_PRESET_DATA: PresetData = {
@@ -158,9 +160,9 @@ export const DEFAULT_PRESET_DATA: PresetData = {
   enabled: true,
   decay: 3,
   preDelay: 0.02,
-  wet: 0.45,
-  lowCut: 120,
-  highCut: 12000,
+  wet: -7,
+  lowCut: 39,
+  highCut: 119,
   },
 };
 
@@ -272,9 +274,9 @@ export function normalizePresetReverbData(value: unknown): PresetReverbData {
     enabled: raw.enabled ?? DEFAULT_PRESET_DATA.reverb.enabled,
     decay: clamp(parseNumber(raw.decay, DEFAULT_PRESET_DATA.reverb.decay), 0.1, 30),
     preDelay: clamp(parseNumber(raw.preDelay, DEFAULT_PRESET_DATA.reverb.preDelay), 0, 1),
-    wet: clamp(parseNumber(raw.wet, DEFAULT_PRESET_DATA.reverb.wet), 0, 1),
-    lowCut: clamp(parseNumber(raw.lowCut, DEFAULT_PRESET_DATA.reverb.lowCut), 20, 20000),
-    highCut: clamp(parseNumber(raw.highCut, DEFAULT_PRESET_DATA.reverb.highCut), 20, 20000),
+    wet: clamp(parseNumber(raw.wet, DEFAULT_PRESET_DATA.reverb.wet), -96, 0),
+    lowCut: clamp(parseNumber(raw.lowCut, DEFAULT_PRESET_DATA.reverb.lowCut), 0, 127),
+    highCut: clamp(parseNumber(raw.highCut, DEFAULT_PRESET_DATA.reverb.highCut), 0, 127),
   };
 }
 
@@ -295,6 +297,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     lengthFactor: track.lengthFactor,
     midiChannel: track.midiChannel,
     gain: track.gain,
+    velocityMultiplier: track.velocityMultiplier,
     delay: track.delay,
     repeats: track.repeats,
     attack: track.attack,
@@ -339,7 +342,8 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     octave: clamp(parseInteger(raw.octave?.toString(), DEFAULT_PRESET_TRACK_DATA.octave), 0, 10),
     lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_TRACK_DATA.lengthFactor), 1, 400),
     midiChannel: clamp(parseInteger(raw.midiChannel?.toString(), DEFAULT_PRESET_TRACK_DATA.midiChannel), 1, 16),
-    gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), 0, 4),
+    gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), -96, 24),
+    velocityMultiplier: clamp(parseNumber(raw.velocityMultiplier, DEFAULT_PRESET_TRACK_DATA.velocityMultiplier), 0, 4),
     delay: clamp(parseInteger(raw.delay?.toString(), DEFAULT_PRESET_TRACK_DATA.delay), 0, 64),
     repeats: clamp(parseInteger(raw.repeats?.toString(), DEFAULT_PRESET_TRACK_DATA.repeats), 1, 64),
     attack: clamp(parseNumber(raw.attack, DEFAULT_PRESET_TRACK_DATA.attack), 0, 10),
@@ -355,7 +359,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     vibratoDepth: clamp(parseNumber(raw.vibratoDepth, DEFAULT_PRESET_TRACK_DATA.vibratoDepth), 0, 1),
     filterEnabled: Boolean(raw.filterEnabled ?? DEFAULT_PRESET_TRACK_DATA.filterEnabled),
     filterType: normalizeFilterType(raw.filterType),
-    filterFrequency: clamp(parseNumber(raw.filterFrequency, DEFAULT_PRESET_TRACK_DATA.filterFrequency), 20, 20000),
+    filterFrequency: clamp(parseNumber(raw.filterFrequency, DEFAULT_PRESET_TRACK_DATA.filterFrequency), 0, 127),
     filterRolloff: normalizeFilterRolloff(raw.filterRolloff),
     filterQ: clamp(parseNumber(raw.filterQ, DEFAULT_PRESET_TRACK_DATA.filterQ), 0.0001, 30),
     filterGain: clamp(parseNumber(raw.filterGain, DEFAULT_PRESET_TRACK_DATA.filterGain), -48, 48),
@@ -363,9 +367,9 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
     echoDelay: normalizeEchoDelay(raw.echoDelay),
     echoFeedback: clamp(parseNumber(raw.echoFeedback, DEFAULT_PRESET_TRACK_DATA.echoFeedback), 0, 0.95),
-    echoWet: clamp(parseNumber(raw.echoWet, DEFAULT_PRESET_TRACK_DATA.echoWet), 0, 1),
+    echoWet: clamp(parseNumber(raw.echoWet, DEFAULT_PRESET_TRACK_DATA.echoWet), -96, 0),
     echoPingPong: Boolean(raw.echoPingPong ?? DEFAULT_PRESET_TRACK_DATA.echoPingPong),
-    reverbWet: clamp(parseNumber(raw.reverbWet, DEFAULT_PRESET_TRACK_DATA.reverbWet), 0, 1),
+    reverbWet: clamp(parseNumber(raw.reverbWet, DEFAULT_PRESET_TRACK_DATA.reverbWet), -96, 0),
   };
 }
 
@@ -445,6 +449,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.lengthFactor !== rightTrack.lengthFactor
       || leftTrack.midiChannel !== rightTrack.midiChannel
       || leftTrack.gain !== rightTrack.gain
+      || leftTrack.velocityMultiplier !== rightTrack.velocityMultiplier
       || leftTrack.delay !== rightTrack.delay
       || leftTrack.repeats !== rightTrack.repeats
       || leftTrack.attack !== rightTrack.attack
