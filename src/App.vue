@@ -812,6 +812,7 @@ export default defineComponent({
       wavExportProgress: 0,
       wavExportStatus: '',
       controlDeckHeight: 0,
+      controlDeckResizeObserver: null as ResizeObserver | null,
       expandedPanels: [0, 1, 2, 3, 4, 5] as number[],
     };
   },
@@ -2145,6 +2146,7 @@ export default defineComponent({
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.updateControlDeckHeight);
+    this.controlDeckResizeObserver?.disconnect();
     this.stopSequencer();
     for (const chain of Object.values(this.trackSynths)) {
       this.disposeTrackChain(chain);
@@ -2165,6 +2167,11 @@ export default defineComponent({
 
     this.$nextTick(() => {
       this.updateControlDeckHeight();
+      const deck = this.$refs.controlDeck as HTMLElement | undefined;
+      if (deck) {
+        this.controlDeckResizeObserver = new ResizeObserver(this.updateControlDeckHeight);
+        this.controlDeckResizeObserver.observe(deck);
+      }
     });
     window.addEventListener('resize', this.updateControlDeckHeight);
   }
