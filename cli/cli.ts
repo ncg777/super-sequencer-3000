@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { writeFileSync } from 'fs';
-import { generateMidi, generateWav, type GenerateTrackOptions } from './generate.js';
+import { generateMidi, generateWav, type GenerateReverbOptions, type GenerateTrackOptions } from './generate.js';
 
 const program = new Command();
 
@@ -11,6 +11,7 @@ function parseTracksJson(value: string): GenerateTrackOptions[] {
     if (!Array.isArray(parsed)) {
       throw new Error('tracks must be a JSON array');
     }
+
     return parsed as GenerateTrackOptions[];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -18,10 +19,23 @@ function parseTracksJson(value: string): GenerateTrackOptions[] {
   }
 }
 
+function parseReverbJson(value: string): GenerateReverbOptions {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('reverb must be a JSON object');
+    }
+    return parsed as GenerateReverbOptions;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid --reverb JSON: ${message}`);
+  }
+}
+
 program
   .name('gaterunner')
   .description('Generate a MIDI file from a GateRunner sequence')
-  .version('1.0.0')
+  .version('2026.7.10')
   .requiredOption('-o, --output <file>', 'Output MIDI file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
@@ -36,7 +50,8 @@ program
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
   .option('--delay <number>', 'Legacy single-track delay in bars (0-64)', '0')
   .option('--repeats <number>', 'Legacy single-track number of pattern repetitions (1-64)', '1')
-  .option('--tracks <json>', 'JSON array of tracks with per-track numerator, denominator, sequence, octave, lengthFactor, midiChannel, gain, waveform, delay, repeats', parseTracksJson)
+  .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echo, and reverb send controls', parseTracksJson)
+  .option('--reverb <json>', 'JSON object with global reverb enabled, decay, preDelay, wet, lowCut, highCut', parseReverbJson)
   .action(async (options) => {
     try {
       const generatorInput = {
@@ -53,6 +68,7 @@ program
         delay: parseInt(options.delay),
         repeats: parseInt(options.repeats),
         tracks: options.tracks,
+        reverb: options.reverb,
       };
 
       const normalizedFormat = String(options.format ?? 'midi').toLowerCase();

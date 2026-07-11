@@ -221,6 +221,10 @@
       <div class="control-deck-spacer" :style="{ height: `${controlDeckHeight + 12}px` }"></div>
 
       <v-responsive class="editor-surface align-center mx-auto pa-4 pb-8" max-width="980">
+        <v-expansion-panels multiple class="control-sections" :model-value="[0, 1, 2, 3, 4, 5]">
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Sequence</v-expansion-panel-title>
+            <v-expansion-panel-text>
         <v-row>
           <v-col cols="12">
             <v-select
@@ -248,7 +252,12 @@
             />
           </v-col>
         </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
 
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Playback</v-expansion-panel-title>
+            <v-expansion-panel-text>
         <v-row class="compact-row">
           <v-col cols="12">
             <EditableSlider
@@ -352,6 +361,157 @@
             />
           </v-col>
         </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Instrument</v-expansion-panel-title>
+            <v-expansion-panel-text>
+        <v-row class="compact-row">
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Attack (' + Number(trackAttack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="trackAttack" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Release (' + Number(trackRelease).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="trackRelease" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Unison voices (' + trackUnisonVoices + ')'" :min="1" :max="8" :step="1" v-model="trackUnisonVoices" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Unison detune (' + Number(trackUnisonDetune).toFixed(1) + ' cents)'" :min="0" :max="100" :step="0.5" v-model="trackUnisonDetune" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Modulation</v-expansion-panel-title>
+            <v-expansion-panel-text>
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-switch v-model="trackTremoloEnabled" label="Tremolo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-switch v-model="trackVibratoEnabled" label="Vibrato" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Tremolo Rate (' + Number(trackTremoloFrequency).toFixed(2) + ' Hz)'" :min="0.01" :max="40" :step="0.01" v-model="trackTremoloFrequency" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Tremolo Depth (' + Number(trackTremoloDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackTremoloDepth" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Tremolo Spread (' + Number(trackTremoloSpread).toFixed(0) + '°)'" :min="0" :max="360" :step="1" v-model="trackTremoloSpread" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Vibrato Rate (' + Number(trackVibratoFrequency).toFixed(2) + ' Hz)'" :min="0.01" :max="40" :step="0.01" v-model="trackVibratoFrequency" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Vibrato Depth (' + Number(trackVibratoDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackVibratoDepth" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Filter</v-expansion-panel-title>
+            <v-expansion-panel-text>
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-switch v-model="trackFilterEnabled" label="Enable Filter" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-select v-model="trackFilterType" label="Filter Mode" :items="['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Cutoff/Base (' + Math.round(trackFilterFrequency) + ' Hz)'" :min="20" :max="20000" :step="1" v-model="trackFilterFrequency" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Q (' + Number(trackFilterQ).toFixed(2) + ')'" :min="0.01" :max="30" :step="0.01" v-model="trackFilterQ" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Key Follow (' + Number(trackFilterKeyFollow).toFixed(0) + '%)'" :min="-200" :max="200" :step="1" v-model="trackFilterKeyFollow" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Filter Gain (' + Number(trackFilterGain).toFixed(1) + ' dB)'" :min="-48" :max="48" :step="0.1" v-model="trackFilterGain" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-select v-model="trackFilterRolloff" label="Rolloff" :items="[-12, -24, -48, -96]" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Effects</v-expansion-panel-title>
+            <v-expansion-panel-text>
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-switch v-model="trackEchoEnabled" label="Feedback Stereo Echo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-switch v-model="trackEchoPingPong" label="Ping-pong echo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Echo Delay (' + Number(trackEchoDelay).toFixed(2) + 's)'" :min="0.01" :max="4" :step="0.01" v-model="trackEchoDelay" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Echo Feedback (' + Number(trackEchoFeedback).toFixed(2) + ')'" :min="0" :max="0.95" :step="0.01" v-model="trackEchoFeedback" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Echo Wet (' + Number(trackEchoWet).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackEchoWet" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Track Reverb Send (' + Number(trackReverbWet).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackReverbWet" @update:modelValue="handleTrackDraftChange" />
+          </v-col>
+        </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Global Reverb</v-expansion-panel-title>
+            <v-expansion-panel-text>
+        <v-row>
+          <v-col cols="12">
+            <v-switch v-model="reverbEnabled" label="Enable High Quality Global Reverb" hide-details density="compact" @update:modelValue="handleDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Reverb Decay (' + Number(reverbDecay).toFixed(2) + 's)'" :min="0.1" :max="30" :step="0.1" v-model="reverbDecay" @update:modelValue="handleDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Pre-delay (' + Number(reverbPreDelay).toFixed(2) + 's)'" :min="0" :max="1" :step="0.01" v-model="reverbPreDelay" @update:modelValue="handleDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Global Reverb Wet (' + Number(reverbWet).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="reverbWet" @update:modelValue="handleDraftChange" />
+          </v-col>
+        </v-row>
+        <v-row class="compact-row">
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Reverb Low Cut (' + Math.round(reverbLowCut) + ' Hz)'" :min="20" :max="20000" :step="1" v-model="reverbLowCut" @update:modelValue="handleDraftChange" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <EditableSlider :label="'Reverb High Cut (' + Math.round(reverbHighCut) + ' Hz)'" :min="20" :max="20000" :step="1" v-model="reverbHighCut" @update:modelValue="handleDraftChange" />
+          </v-col>
+        </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
 
         <div v-if="isExportingWav || wavExportProgress === 100" class="wav-export-status">
           <div class="wav-export-status-text">{{ wavExportStatus }}</div>
@@ -413,7 +573,7 @@
                 <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
               <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
               <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-              <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, and note length.</li>
+              <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, filter, echo, and reverb send.</li>
               <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
               <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
                 representation.</li>
@@ -422,8 +582,10 @@
               <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
               <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
               <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
+              <li><strong>Instrument/Modulation/Filter</strong>: Shape each track with attack/release, unison voices, tremolo, vibrato, and a key-following multimode filter.</li>
+              <li><strong>Effects</strong>: Add optional per-track feedback echo and send each track into the global high-quality reverb.</li>
               <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
-              <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft.</li>
+              <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft, including an automatic rest trail for releases and effects.</li>
             </ul>
 
             <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
@@ -512,6 +674,23 @@ import {
   type PresetTrackData,
 } from './presets';
 
+interface TrackAudioChain {
+  synth: Tone.PolySynth;
+  filter: Tone.Filter;
+  tremolo: Tone.Tremolo;
+  vibrato: Tone.Vibrato;
+  echo: Tone.FeedbackDelay | Tone.PingPongDelay;
+  dryGain: Tone.Gain;
+  reverbSend: Tone.Gain;
+  outputGain: Tone.Gain;
+}
+
+interface ReverbAudioChain {
+  lowCut: Tone.Filter;
+  highCut: Tone.Filter;
+  reverb: Tone.Reverb;
+}
+
 function buildInitialState() {
   const presetLibrary = loadPresetLibrary();
   const selectedPreset = getSelectedPreset(presetLibrary);
@@ -552,11 +731,42 @@ export default defineComponent({
       trackGain: firstTrack.gain,
       trackDelay: firstTrack.delay,
       trackRepeats: firstTrack.repeats,
+      trackAttack: firstTrack.attack,
+      trackRelease: firstTrack.release,
+      trackUnisonVoices: firstTrack.unisonVoices,
+      trackUnisonDetune: firstTrack.unisonDetune,
+      trackTremoloEnabled: firstTrack.tremoloEnabled,
+      trackTremoloFrequency: firstTrack.tremoloFrequency,
+      trackTremoloDepth: firstTrack.tremoloDepth,
+      trackTremoloSpread: firstTrack.tremoloSpread,
+      trackVibratoEnabled: firstTrack.vibratoEnabled,
+      trackVibratoFrequency: firstTrack.vibratoFrequency,
+      trackVibratoDepth: firstTrack.vibratoDepth,
+      trackFilterEnabled: firstTrack.filterEnabled,
+      trackFilterType: firstTrack.filterType,
+      trackFilterFrequency: firstTrack.filterFrequency,
+      trackFilterRolloff: firstTrack.filterRolloff,
+      trackFilterQ: firstTrack.filterQ,
+      trackFilterGain: firstTrack.filterGain,
+      trackFilterKeyFollow: firstTrack.filterKeyFollow,
+      trackEchoEnabled: firstTrack.echoEnabled,
+      trackEchoDelay: firstTrack.echoDelay,
+      trackEchoFeedback: firstTrack.echoFeedback,
+      trackEchoWet: firstTrack.echoWet,
+      trackEchoPingPong: firstTrack.echoPingPong,
+      trackReverbWet: firstTrack.reverbWet,
+      reverbEnabled: initialState.draft.reverb.enabled,
+      reverbDecay: initialState.draft.reverb.decay,
+      reverbPreDelay: initialState.draft.reverb.preDelay,
+      reverbWet: initialState.draft.reverb.wet,
+      reverbLowCut: initialState.draft.reverb.lowCut,
+      reverbHighCut: initialState.draft.reverb.highCut,
       allChords: [] as string[],
       isRunning: false,
       trackLoops: {} as Record<string, Tone.Part<{ time: number; step: number }>>,
       showHelp: false,
-      trackSynths: {} as Record<string, Tone.PolySynth>,
+      trackSynths: {} as Record<string, TrackAudioChain>,
+      reverbChain: null as ReverbAudioChain | null,
       useMidiOutput: false,
       midiDevices: [] as string[],
       selectedMidiDevice: null as string | null,
@@ -708,6 +918,30 @@ export default defineComponent({
       this.trackGain = track.gain;
       this.trackDelay = track.delay;
       this.trackRepeats = track.repeats;
+      this.trackAttack = track.attack;
+      this.trackRelease = track.release;
+      this.trackUnisonVoices = track.unisonVoices;
+      this.trackUnisonDetune = track.unisonDetune;
+      this.trackTremoloEnabled = track.tremoloEnabled;
+      this.trackTremoloFrequency = track.tremoloFrequency;
+      this.trackTremoloDepth = track.tremoloDepth;
+      this.trackTremoloSpread = track.tremoloSpread;
+      this.trackVibratoEnabled = track.vibratoEnabled;
+      this.trackVibratoFrequency = track.vibratoFrequency;
+      this.trackVibratoDepth = track.vibratoDepth;
+      this.trackFilterEnabled = track.filterEnabled;
+      this.trackFilterType = track.filterType;
+      this.trackFilterFrequency = track.filterFrequency;
+      this.trackFilterRolloff = track.filterRolloff;
+      this.trackFilterQ = track.filterQ;
+      this.trackFilterGain = track.filterGain;
+      this.trackFilterKeyFollow = track.filterKeyFollow;
+      this.trackEchoEnabled = track.echoEnabled;
+      this.trackEchoDelay = track.echoDelay;
+      this.trackEchoFeedback = track.echoFeedback;
+      this.trackEchoWet = track.echoWet;
+      this.trackEchoPingPong = track.echoPingPong;
+      this.trackReverbWet = track.reverbWet;
     },
     applyTrackEditorToCurrent() {
       const currentTrack = this.currentTrack;
@@ -728,6 +962,30 @@ export default defineComponent({
         gain: this.trackGain,
         delay: this.trackDelay,
         repeats: this.trackRepeats,
+        attack: this.trackAttack,
+        release: this.trackRelease,
+        unisonVoices: this.trackUnisonVoices,
+        unisonDetune: this.trackUnisonDetune,
+        tremoloEnabled: this.trackTremoloEnabled,
+        tremoloFrequency: this.trackTremoloFrequency,
+        tremoloDepth: this.trackTremoloDepth,
+        tremoloSpread: this.trackTremoloSpread,
+        vibratoEnabled: this.trackVibratoEnabled,
+        vibratoFrequency: this.trackVibratoFrequency,
+        vibratoDepth: this.trackVibratoDepth,
+        filterEnabled: this.trackFilterEnabled,
+        filterType: this.trackFilterType,
+        filterFrequency: this.trackFilterFrequency,
+        filterRolloff: this.trackFilterRolloff,
+        filterQ: this.trackFilterQ,
+        filterGain: this.trackFilterGain,
+        filterKeyFollow: this.trackFilterKeyFollow,
+        echoEnabled: this.trackEchoEnabled,
+        echoDelay: this.trackEchoDelay,
+        echoFeedback: this.trackEchoFeedback,
+        echoWet: this.trackEchoWet,
+        echoPingPong: this.trackEchoPingPong,
+        reverbWet: this.trackReverbWet,
       });
 
       this.tracks = this.tracks.map((track) => track.id === normalizedTrack.id ? normalizedTrack : track);
@@ -780,6 +1038,30 @@ export default defineComponent({
         gain: this.currentTrack?.gain ?? DEFAULT_PRESET_TRACK_DATA.gain,
         delay: this.currentTrack?.delay ?? DEFAULT_PRESET_TRACK_DATA.delay,
         repeats: this.currentTrack?.repeats ?? DEFAULT_PRESET_TRACK_DATA.repeats,
+        attack: this.currentTrack?.attack ?? DEFAULT_PRESET_TRACK_DATA.attack,
+        release: this.currentTrack?.release ?? DEFAULT_PRESET_TRACK_DATA.release,
+        unisonVoices: this.currentTrack?.unisonVoices ?? DEFAULT_PRESET_TRACK_DATA.unisonVoices,
+        unisonDetune: this.currentTrack?.unisonDetune ?? DEFAULT_PRESET_TRACK_DATA.unisonDetune,
+        tremoloEnabled: this.currentTrack?.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled,
+        tremoloFrequency: this.currentTrack?.tremoloFrequency ?? DEFAULT_PRESET_TRACK_DATA.tremoloFrequency,
+        tremoloDepth: this.currentTrack?.tremoloDepth ?? DEFAULT_PRESET_TRACK_DATA.tremoloDepth,
+        tremoloSpread: this.currentTrack?.tremoloSpread ?? DEFAULT_PRESET_TRACK_DATA.tremoloSpread,
+        vibratoEnabled: this.currentTrack?.vibratoEnabled ?? DEFAULT_PRESET_TRACK_DATA.vibratoEnabled,
+        vibratoFrequency: this.currentTrack?.vibratoFrequency ?? DEFAULT_PRESET_TRACK_DATA.vibratoFrequency,
+        vibratoDepth: this.currentTrack?.vibratoDepth ?? DEFAULT_PRESET_TRACK_DATA.vibratoDepth,
+        filterEnabled: this.currentTrack?.filterEnabled ?? DEFAULT_PRESET_TRACK_DATA.filterEnabled,
+        filterType: this.currentTrack?.filterType ?? DEFAULT_PRESET_TRACK_DATA.filterType,
+        filterFrequency: this.currentTrack?.filterFrequency ?? DEFAULT_PRESET_TRACK_DATA.filterFrequency,
+        filterRolloff: this.currentTrack?.filterRolloff ?? DEFAULT_PRESET_TRACK_DATA.filterRolloff,
+        filterQ: this.currentTrack?.filterQ ?? DEFAULT_PRESET_TRACK_DATA.filterQ,
+        filterGain: this.currentTrack?.filterGain ?? DEFAULT_PRESET_TRACK_DATA.filterGain,
+        filterKeyFollow: this.currentTrack?.filterKeyFollow ?? DEFAULT_PRESET_TRACK_DATA.filterKeyFollow,
+        echoEnabled: this.currentTrack?.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled,
+        echoDelay: this.currentTrack?.echoDelay ?? DEFAULT_PRESET_TRACK_DATA.echoDelay,
+        echoFeedback: this.currentTrack?.echoFeedback ?? DEFAULT_PRESET_TRACK_DATA.echoFeedback,
+        echoWet: this.currentTrack?.echoWet ?? DEFAULT_PRESET_TRACK_DATA.echoWet,
+        echoPingPong: this.currentTrack?.echoPingPong ?? DEFAULT_PRESET_TRACK_DATA.echoPingPong,
+        reverbWet: this.currentTrack?.reverbWet ?? DEFAULT_PRESET_TRACK_DATA.reverbWet,
       }, this.tracks.length);
 
       this.tracks = [...this.tracks, nextTrack];
@@ -912,12 +1194,19 @@ export default defineComponent({
       return new Uint8Array(wavBuffer);
     },
     getRenderDurationSeconds(): number {
-      return this.getLoopDurationSecondsFromTrackLengths();
+      const echoTrail = Math.max(
+        0,
+        ...this.tracks.map((track) => track.echoEnabled ? track.echoDelay * (1 + track.echoFeedback * 8) : 0),
+      );
+      const releaseTrail = Math.max(0, ...this.tracks.map((track) => track.release));
+      const reverbTrail = this.reverbEnabled ? this.reverbPreDelay + this.reverbDecay : 0;
+      return this.getLoopDurationSecondsFromTrackLengths() + Math.max(2, releaseTrail, echoTrail, reverbTrail);
     },
     async renderMixWav(): Promise<Uint8Array> {
       this.setWavExportProgress(8, 'Preparing render...');
       await this.$nextTick();
 
+      const loopDuration = this.getLoopDurationSecondsFromTrackLengths();
       const renderDuration = this.getRenderDurationSeconds();
       const allTrackNotes = this.allTrackActualNotes;
       this.setWavExportProgress(22, 'Scheduling tracks...');
@@ -935,7 +1224,20 @@ export default defineComponent({
         }
       }, 120);
 
+      const liveReverbChain = this.reverbChain;
+      const liveTrackSynths = this.trackSynths;
       const rendered = await Tone.Offline(() => {
+        this.reverbChain = null;
+        this.trackSynths = {};
+        const offlineReverb = this.getOrCreateReverbChain();
+        offlineReverb.lowCut.set({ frequency: this.reverbLowCut });
+        offlineReverb.highCut.set({ frequency: this.reverbHighCut });
+        offlineReverb.reverb.set({
+          decay: this.reverbDecay,
+          preDelay: this.reverbPreDelay,
+          wet: this.reverbEnabled ? this.reverbWet : 0,
+        });
+
         for (const entry of allTrackNotes) {
           if (entry.notes.length === 0) {
             continue;
@@ -949,19 +1251,9 @@ export default defineComponent({
 
           const delaySeconds = this.getTrackDelaySeconds(entry.track);
 
-          const synth = new Tone.PolySynth(Tone.Synth, {
-            envelope: {
-              attackCurve: 'exponential',
-              attack: (trackQuant / 2.0).toString() + 's',
-              decay: 0,
-              releaseCurve: 'exponential',
-              release: (trackQuant / 2.0).toString() + 's',
-              sustain: 1.0,
-            },
-            oscillator: {
-              type: this.getWaveformType(entry.track.waveform),
-            },
-          }).toDestination();
+          const chain = this.createTrackAudioChain();
+          this.trackSynths[`offline-${entry.track.id}`] = chain;
+          this.updateTrackChainSettings(entry.track, chain);
 
           for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
             const loopStart = delaySeconds + repeat * trackPeriod;
@@ -972,15 +1264,16 @@ export default defineComponent({
               }
 
               const eventTime = loopStart + (i * trackQuant);
-              if (eventTime >= renderDuration) {
+              if (eventTime >= loopDuration) {
                 continue;
               }
 
               const durSteps = this.getTrackStepDuration(entry.notes, i);
               const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
               const velocity = this.getTrackVelocity(notes, entry.track.gain);
+              chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(entry.track, notes), eventTime);
 
-              synth.triggerAttackRelease(
+              chain.synth.triggerAttackRelease(
                 notes.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
                 duration,
                 eventTime,
@@ -989,6 +1282,8 @@ export default defineComponent({
             }
           }
         }
+        this.reverbChain = liveReverbChain;
+        this.trackSynths = liveTrackSynths;
       }, renderDuration);
 
       if (renderProgressTimer !== null) {
@@ -1014,12 +1309,26 @@ export default defineComponent({
         bpm: this.bpm,
         forte: this.forte,
         tracks: this.tracks.map((track) => clonePresetTrackData(track)),
+        reverb: {
+          enabled: this.reverbEnabled,
+          decay: this.reverbDecay,
+          preDelay: this.reverbPreDelay,
+          wet: this.reverbWet,
+          lowCut: this.reverbLowCut,
+          highCut: this.reverbHighCut,
+        },
       });
     },
     applyDraftData(data: PresetData) {
       const normalized = clonePresetData(normalizePresetData(data));
       this.bpm = normalized.bpm;
       this.forte = normalized.forte;
+      this.reverbEnabled = normalized.reverb.enabled;
+      this.reverbDecay = normalized.reverb.decay;
+      this.reverbPreDelay = normalized.reverb.preDelay;
+      this.reverbWet = normalized.reverb.wet;
+      this.reverbLowCut = normalized.reverb.lowCut;
+      this.reverbHighCut = normalized.reverb.highCut;
 
       const fallbackTrackId = normalized.tracks[0]?.id ?? null;
       const preferredTrackId = normalized.tracks.some((track) => track.id === this.selectedTrackId)
@@ -1385,15 +1694,53 @@ export default defineComponent({
           this.midiOutput!.send(noteOff, offTimeMs);
       }
     },
-    getOrCreateSynth(trackId: string): Tone.PolySynth {
+    getOrCreateReverbChain(): ReverbAudioChain {
+      if (this.reverbChain) {
+        return this.reverbChain as ReverbAudioChain;
+      }
+
+      const lowCut = markRaw(new Tone.Filter({ type: 'highpass', frequency: this.reverbLowCut, rolloff: -12 })) as Tone.Filter;
+      const highCut = markRaw(new Tone.Filter({ type: 'lowpass', frequency: this.reverbHighCut, rolloff: -12 })) as Tone.Filter;
+      const reverb = markRaw(new Tone.Reverb({
+        decay: this.reverbDecay,
+        preDelay: this.reverbPreDelay,
+        wet: this.reverbEnabled ? this.reverbWet : 0,
+      }).toDestination()) as Tone.Reverb;
+
+      lowCut.chain(highCut, reverb);
+      this.reverbChain = { lowCut, highCut, reverb };
+      return this.reverbChain as ReverbAudioChain;
+    },
+    createTrackAudioChain(): TrackAudioChain {
+      const synth = markRaw(new Tone.PolySynth(Tone.Synth));
+      const filter = markRaw(new Tone.Filter());
+      const vibrato = markRaw(new Tone.Vibrato());
+      const tremolo = markRaw(new Tone.Tremolo());
+      const echo = markRaw(new Tone.PingPongDelay());
+      const outputGain = markRaw(new Tone.Gain(1));
+      const dryGain = markRaw(new Tone.Gain(1).toDestination());
+      const reverbSend = markRaw(new Tone.Gain(0));
+
+      tremolo.start();
+      synth.chain(filter, vibrato, tremolo, echo, outputGain);
+      outputGain.connect(dryGain);
+      reverbSend.connect(this.getOrCreateReverbChain().lowCut);
+      outputGain.connect(reverbSend);
+
+      return { synth, filter, tremolo, vibrato, echo, dryGain, reverbSend, outputGain };
+    },
+    getOrCreateTrackChain(trackId: string): TrackAudioChain {
       const existing = this.trackSynths[trackId];
       if (existing) {
         return existing;
       }
 
-      const synth = markRaw(new Tone.PolySynth(Tone.Synth).toDestination());
-      this.trackSynths[trackId] = synth;
-      return synth;
+      const chain = this.createTrackAudioChain();
+      this.trackSynths[trackId] = chain;
+      return chain;
+    },
+    getOrCreateSynth(trackId: string): Tone.PolySynth {
+      return this.getOrCreateTrackChain(trackId).synth;
     },
     getWaveformType(waveform: string): 'sine' | 'square' | 'triangle' | 'sawtooth' {
       if (waveform === 'triangle') {
@@ -1407,34 +1754,99 @@ export default defineComponent({
       }
       return 'sine';
     },
+    getOscillatorType(track: PresetTrackData): string {
+      const waveform = this.getWaveformType(track.waveform);
+      return track.unisonVoices > 1 ? `fat${waveform}` : waveform;
+    },
+    getTrackFilterFrequency(track: PresetTrackData, notes: number[] = []): number {
+      if (!track.filterEnabled || notes.length === 0 || track.filterKeyFollow === 0) {
+        return track.filterFrequency;
+      }
+
+      const averageMidi = notes.reduce((sum, note) => sum + note, 0) / notes.length;
+      const noteFrequency = Tone.Frequency(averageMidi, 'midi').toFrequency();
+      const followed = track.filterFrequency * Math.pow(noteFrequency / 440, track.filterKeyFollow / 100);
+      return Math.max(20, Math.min(20000, followed));
+    },
+    disposeTrackChain(chain: TrackAudioChain) {
+      chain.synth.dispose();
+      chain.filter.dispose();
+      chain.tremolo.dispose();
+      chain.vibrato.dispose();
+      chain.echo.dispose();
+      chain.dryGain.dispose();
+      chain.reverbSend.dispose();
+      chain.outputGain.dispose();
+    },
+    updateReverbChain() {
+      const chain = this.getOrCreateReverbChain();
+      chain.lowCut.set({ frequency: this.reverbLowCut });
+      chain.highCut.set({ frequency: this.reverbHighCut });
+      chain.reverb.set({
+        decay: this.reverbDecay,
+        preDelay: this.reverbPreDelay,
+        wet: this.reverbEnabled ? this.reverbWet : 0,
+      });
+    },
+    updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
+      const oscillatorOptions = {
+        type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
+        count: track.unisonVoices,
+        spread: track.unisonDetune,
+      } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
+
+      chain.synth.set({
+        envelope: {
+          attackCurve: 'exponential',
+          attack: track.attack.toString() + 's',
+          decay: 0,
+          releaseCurve: 'exponential',
+          release: track.release.toString() + 's',
+          sustain: 1.0,
+        },
+        oscillator: oscillatorOptions,
+      });
+
+      chain.filter.set({
+        type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',
+        frequency: track.filterEnabled ? track.filterFrequency : 20000,
+        rolloff: track.filterRolloff as -12 | -24 | -48 | -96,
+        Q: track.filterQ,
+        gain: track.filterGain,
+      });
+      chain.tremolo.set({
+        frequency: track.tremoloFrequency,
+        depth: track.tremoloDepth,
+        spread: track.tremoloSpread,
+        wet: track.tremoloEnabled ? 1 : 0,
+      });
+      chain.vibrato.set({
+        frequency: track.vibratoFrequency,
+        depth: track.vibratoDepth,
+        wet: track.vibratoEnabled ? 1 : 0,
+      });
+      chain.echo.set({
+        delayTime: track.echoDelay,
+        feedback: track.echoFeedback,
+        wet: track.echoEnabled ? track.echoWet : 0,
+      });
+      chain.reverbSend.gain.value = this.reverbEnabled ? track.reverbWet : 0;
+      chain.synth.context.lookAhead = 0.05;
+    },
     updateSynths() {
       const activeTrackIds = new Set(this.tracks.map((track) => track.id));
-      for (const [trackId, synth] of Object.entries(this.trackSynths)) {
+      for (const [trackId, chain] of Object.entries(this.trackSynths)) {
         if (!activeTrackIds.has(trackId)) {
-          synth.dispose();
+          this.disposeTrackChain(chain);
           delete this.trackSynths[trackId];
         }
       }
 
+      this.updateReverbChain();
+
       for (const track of this.tracks) {
-        const synth = this.getOrCreateSynth(track.id);
-        const waveformType = this.getWaveformType(track.waveform);
-
-        synth.set({
-          envelope: {
-            attackCurve: 'exponential',
-            attack: (this.getTrackQuant(track) / 2.0).toString() + 's',
-            decay: 0,
-            releaseCurve: 'exponential',
-            release: (this.getTrackQuant(track) / 2.0).toString() + 's',
-            sustain: 1.0,
-          },
-          oscillator: {
-            type: waveformType,
-          },
-        });
-
-        synth.context.lookAhead = 0.05;
+        const chain = this.getOrCreateTrackChain(track.id);
+        this.updateTrackChainSettings(track, chain);
       }
     },
     async getMidi(): Promise<Midi> {
@@ -1581,8 +1993,9 @@ export default defineComponent({
           this.playNoteWithMidi(note, vel, noteDuration, when, track.midiChannel);
         }
       } else {
-        const synth = this.getOrCreateSynth(track.id);
-        synth.triggerAttackRelease(
+        const chain = this.getOrCreateTrackChain(track.id);
+        chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(track, arr), when);
+        chain.synth.triggerAttackRelease(
           arr.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
           noteDuration.toString() + 's',
           when,
@@ -1656,10 +2069,16 @@ export default defineComponent({
   beforeUnmount() {
     window.removeEventListener('resize', this.updateControlDeckHeight);
     this.stopSequencer();
-    for (const synth of Object.values(this.trackSynths)) {
-      synth.dispose();
+    for (const chain of Object.values(this.trackSynths)) {
+      this.disposeTrackChain(chain);
     }
     this.trackSynths = {};
+    if (this.reverbChain) {
+      this.reverbChain.lowCut.dispose();
+      this.reverbChain.highCut.dispose();
+      this.reverbChain.reverb.dispose();
+      this.reverbChain = null;
+    }
   },
   async mounted() {
     this.applyRealtimeSettings();
@@ -1894,6 +2313,18 @@ export default defineComponent({
   border: 1px solid rgba(122, 206, 226, 0.3);
   border-radius: 20px;
   box-shadow: 0 24px 40px rgba(0, 0, 0, 0.32);
+}
+
+.control-sections {
+  gap: 10px;
+}
+
+.control-section {
+  margin-bottom: 10px;
+  border: 1px solid rgba(127, 211, 231, 0.26);
+  border-radius: 14px !important;
+  overflow: hidden;
+  background: rgba(4, 13, 19, 0.46);
 }
 
 :deep(.v-label),
