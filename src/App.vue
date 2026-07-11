@@ -680,6 +680,7 @@ interface TrackAudioChain {
   tremolo: Tone.Tremolo;
   vibrato: Tone.Vibrato;
   echo: Tone.FeedbackDelay | Tone.PingPongDelay;
+  echoPingPong: boolean;
   dryGain: Tone.Gain;
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
@@ -1251,7 +1252,7 @@ export default defineComponent({
 
           const delaySeconds = this.getTrackDelaySeconds(entry.track);
 
-          const chain = this.createTrackAudioChain();
+          const chain = this.createTrackAudioChain(entry.track.echoPingPong);
           this.trackSynths[`offline-${entry.track.id}`] = chain;
           this.updateTrackChainSettings(entry.track, chain);
 
@@ -1711,12 +1712,12 @@ export default defineComponent({
       this.reverbChain = { lowCut, highCut, reverb };
       return this.reverbChain as ReverbAudioChain;
     },
-    createTrackAudioChain(): TrackAudioChain {
+    createTrackAudioChain(echoPingPong = true): TrackAudioChain {
       const synth = markRaw(new Tone.PolySynth(Tone.Synth));
       const filter = markRaw(new Tone.Filter());
       const vibrato = markRaw(new Tone.Vibrato());
       const tremolo = markRaw(new Tone.Tremolo());
-      const echo = markRaw(new Tone.PingPongDelay());
+      const echo = markRaw(echoPingPong ? new Tone.PingPongDelay() : new Tone.FeedbackDelay());
       const outputGain = markRaw(new Tone.Gain(1));
       const dryGain = markRaw(new Tone.Gain(1).toDestination());
       const reverbSend = markRaw(new Tone.Gain(0));
@@ -1727,20 +1728,25 @@ export default defineComponent({
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
       outputGain.connect(reverbSend);
 
-      return { synth, filter, tremolo, vibrato, echo, dryGain, reverbSend, outputGain };
+      return { synth, filter, tremolo, vibrato, echo, echoPingPong, dryGain, reverbSend, outputGain };
     },
-    getOrCreateTrackChain(trackId: string): TrackAudioChain {
+    getOrCreateTrackChain(trackId: string, echoPingPong = true): TrackAudioChain {
       const existing = this.trackSynths[trackId];
       if (existing) {
-        return existing;
+        if (existing.echoPingPong !== echoPingPong) {
+          this.disposeTrackChain(existing);
+          delete this.trackSynths[trackId];
+        } else {
+          return existing;
+        }
       }
 
-      const chain = this.createTrackAudioChain();
+      const chain = this.createTrackAudioChain(echoPingPong);
       this.trackSynths[trackId] = chain;
       return chain;
     },
     getOrCreateSynth(trackId: string): Tone.PolySynth {
-      return this.getOrCreateTrackChain(trackId).synth;
+      return this.getOrCreateTrackChain(trackId, true).synth;
     },
     getWaveformType(waveform: string): 'sine' | 'square' | 'triangle' | 'sawtooth' {
       if (waveform === 'triangle') {
@@ -1845,7 +1851,7 @@ export default defineComponent({
       this.updateReverbChain();
 
       for (const track of this.tracks) {
-        const chain = this.getOrCreateTrackChain(track.id);
+        const chain = this.getOrCreateTrackChain(track.id, track.echoPingPong);
         this.updateTrackChainSettings(track, chain);
       }
     },
@@ -1993,7 +1999,7 @@ export default defineComponent({
           this.playNoteWithMidi(note, vel, noteDuration, when, track.midiChannel);
         }
       } else {
-        const chain = this.getOrCreateTrackChain(track.id);
+        const chain = this.getOrCreateTrackChain(track.id, track.echoPingPong);
         chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(track, arr), when);
         chain.synth.triggerAttackRelease(
           arr.map((note) => Tone.Frequency(note, 'midi').toFrequency()),

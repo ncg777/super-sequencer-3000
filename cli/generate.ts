@@ -45,6 +45,7 @@ export interface GenerateTrackOptions {
   echoDelay?: number;
   echoFeedback?: number;
   echoWet?: number;
+  echoPingPong?: boolean;
   reverbWet?: number;
 }
 
@@ -180,6 +181,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     echoDelay: 0.25,
     echoFeedback: 0.25,
     echoWet: 0.25,
+    echoPingPong: true,
     reverbWet: 0.2,
   };
 
@@ -220,6 +222,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     echoDelay: clamp(track.echoDelay ?? fallbackTrack.echoDelay, 0.01, 4),
     echoFeedback: clamp(track.echoFeedback ?? fallbackTrack.echoFeedback, 0, 0.95),
     echoWet: clamp(track.echoWet ?? fallbackTrack.echoWet, 0, 1),
+    echoPingPong: Boolean(track.echoPingPong ?? fallbackTrack.echoPingPong),
     reverbWet: clamp(track.reverbWet ?? fallbackTrack.reverbWet, 0, 1),
   }));
 }
@@ -367,8 +370,8 @@ function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: Norma
 
   const delayFrames = Math.max(1, Math.round(track.echoDelay * sampleRate));
   for (let frame = delayFrames; frame < left.length; frame += 1) {
-    const echoLeft = right[frame - delayFrames] * track.echoFeedback;
-    const echoRight = left[frame - delayFrames] * track.echoFeedback;
+    const echoLeft = (track.echoPingPong ? right[frame - delayFrames] : left[frame - delayFrames]) * track.echoFeedback;
+    const echoRight = (track.echoPingPong ? left[frame - delayFrames] : right[frame - delayFrames]) * track.echoFeedback;
     left[frame] += echoLeft * track.echoWet;
     right[frame] += echoRight * track.echoWet;
   }
