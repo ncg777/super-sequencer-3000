@@ -467,6 +467,13 @@
           </v-expansion-panel>
 
           <v-expansion-panel class="control-section">
+            <v-expansion-panel-title>Soft Limiter</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <EditableSlider :label="'Limiter Gain (' + Number(trackLimiterGain).toFixed(1) + ' dB)'" :min="-48" :max="48" :step="0.1" v-model="trackLimiterGain" @update:modelValue="handleTrackDraftChange" />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel class="control-section">
             <v-expansion-panel-title>Effects</v-expansion-panel-title>
             <v-expansion-panel-text>
         <v-row>
@@ -693,6 +700,8 @@ import {
 interface TrackAudioChain {
   synth: Tone.PolySynth;
   filter: Tone.Filter;
+  limiterGain: Tone.Gain;
+  limiter: Tone.WaveShaper;
   tremolo: Tone.Tremolo;
   vibrato: Tone.Vibrato;
   echo: Tone.FeedbackDelay | Tone.PingPongDelay;
@@ -767,6 +776,7 @@ export default defineComponent({
       trackFilterQ: firstTrack.filterQ,
       trackFilterGain: firstTrack.filterGain,
       trackFilterKeyFollow: firstTrack.filterKeyFollow,
+      trackLimiterGain: firstTrack.limiterGain,
       trackEchoEnabled: firstTrack.echoEnabled,
       trackEchoDelay: firstTrack.echoDelay,
       echoDelayOptions: ECHO_DELAY_OPTIONS,
@@ -958,6 +968,7 @@ export default defineComponent({
       this.trackFilterQ = track.filterQ;
       this.trackFilterGain = track.filterGain;
       this.trackFilterKeyFollow = track.filterKeyFollow;
+      this.trackLimiterGain = track.limiterGain;
       this.trackEchoEnabled = track.echoEnabled;
       this.trackEchoDelay = track.echoDelay;
       this.trackEchoFeedback = track.echoFeedback;
@@ -1003,6 +1014,7 @@ export default defineComponent({
         filterQ: this.trackFilterQ,
         filterGain: this.trackFilterGain,
         filterKeyFollow: this.trackFilterKeyFollow,
+        limiterGain: this.trackLimiterGain,
         echoEnabled: this.trackEchoEnabled,
         echoDelay: this.trackEchoDelay,
         echoFeedback: this.trackEchoFeedback,
@@ -1745,6 +1757,8 @@ export default defineComponent({
     createTrackAudioChain(echoPingPong = true): TrackAudioChain {
       const synth = markRaw(new Tone.PolySynth(Tone.Synth));
       const filter = markRaw(new Tone.Filter());
+      const limiterGain = markRaw(new Tone.Gain(1));
+      const limiter = markRaw(new Tone.WaveShaper((value) => Math.tanh(value)));
       const vibrato = markRaw(new Tone.Vibrato());
       const tremolo = markRaw(new Tone.Tremolo());
       const echo = markRaw(echoPingPong ? new Tone.PingPongDelay() : new Tone.FeedbackDelay());
@@ -1753,12 +1767,12 @@ export default defineComponent({
       const reverbSend = markRaw(new Tone.Gain(0));
 
       tremolo.start();
-      synth.chain(filter, vibrato, tremolo, echo, outputGain);
+      synth.chain(filter, limiterGain, limiter, vibrato, tremolo, echo, outputGain);
       outputGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
       outputGain.connect(reverbSend);
 
-      return { synth, filter, tremolo, vibrato, echo, echoPingPong, dryGain, reverbSend, outputGain };
+      return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, dryGain, reverbSend, outputGain };
     },
     getOrCreateTrackChain(trackId: string, echoPingPong = true): TrackAudioChain {
       const existing = this.trackSynths[trackId];
@@ -1819,6 +1833,8 @@ export default defineComponent({
     disposeTrackChain(chain: TrackAudioChain) {
       chain.synth.dispose();
       chain.filter.dispose();
+      chain.limiterGain.dispose();
+      chain.limiter.dispose();
       chain.tremolo.dispose();
       chain.vibrato.dispose();
       chain.echo.dispose();
@@ -1862,6 +1878,7 @@ export default defineComponent({
         Q: track.filterQ,
         gain: track.filterGain,
       });
+      chain.limiterGain.gain.value = this.dbToGain(track.limiterGain);
       chain.tremolo.set({
         frequency: track.tremoloFrequency,
         depth: track.tremoloDepth,

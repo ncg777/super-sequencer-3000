@@ -30,6 +30,7 @@ export interface PresetTrackData {
   filterQ: number;
   filterGain: number;
   filterKeyFollow: number;
+  limiterGain: number;
   echoEnabled: boolean;
   echoDelay: EchoDelayValue;
   echoFeedback: number;
@@ -144,6 +145,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   filterQ: 1,
   filterGain: 0,
   filterKeyFollow: 0,
+  limiterGain: 0,
   echoEnabled: false,
   echoDelay: '1/4',
   echoFeedback: 0.25,
@@ -318,6 +320,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     filterQ: track.filterQ,
     filterGain: track.filterGain,
     filterKeyFollow: track.filterKeyFollow,
+    limiterGain: track.limiterGain,
     echoEnabled: track.echoEnabled,
     echoDelay: track.echoDelay,
     echoFeedback: track.echoFeedback,
@@ -364,6 +367,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     filterQ: clamp(parseNumber(raw.filterQ, DEFAULT_PRESET_TRACK_DATA.filterQ), 0.0001, 30),
     filterGain: clamp(parseNumber(raw.filterGain, DEFAULT_PRESET_TRACK_DATA.filterGain), -48, 48),
     filterKeyFollow: clamp(parseNumber(raw.filterKeyFollow, DEFAULT_PRESET_TRACK_DATA.filterKeyFollow), -200, 200),
+    limiterGain: clamp(parseNumber(raw.limiterGain, DEFAULT_PRESET_TRACK_DATA.limiterGain), -48, 48),
     echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
     echoDelay: normalizeEchoDelay(raw.echoDelay),
     echoFeedback: clamp(parseNumber(raw.echoFeedback, DEFAULT_PRESET_TRACK_DATA.echoFeedback), 0, 0.95),
@@ -470,6 +474,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.filterQ !== rightTrack.filterQ
       || leftTrack.filterGain !== rightTrack.filterGain
       || leftTrack.filterKeyFollow !== rightTrack.filterKeyFollow
+      || leftTrack.limiterGain !== rightTrack.limiterGain
       || leftTrack.echoEnabled !== rightTrack.echoEnabled
       || leftTrack.echoDelay !== rightTrack.echoDelay
       || leftTrack.echoFeedback !== rightTrack.echoFeedback
