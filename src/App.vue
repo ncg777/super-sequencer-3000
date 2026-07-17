@@ -1682,6 +1682,9 @@ export default defineComponent({
     sanitizeFilenamePart(value: string) {
       return value.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'preset';
     },
+    currentPresetFilenamePart() {
+      return this.sanitizeFilenamePart(this.currentPreset?.name ?? 'preset');
+    },
     downloadJson(filename: string, payload: object) {
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -2217,7 +2220,7 @@ export default defineComponent({
 
         const a = document.createElement('a');
         a.href = url;
-        a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm.mid`;
+        a.download = `GateRunner-${this.currentPresetFilenamePart()}-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm.mid`;
         a.click();
 
         URL.revokeObjectURL(url);
@@ -2248,7 +2251,7 @@ export default defineComponent({
 
         const a = document.createElement('a');
         a.href = url;
-        a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-mix.wav`;
+        a.download = `GateRunner-${this.currentPresetFilenamePart()}-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm-mix.wav`;
         a.click();
 
         URL.revokeObjectURL(url);
