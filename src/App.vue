@@ -3,22 +3,36 @@
     <AdjacencyMatrix class="shader-bg" :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
     <v-main class="workspace-main">
       <div ref="controlDeck" class="control-deck">
-        <div class="toolbar-panel transport-panel">
-          <div class="transport-header">
-            <div class="brand-group">
-              <h1 class="app-title">GateRunner</h1>
-              <span class="version-pill">v{{ appVersion }}</span>
-            </div>
-            <v-btn
-              icon
-              variant="text"
-              size="small"
-              class="toolbar-icon-btn"
-              @click="showHelp = true"
-            >
-              <v-icon>mdi-help-circle</v-icon>
-            </v-btn>
+        <div class="control-deck-header">
+          <v-btn
+            class="control-deck-toggle"
+            icon
+            variant="flat"
+            size="small"
+            color="surface"
+            :title="controlDeckCollapsed ? 'Show controls' : 'Hide controls'"
+            @click="toggleControlDeck"
+          >
+            <v-icon>{{ controlDeckCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left' }}</v-icon>
+          </v-btn>
+
+          <div class="brand-group">
+            <h1 class="app-title">GateRunner</h1>
+            <span class="version-pill">v{{ appVersion }}</span>
           </div>
+
+          <v-btn
+            icon
+            variant="text"
+            size="small"
+            class="toolbar-icon-btn"
+            @click="showHelp = true"
+          >
+            <v-icon>mdi-help-circle</v-icon>
+          </v-btn>
+        </div>
+
+        <div v-show="!controlDeckCollapsed" class="toolbar-panel transport-panel">
           <div class="transport-actions">
             <v-btn
               class="transport-play-btn"
@@ -90,7 +104,7 @@
           </div>
         </div>
 
-        <div class="toolbar-panel preset-panel">
+        <div v-show="!controlDeckCollapsed" class="toolbar-panel preset-panel">
           <div class="preset-inline-row">
             <v-select
               v-model="selectedPresetId"
@@ -144,7 +158,7 @@
           </div>
         </div>
 
-        <div class="toolbar-panel dependent-settings-panel">
+        <div v-show="!controlDeckCollapsed" class="toolbar-panel dependent-settings-panel">
           <div class="dependent-settings-row">
             <div class="forte-control-top">
               <v-autocomplete
@@ -172,7 +186,7 @@
           </div>
         </div>
 
-        <div class="toolbar-panel track-strip-panel">
+        <div v-show="!controlDeckCollapsed" class="toolbar-panel track-strip-panel">
           <div class="track-strip">
             <v-select
               v-model="selectedTrackId"
@@ -827,6 +841,7 @@ export default defineComponent({
       wavExportProgress: 0,
       wavExportStatus: '',
       controlDeckHeight: 0,
+      controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
       expandedPanels: [0, 1, 2, 3, 4, 5] as number[],
     };
@@ -1196,6 +1211,12 @@ export default defineComponent({
       }
 
       this.controlDeckHeight = Math.ceil(deck.getBoundingClientRect().height);
+    },
+    toggleControlDeck() {
+      this.controlDeckCollapsed = !this.controlDeckCollapsed;
+      this.$nextTick(() => {
+        this.updateControlDeckHeight();
+      });
     },
     encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
       const numChannels = channels.length;
@@ -2270,6 +2291,26 @@ export default defineComponent({
   gap: 8px;
 }
 
+.control-deck-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(111, 214, 231, 0.32);
+  background:
+    linear-gradient(135deg, rgba(7, 14, 20, 0.92), rgba(9, 25, 34, 0.9)),
+    radial-gradient(circle at top right, rgba(225, 167, 73, 0.18), transparent 45%);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+}
+
+.control-deck-toggle {
+  border: 1px solid rgba(111, 214, 231, 0.32);
+  background: rgba(15, 45, 59, 0.52);
+}
+
 .toolbar-panel {
   padding: 10px 12px;
   border-radius: 14px;
@@ -2281,14 +2322,9 @@ export default defineComponent({
   backdrop-filter: blur(12px);
 }
 
-.transport-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .brand-group {
+  flex: 1 1 auto;
+  justify-content: center;
   display: flex;
   align-items: baseline;
   gap: 10px;
