@@ -43,7 +43,7 @@
             >
               {{ isRunning ? 'Stop' : 'Play' }}
             </v-btn>
-            <v-menu location="bottom end" :close-on-content-click="false">
+            <v-menu v-model="transportMenuOpen" location="bottom end" :close-on-content-click="false">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -57,11 +57,16 @@
                 </v-btn>
               </template>
               <v-list density="compact" class="transport-action-menu">
-                <v-list-item title="Download MIDI" prepend-icon="mdi-music-note" @click="downloadMIDI" />
                 <v-list-item
-                  :title="isExportingWav ? 'Rendering WAV...' : 'Download WAV'"
+                  title="Download MIDI"
+                  prepend-icon="mdi-music-note"
+                  :disabled="isExporting"
+                  @click="downloadMIDI"
+                />
+                <v-list-item
+                  :title="isExporting && exportFormat === 'wav' ? 'Rendering WAV...' : 'Download WAV'"
                   prepend-icon="mdi-waveform"
-                  :disabled="isExportingWav"
+                  :disabled="isExporting"
                   @click="downloadWAV"
                 />
                 <v-divider class="my-1" />
@@ -547,24 +552,32 @@
           </v-expansion-panel>
         </v-expansion-panels>
 
-        <div v-if="isExportingWav || wavExportProgress === 100" class="wav-export-status">
-          <div class="wav-export-status-text">{{ wavExportStatus }}</div>
-          <v-progress-linear
-            v-if="wavExportProgress >= 0"
-            :model-value="wavExportProgress"
-            color="info"
-            height="8"
-            rounded
-          />
-          <v-progress-linear
-            v-else
-            indeterminate
-            color="info"
-            height="8"
-            rounded
-          />
-        </div>
       </v-responsive>
+
+      <v-dialog v-model="isExporting" persistent max-width="420">
+        <v-card class="export-dialog-card">
+          <v-card-text class="text-center py-6 px-4">
+            <v-icon size="48" color="primary" class="mb-4">mdi-{{ exportFormat === 'wav' ? 'waveform' : 'music-note' }}</v-icon>
+            <div class="text-h6 mb-2">Exporting {{ exportFormatLabel }}</div>
+            <div class="text-body-2 text-medium-emphasis mb-5">{{ exportStatus }}</div>
+            <v-progress-linear
+              v-if="exportProgress >= 0"
+              :model-value="exportProgress"
+              color="primary"
+              height="12"
+              rounded
+              striped
+            />
+            <v-progress-linear
+              v-else
+              indeterminate
+              color="primary"
+              height="12"
+              rounded
+            />
+          </v-card-text>
+        </v-card>
+      </v-dialog>
 
       <v-dialog v-model="showRenamePresetDialog" max-width="460px">
         <v-card class="rename-dialog-card">
@@ -837,9 +850,11 @@ export default defineComponent({
       isDirty: initialState.isDirty,
       showRenamePresetDialog: false,
       renamePresetInput: '',
-      isExportingWav: false,
-      wavExportProgress: 0,
-      wavExportStatus: '',
+      isExporting: false,
+      exportFormat: null as 'midi' | 'wav' | null,
+      exportProgress: 0,
+      exportStatus: '',
+      transportMenuOpen: false,
       controlDeckHeight: 0,
       controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
@@ -872,6 +887,9 @@ export default defineComponent({
 
       const nextName = sanitizePresetName(this.renamePresetInput);
       return nextName !== this.currentPreset.name;
+    },
+    exportFormatLabel(): string {
+      return this.exportFormat === 'wav' ? 'WAV mix' : this.exportFormat === 'midi' ? 'MIDI file' : '';
     },
     selectedTrackSequenceLength(): number {
       return this.parseSequence(this.trackSequenceInput).length;
@@ -1201,8 +1219,20 @@ export default defineComponent({
       return Math.pow(10, db / 20);
     },
     setWavExportProgress(progress: number, status: string) {
-      this.wavExportProgress = Math.max(0, Math.min(100, Math.round(progress)));
-      this.wavExportStatus = status;
+      this.exportProgress = progress < 0 ? -1 : Math.max(0, Math.min(100, Math.round(progress)));
+      this.exportStatus = status;
+    },
+    startExport(format: 'midi' | 'wav', status: string) {
+      this.isExporting = true;
+      this.exportFormat = format;
+      this.exportProgress = 0;
+      this.exportStatus = status;
+    },
+    finishExport() {
+      this.isExporting = false;
+      this.exportFormat = null;
+      this.exportProgress = 0;
+      this.exportStatus = '';
     },
     updateControlDeckHeight() {
       const deck = this.$refs.controlDeck as HTMLElement | undefined;
@@ -1291,15 +1321,15 @@ export default defineComponent({
       this.setWavExportProgress(22, 'Scheduling tracks...');
 
       let renderProgressTimer: number | null = null;
-      this.wavExportProgress = -1;
-      this.wavExportStatus = 'Rendering audio...';
+      this.exportProgress = -1;
+      this.exportStatus = 'Rendering audio...';
 
       renderProgressTimer = window.setInterval(() => {
-        if (this.wavExportProgress < 0) {
+        if (this.exportProgress < 0) {
           return;
         }
-        if (this.wavExportProgress < 85) {
-          this.wavExportProgress += 1;
+        if (this.exportProgress < 85) {
+          this.exportProgress += 1;
         }
       }, 120);
 
@@ -2158,25 +2188,46 @@ export default defineComponent({
     },
 
     async downloadMIDI() {
-      const data = (await this.getMidi()).toArray();
-      const blob = new Blob([Uint8Array.from(data)], { type: 'audio/midi' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm.mid`;
-      a.click();
-
-      // Clean up the URL object
-      URL.revokeObjectURL(url);
-    },
-    async downloadWAV() {
-      if (this.isExportingWav) {
+      if (this.isExporting) {
         return;
       }
 
-      this.isExportingWav = true;
-      this.setWavExportProgress(4, 'Preparing WAV export...');
+      this.transportMenuOpen = false;
+      this.startExport('midi', 'Preparing MIDI export...');
+      try {
+        this.exportProgress = 30;
+        this.exportStatus = 'Building MIDI data...';
+        const midi = await this.getMidi();
+        this.exportProgress = 70;
+        this.exportStatus = 'Encoding MIDI...';
+        const data = midi.toArray();
+        const blob = new Blob([Uint8Array.from(data)], { type: 'audio/midi' });
+        this.exportProgress = 90;
+        this.exportStatus = 'Downloading MIDI...';
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `GateRunner-${this.formattedDate().toString()}-${this.forte}-${this.bpm}bpm.mid`;
+        a.click();
+
+        URL.revokeObjectURL(url);
+        this.exportProgress = 100;
+        this.exportStatus = 'MIDI export complete.';
+      } catch (error) {
+        console.error('Failed to export MIDI:', error);
+        window.alert('MIDI export failed. Please try again.');
+      } finally {
+        this.finishExport();
+      }
+    },
+    async downloadWAV() {
+      if (this.isExporting) {
+        return;
+      }
+
+      this.transportMenuOpen = false;
+      this.startExport('wav', 'Preparing WAV export...');
 
       try {
         const data = await this.renderMixWav();
@@ -2196,10 +2247,8 @@ export default defineComponent({
       } catch (error) {
         console.error('Failed to export WAV:', error);
         window.alert('WAV export failed. Please try again.');
-        this.wavExportProgress = 0;
-        this.wavExportStatus = '';
       } finally {
-        this.isExportingWav = false;
+        this.finishExport();
       }
     }
   },
@@ -2522,18 +2571,11 @@ export default defineComponent({
   letter-spacing: 0.015em;
 }
 
-.wav-export-status {
-  margin-top: 14px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(145, 220, 238, 0.32);
-  background: rgba(7, 18, 25, 0.62);
-}
-
-.wav-export-status-text {
-  color: #eefbff;
-  font-size: 0.9rem;
-  margin-bottom: 6px;
+.export-dialog-card {
+  border: 1px solid rgba(132, 209, 228, 0.32);
+  background:
+    linear-gradient(145deg, rgba(11, 28, 38, 0.95), rgba(6, 18, 26, 0.97)),
+    radial-gradient(circle at top right, rgba(226, 164, 77, 0.16), transparent 55%);
 }
 
 .rename-dialog-card {
