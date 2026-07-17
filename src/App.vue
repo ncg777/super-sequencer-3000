@@ -1218,6 +1218,9 @@ export default defineComponent({
     dbToGain(db: number): number {
       return Math.pow(10, db / 20);
     },
+    dbToWetMix(db: number): number {
+      return Math.max(0, Math.min(1, this.dbToGain(db)));
+    },
     setWavExportProgress(progress: number, status: string) {
       this.exportProgress = progress < 0 ? -1 : Math.max(0, Math.min(100, Math.round(progress)));
       this.exportStatus = status;
@@ -1813,7 +1816,7 @@ export default defineComponent({
       const reverb = markRaw(new Tone.Reverb({
         decay: this.reverbDecay,
         preDelay: this.reverbPreDelay,
-        wet: this.reverbEnabled ? this.dbToGain(this.reverbWet) : 0,
+        wet: this.reverbEnabled ? this.dbToWetMix(this.reverbWet) : 0,
       }).toDestination()) as Tone.Reverb;
 
       lowCut.chain(highCut, reverb);
@@ -1915,7 +1918,7 @@ export default defineComponent({
       chain.reverb.set({
         decay: this.reverbDecay,
         preDelay: this.reverbPreDelay,
-        wet: this.reverbEnabled ? this.dbToGain(this.reverbWet) : 0,
+        wet: this.reverbEnabled ? this.dbToWetMix(this.reverbWet) : 0,
       });
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
@@ -1959,7 +1962,7 @@ export default defineComponent({
       chain.echo.set({
         delayTime: this.getEchoDelaySeconds(track.echoDelay),
         feedback: track.echoFeedback,
-        wet: track.echoEnabled ? this.dbToGain(track.echoWet) : 0,
+        wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
       });
       chain.outputGain.gain.value = this.dbToGain(track.gain);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet) : 0;
