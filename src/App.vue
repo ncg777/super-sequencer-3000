@@ -744,6 +744,7 @@ interface TrackAudioChain {
   vibrato: Tone.Vibrato;
   echo: Tone.FeedbackDelay | Tone.PingPongDelay;
   echoPingPong: boolean;
+  maxDelay: number;
   dryGain: Tone.Gain;
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
@@ -1218,8 +1219,11 @@ export default defineComponent({
     dbToGain(db: number): number {
       return Math.pow(10, db / 20);
     },
+    clampNormalRange(value: number): number {
+      return Math.max(0, Math.min(1, value));
+    },
     dbToWetMix(db: number): number {
-      return Math.max(0, Math.min(1, this.dbToGain(db)));
+      return this.clampNormalRange(this.dbToGain(db));
     },
     setWavExportProgress(progress: number, status: string) {
       this.exportProgress = progress < 0 ? -1 : Math.max(0, Math.min(100, Math.round(progress)));
@@ -1347,7 +1351,7 @@ export default defineComponent({
         offlineReverb.reverb.set({
           decay: this.reverbDecay,
           preDelay: this.reverbPreDelay,
-          wet: this.reverbEnabled ? this.dbToGain(this.reverbWet) : 0,
+          wet: this.reverbEnabled ? this.dbToWetMix(this.reverbWet) : 0,
         });
 
         for (const entry of allTrackNotes) {
@@ -1363,7 +1367,7 @@ export default defineComponent({
 
           const delaySeconds = this.getTrackDelaySeconds(entry.track);
 
-          const chain = this.createTrackAudioChain(entry.track.echoPingPong);
+          const chain = this.createTrackAudioChain(entry.track.echoPingPong, this.getTrackEchoMaxDelay(entry.track));
           this.trackSynths[`offline-${entry.track.id}`] = chain;
           this.updateTrackChainSettings(entry.track, chain);
 
@@ -1823,14 +1827,17 @@ export default defineComponent({
       this.reverbChain = { lowCut, highCut, reverb };
       return this.reverbChain as ReverbAudioChain;
     },
-    createTrackAudioChain(echoPingPong = true): TrackAudioChain {
+    getTrackEchoMaxDelay(track: PresetTrackData): number {
+      return Math.max(1, this.getEchoDelaySeconds(track.echoDelay));
+    },
+    createTrackAudioChain(echoPingPong = true, maxDelay = 1): TrackAudioChain {
       const synth = markRaw(new Tone.PolySynth(Tone.Synth));
       const filter = markRaw(new Tone.Filter());
       const limiterGain = markRaw(new Tone.Gain(1));
       const limiter = markRaw(new Tone.WaveShaper((value) => Math.tanh(value)));
       const vibrato = markRaw(new Tone.Vibrato());
       const tremolo = markRaw(new Tone.Tremolo());
-      const echo = markRaw(echoPingPong ? new Tone.PingPongDelay() : new Tone.FeedbackDelay());
+      const echo = markRaw(echoPingPong ? new Tone.PingPongDelay({ maxDelay }) : new Tone.FeedbackDelay({ maxDelay }));
       const outputGain = markRaw(new Tone.Gain(1));
       const dryGain = markRaw(new Tone.Gain(1).toDestination());
       const reverbSend = markRaw(new Tone.Gain(0));
@@ -1841,25 +1848,23 @@ export default defineComponent({
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
       outputGain.connect(reverbSend);
 
-      return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, dryGain, reverbSend, outputGain };
+      return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, maxDelay, dryGain, reverbSend, outputGain };
     },
-    getOrCreateTrackChain(trackId: string, echoPingPong = true): TrackAudioChain {
-      const existing = this.trackSynths[trackId];
+    getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
+      const maxDelay = this.getTrackEchoMaxDelay(track);
+      const existing = this.trackSynths[track.id];
       if (existing) {
-        if (existing.echoPingPong !== echoPingPong) {
+        if (existing.echoPingPong !== track.echoPingPong || existing.maxDelay < maxDelay) {
           this.disposeTrackChain(existing);
-          delete this.trackSynths[trackId];
+          delete this.trackSynths[track.id];
         } else {
           return existing;
         }
       }
 
-      const chain = this.createTrackAudioChain(echoPingPong);
-      this.trackSynths[trackId] = chain;
+      const chain = this.createTrackAudioChain(track.echoPingPong, maxDelay);
+      this.trackSynths[track.id] = chain;
       return chain;
-    },
-    getOrCreateSynth(trackId: string): Tone.PolySynth {
-      return this.getOrCreateTrackChain(trackId, true).synth;
     },
     getWaveformType(waveform: string): 'sine' | 'square' | 'triangle' | 'sawtooth' {
       if (waveform === 'triangle') {
@@ -1950,18 +1955,18 @@ export default defineComponent({
       chain.limiterGain.gain.value = this.dbToGain(track.limiterGain);
       chain.tremolo.set({
         frequency: track.tremoloFrequency,
-        depth: track.tremoloDepth,
+        depth: this.clampNormalRange(track.tremoloDepth),
         spread: track.tremoloSpread,
         wet: track.tremoloEnabled ? 1 : 0,
       });
       chain.vibrato.set({
         frequency: track.vibratoFrequency,
-        depth: track.vibratoDepth,
+        depth: this.clampNormalRange(track.vibratoDepth),
         wet: track.vibratoEnabled ? 1 : 0,
       });
       chain.echo.set({
         delayTime: this.getEchoDelaySeconds(track.echoDelay),
-        feedback: track.echoFeedback,
+        feedback: this.clampNormalRange(track.echoFeedback),
         wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
       });
       chain.outputGain.gain.value = this.dbToGain(track.gain);
@@ -1980,7 +1985,7 @@ export default defineComponent({
       this.updateReverbChain();
 
       for (const track of this.tracks) {
-        const chain = this.getOrCreateTrackChain(track.id, track.echoPingPong);
+        const chain = this.getOrCreateTrackChain(track);
         this.updateTrackChainSettings(track, chain);
       }
     },
@@ -2141,7 +2146,8 @@ export default defineComponent({
         this.isRunning = false;
         this.stopTrackLoops();
         Tone.getTransport().stop();
-        this.showPlaybackErrorMessage('Audio playback could not start. Please interact with the page and try again.');
+        const message = error instanceof Error ? error.message : String(error);
+        this.showPlaybackErrorMessage(`Audio playback could not start: ${message}`);
       } finally {
         this.isStarting = false;
       }
@@ -2171,7 +2177,7 @@ export default defineComponent({
           this.playNoteWithMidi(note, vel, noteDuration, when, track.midiChannel);
         }
       } else {
-        const chain = this.getOrCreateTrackChain(track.id, track.echoPingPong);
+        const chain = this.getOrCreateTrackChain(track);
         chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(track, arr), when);
         chain.synth.triggerAttackRelease(
           arr.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
