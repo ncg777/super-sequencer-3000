@@ -655,6 +655,18 @@
         </v-card>
       </v-dialog>
     </v-main>
+
+    <v-snackbar
+      v-model="showPlaybackError"
+      :timeout="5000"
+      color="error"
+      location="top"
+    >
+      {{ playbackErrorMessage }}
+      <template #actions>
+        <v-btn variant="text" @click="showPlaybackError = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </v-app>
 </template>
 
@@ -792,6 +804,9 @@ export default defineComponent({
       allChords: [] as string[],
       isRunning: false,
       isStarting: false,
+      playbackErrorMessage: '',
+      showPlaybackError: false,
+      audioContextResumeHandler: null as (() => void) | null,
       trackLoops: {} as Record<string, Tone.Part<{ time: number; step: number }>>,
       showHelp: false,
       trackSynths: {} as Record<string, TrackAudioChain>,
@@ -2020,6 +2035,23 @@ export default defineComponent({
         this.trackLoops[entry.track.id] = part;
       }
     },
+    showPlaybackErrorMessage(message: string) {
+      this.playbackErrorMessage = message;
+      this.showPlaybackError = true;
+    },
+    setupAudioContextResumeOnInteraction() {
+      const handler = () => {
+        if (Tone.getContext().state !== 'running') {
+          Tone.start().catch((error) => {
+            console.warn('Failed to resume audio context on interaction:', error);
+          });
+        }
+      };
+      this.audioContextResumeHandler = handler;
+      document.addEventListener('click', handler, { once: true });
+      document.addEventListener('touchstart', handler, { once: true });
+      document.addEventListener('keydown', handler, { once: true });
+    },
     async startSequencer() {
       if (this.isRunning || this.isStarting) {
         return;
@@ -2027,10 +2059,24 @@ export default defineComponent({
 
       this.isStarting = true;
       try {
-        await Tone.start();
-        if (Tone.getContext().state !== 'running') {
-          throw new Error('Audio context did not resume.');
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await Tone.start();
+            if (Tone.getContext().state === 'running') {
+              break;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 50));
+          } catch (error) {
+            lastError = error;
+            await new Promise((resolve) => window.setTimeout(resolve, 100));
+          }
         }
+
+        if (Tone.getContext().state !== 'running') {
+          throw lastError instanceof Error ? lastError : new Error('Audio context did not resume.');
+        }
+
         this.applyRealtimeSettings();
         this.isRunning = true;
         this.rebuildTrackLoops();
@@ -2041,7 +2087,7 @@ export default defineComponent({
         this.isRunning = false;
         this.stopTrackLoops();
         Tone.getTransport().stop();
-        window.alert('Audio playback could not start. Please interact with the page and try again.');
+        this.showPlaybackErrorMessage('Audio playback could not start. Please interact with the page and try again.');
       } finally {
         this.isStarting = false;
       }
@@ -2147,6 +2193,11 @@ export default defineComponent({
   beforeUnmount() {
     window.removeEventListener('resize', this.updateControlDeckHeight);
     this.controlDeckResizeObserver?.disconnect();
+    if (this.audioContextResumeHandler) {
+      document.removeEventListener('click', this.audioContextResumeHandler);
+      document.removeEventListener('touchstart', this.audioContextResumeHandler);
+      document.removeEventListener('keydown', this.audioContextResumeHandler);
+    }
     this.stopSequencer();
     for (const chain of Object.values(this.trackSynths)) {
       this.disposeTrackChain(chain);
@@ -2174,6 +2225,7 @@ export default defineComponent({
       }
     });
     window.addEventListener('resize', this.updateControlDeckHeight);
+    this.setupAudioContextResumeOnInteraction();
   }
 });
 </script>
