@@ -121,7 +121,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   denominator: 4,
   waveform: 'sine',
   sequenceInput: '1 2 4 8',
-  octave: 6,
+  octave: 4,
   lengthFactor: 100,
   midiChannel: 1,
   gain: -6,

@@ -4,7 +4,7 @@
   font-weight: 400;
   color-scheme: dark;
   color: #ecf8ff;
-  background-color: #02080c;
+  background-color: #000000;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -25,12 +25,7 @@ body,
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    radial-gradient(circle at 8% 14%, rgba(0, 255, 209, 0.22), transparent 34%),
-    radial-gradient(circle at 78% 8%, rgba(255, 63, 164, 0.18), transparent 32%),
-    radial-gradient(circle at 92% 84%, rgba(244, 201, 69, 0.2), transparent 38%),
-    linear-gradient(135deg, #02080c 0%, #09111f 48%, #06120f 100%),
-    #02080c;
+  background: #000000;
 }
 
 a {

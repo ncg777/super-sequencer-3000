@@ -1,6 +1,5 @@
 <template>
   <v-app class="app-shell">
-    <AdjacencyMatrix class="shader-bg" :notes="activeNotes" :size="128" :flowWeight="2.0" :harmonyWeight="1.0" :decay="0.95" :minNote="noteRange.min" :maxNote="noteRange.max" />
     <v-main class="workspace-main">
       <div ref="controlDeck" class="control-deck">
         <div class="control-deck-header">
@@ -784,7 +783,6 @@
 import pkg from '../package.json';
 const appVersion = pkg.version;
 import { defineComponent, markRaw } from 'vue';
-import AdjacencyMatrix from './components/AdjacencyMatrix.vue';
 import EditableSlider from './components/EditableSlider.vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
@@ -874,7 +872,6 @@ const initialState = buildInitialState();
 export default defineComponent({
   name: 'App',
   components: {
-    AdjacencyMatrix,
     EditableSlider,
   },
   data() {
@@ -2542,25 +2539,28 @@ export default defineComponent({
   z-index: 0;
   width: 100vw;
   height: 100vh;
+  display: none;
   pointer-events: none;
 }
 
 :deep(.v-application) {
-  background: transparent !important;
+  background: #000000 !important;
 }
 
 :deep(.v-main) {
-  background: transparent !important;
+  background: #000000 !important;
 }
 
 .app-shell {
   color: #e8f5ff;
+  background: #000000;
 }
 
 .workspace-main {
   position: relative;
   z-index: 1;
   padding: 0 12px 16px;
+  background: #000000;
 }
 
 .control-deck {
@@ -2581,12 +2581,9 @@ export default defineComponent({
   justify-content: space-between;
   gap: 8px;
   padding: 7px 10px;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(0, 255, 209, 0.34);
-  background:
-    linear-gradient(120deg, rgba(4, 13, 19, 0.95), rgba(12, 22, 43, 0.9) 52%, rgba(13, 34, 26, 0.9)),
-    radial-gradient(circle at 14% 10%, rgba(0, 255, 209, 0.18), transparent 38%),
-    radial-gradient(circle at 82% 20%, rgba(255, 63, 164, 0.18), transparent 36%);
+  background: #000000;
   box-shadow: 0 0 22px rgba(0, 255, 209, 0.14), 0 14px 30px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(12px);
 }
@@ -2598,12 +2595,9 @@ export default defineComponent({
 
 .toolbar-panel {
   padding: 8px 10px;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(111, 214, 231, 0.26);
-  background:
-    linear-gradient(135deg, rgba(5, 14, 20, 0.92), rgba(12, 20, 40, 0.88)),
-    radial-gradient(circle at top right, rgba(255, 63, 164, 0.12), transparent 42%),
-    radial-gradient(circle at bottom left, rgba(111, 255, 124, 0.1), transparent 44%);
+  background: #000000;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
 }
@@ -2635,7 +2629,7 @@ export default defineComponent({
   letter-spacing: 0.05em;
   color: rgba(208, 243, 255, 0.88);
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid rgba(138, 215, 235, 0.4);
   background: rgba(15, 45, 59, 0.52);
 }
@@ -2729,7 +2723,7 @@ export default defineComponent({
   min-height: 40px;
   padding: 8px 12px;
   border: 1px solid rgba(135, 211, 230, 0.35);
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(8, 23, 32, 0.62);
   display: flex;
   align-items: center;
@@ -2795,7 +2789,7 @@ export default defineComponent({
   align-items: center;
   padding: 5px 7px;
   border: 1px solid rgba(124, 208, 228, 0.24);
-  border-radius: 10px;
+  border-radius: 0;
   color: #e9f9ff;
   background: linear-gradient(90deg, rgba(3, 11, 16, 0.52), rgba(16, 22, 46, 0.4));
   cursor: pointer;
@@ -2830,7 +2824,7 @@ export default defineComponent({
   font-weight: 800;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 0;
   padding: 2px 5px;
   outline: none;
 }
@@ -2853,13 +2847,13 @@ export default defineComponent({
   display: flex;
   gap: 3px;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.28);
 }
 
 .track-timeline-segment {
   min-width: 5px;
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 .track-timeline-segment.delay {
@@ -2896,7 +2890,7 @@ export default defineComponent({
   gap: 3px;
   padding: 10px 12px;
   border: 1px solid rgba(124, 208, 228, 0.28);
-  border-radius: 12px;
+  border-radius: 0;
   color: rgba(232, 248, 255, 0.86);
   background: rgba(3, 11, 16, 0.42);
   font-size: 0.9rem;
@@ -2923,12 +2917,9 @@ export default defineComponent({
 }
 
 .editor-surface {
-  background:
-    linear-gradient(145deg, rgba(8, 20, 30, 0.78), rgba(5, 10, 18, 0.9)),
-    radial-gradient(circle at 14% 4%, rgba(0, 255, 209, 0.12), transparent 40%),
-    radial-gradient(circle at 86% 0%, rgba(255, 79, 163, 0.13), transparent 42%);
+  background: #000000;
   border: 1px solid rgba(122, 206, 226, 0.24);
-  border-radius: 18px;
+  border-radius: 0;
   box-shadow: 0 0 28px rgba(0, 255, 209, 0.08), 0 24px 40px rgba(0, 0, 0, 0.32);
 }
 
@@ -2939,9 +2930,21 @@ export default defineComponent({
 .control-section {
   margin-bottom: 4px;
   border: 1px solid rgba(127, 211, 231, 0.26);
-  border-radius: 12px !important;
+  border-radius: 0 !important;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(4, 13, 19, 0.56), rgba(15, 19, 42, 0.38));
+  background: #000000;
+}
+
+:deep(.v-btn),
+:deep(.v-field),
+:deep(.v-card),
+:deep(.v-list),
+:deep(.v-menu > .v-overlay__content),
+:deep(.v-overlay__content),
+:deep(.v-expansion-panel),
+:deep(.v-progress-linear),
+:deep(.v-snackbar__wrapper) {
+  border-radius: 0 !important;
 }
 
 .control-section :deep(.v-expansion-panel-title) {
@@ -2974,8 +2977,8 @@ export default defineComponent({
 }
 
 :deep(.v-field) {
-  border-radius: 12px;
-  background: rgba(3, 11, 16, 0.6);
+  border-radius: 0;
+  background: #000000;
 }
 
 :deep(.v-field--variant-outlined .v-field__outline) {
@@ -2989,16 +2992,12 @@ export default defineComponent({
 
 .export-dialog-card {
   border: 1px solid rgba(132, 209, 228, 0.32);
-  background:
-    linear-gradient(145deg, rgba(11, 28, 38, 0.95), rgba(6, 18, 26, 0.97)),
-    radial-gradient(circle at top right, rgba(226, 164, 77, 0.16), transparent 55%);
+  background: #000000;
 }
 
 .rename-dialog-card {
   border: 1px solid rgba(132, 209, 228, 0.32);
-  background:
-    linear-gradient(145deg, rgba(11, 28, 38, 0.95), rgba(6, 18, 26, 0.97)),
-    radial-gradient(circle at top right, rgba(226, 164, 77, 0.16), transparent 55%);
+  background: #000000;
 }
 
 .close-btn {
@@ -3039,7 +3038,7 @@ export default defineComponent({
 
   .toolbar-panel {
     padding: 8px 9px;
-    border-radius: 12px;
+    border-radius: 0;
   }
 
   .brand-group {
@@ -3144,7 +3143,7 @@ export default defineComponent({
   }
 
   .editor-surface {
-    border-radius: 14px;
+    border-radius: 0;
     padding: 12px !important;
   }
 }
