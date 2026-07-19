@@ -12,7 +12,7 @@
             :title="controlDeckCollapsed ? 'Show controls' : 'Hide controls'"
             @click="toggleControlDeck"
           >
-            <v-icon>{{ controlDeckCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left' }}</v-icon>
+            <v-icon>{{ controlDeckCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up' }}</v-icon>
           </v-btn>
 
           <div class="brand-group">
@@ -959,7 +959,7 @@ export default defineComponent({
       controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
       rebuildTrackLoopsTimer: null as number | null,
-      expandedPanels: [0, 1, 2, 3, 4, 5] as number[],
+      expandedPanels: [] as number[],
     };
   },
   computed: {
@@ -2885,7 +2885,7 @@ export default defineComponent({
 }
 
 .selected-track-duration-card {
-  margin: 0 12px 16px;
+  margin: 6px 0 6px;
   display: grid;
   gap: 3px;
   padding: 10px 12px;
@@ -2924,11 +2924,11 @@ export default defineComponent({
 }
 
 .control-sections {
-  gap: 10px;
+  gap: 2px;
 }
 
 .control-section {
-  margin-bottom: 4px;
+  margin-bottom: 1px;
   border: 1px solid rgba(127, 211, 231, 0.26);
   border-radius: 0 !important;
   overflow: hidden;
@@ -2954,17 +2954,17 @@ export default defineComponent({
 }
 
 .control-section :deep(.v-expansion-panel-text__wrapper) {
-  padding: 0 10px 11px;
+  padding: 0 10px 9px;
 }
 
 .control-section :deep(.v-row) {
-  margin-top: -10px;
-  margin-bottom: -10px;
+  margin-top: 0;
+  margin-bottom: 7px;
 }
 
 .control-section :deep(.v-col) {
-  padding-top: 3px;
-  padding-bottom: 3px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 :deep(.v-label),
@@ -3007,7 +3007,7 @@ export default defineComponent({
 }
 
 .compact-row {
-  margin-top: -10px;
+  margin-top: -4px;
 }
 
 @media (max-width: 960px) {
