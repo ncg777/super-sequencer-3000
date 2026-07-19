@@ -318,14 +318,6 @@
           </v-col>
         </v-row>
 
-        <div v-if="selectedTrackTiming" class="selected-track-duration-card">
-          <div>
-            <span class="duration-label">Selected track length</span>
-            <strong>{{ formatBeats(selectedTrackTiming.totalBeats) }} beats</strong>
-          </div>
-          <div>{{ formatBars(selectedTrackTiming.totalBars) }} bars including {{ formatBeats(selectedTrackTiming.delayBeats) }} beat delay</div>
-          <div>{{ selectedTrackTiming.repeats }} × {{ selectedTrackTiming.sequenceLength }} steps at {{ selectedTrackTiming.numerator }}/{{ selectedTrackTiming.denominator }}</div>
-        </div>
             </v-expansion-panel-text>
           </v-expansion-panel>
 
