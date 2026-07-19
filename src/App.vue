@@ -21,39 +21,31 @@
             <span class="version-pill">v{{ appVersion }}</span>
           </div>
 
-          <v-btn
-            icon
-            variant="text"
-            size="small"
-            class="toolbar-icon-btn"
-            @click="showHelp = true"
-          >
-            <v-icon>mdi-help-circle</v-icon>
-          </v-btn>
-        </div>
-
-        <div v-show="!controlDeckCollapsed" class="toolbar-panel transport-panel">
-          <div class="transport-actions">
+          <div class="header-actions">
             <v-btn
-              class="transport-play-btn"
-              color="success"
-              :prepend-icon="isRunning ? 'mdi-stop-circle-outline' : 'mdi-play-circle-outline'"
+              class="header-icon-btn play-toggle-btn"
+              icon
+              variant="flat"
+              size="small"
+              :color="isRunning ? 'error' : 'success'"
+              :title="isRunning ? 'Stop' : 'Play'"
               :disabled="isStarting"
               @click="toggleSequencer"
             >
-              {{ isRunning ? 'Stop' : 'Play' }}
+              <v-icon>{{ isRunning ? 'mdi-stop' : 'mdi-play' }}</v-icon>
             </v-btn>
             <v-menu v-model="transportMenuOpen" location="bottom end" :close-on-content-click="false">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
-                  class="transport-actions-menu-btn"
+                  class="header-icon-btn"
+                  icon
                   variant="tonal"
                   color="primary"
-                  prepend-icon="mdi-tune-variant"
-                  append-icon="mdi-chevron-down"
+                  size="small"
+                  title="Global actions"
                 >
-                  Actions
+                  <v-icon>mdi-dots-vertical</v-icon>
                 </v-btn>
               </template>
               <v-list density="compact" class="transport-action-menu">
@@ -106,6 +98,17 @@
                 </v-list-item>
               </v-list>
             </v-menu>
+
+            <v-btn
+              icon
+              variant="text"
+              size="small"
+              class="toolbar-icon-btn header-icon-btn"
+              title="Help"
+              @click="showHelp = true"
+            >
+              <v-icon>mdi-help-circle</v-icon>
+            </v-btn>
           </div>
         </div>
 
@@ -138,7 +141,7 @@
             >
               Rename
             </v-btn>
-            <v-menu location="bottom end">
+            <v-menu v-model="presetMenuOpen" location="bottom end">
               <template #activator="{ props }">
                 <v-btn v-bind="props" class="preset-menu-btn" color="secondary" variant="tonal" append-icon="mdi-chevron-down">
                   Preset Actions
@@ -193,51 +196,46 @@
 
         <div v-show="!controlDeckCollapsed" class="toolbar-panel track-strip-panel">
           <div class="track-strip">
-            <v-select
-              v-model="selectedTrackId"
-              :items="trackOptions"
-              :item-title="'title'"
-              :item-value="'value'"
-              label="Track"
-              hide-details
-              density="compact"
-              variant="outlined"
-              prepend-inner-icon="mdi-playlist-music"
-              class="track-select"
-              @update:modelValue="handleTrackSelection"
-            />
-            <v-menu location="bottom end">
-              <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  class="track-actions-menu-btn"
-                  color="secondary"
-                  variant="tonal"
-                  prepend-icon="mdi-tune-variant"
-                  append-icon="mdi-chevron-down"
-                >
-                  Track Actions
-                </v-btn>
-              </template>
-              <v-list density="compact" class="track-action-menu">
-                <v-list-item title="Add Track" prepend-icon="mdi-plus" @click="addTrack" />
-                <v-list-item title="Rename Track" prepend-icon="mdi-form-textbox" :disabled="!currentTrack" @click="renameCurrentTrack" />
-                <v-list-item title="Remove Track" prepend-icon="mdi-delete-outline" :disabled="tracks.length <= 1" @click="removeCurrentTrack" />
-              </v-list>
-            </v-menu>
+            <div class="track-strip-heading">
+              <v-icon size="18">mdi-timeline-clock-outline</v-icon>
+              <span>Tracks</span>
+            </div>
+            <v-btn
+              class="track-add-btn"
+              icon
+              size="small"
+              variant="flat"
+              color="secondary"
+              title="Add blank track"
+              @click="addTrack"
+            >
+              <v-icon>mdi-plus</v-icon>
+            </v-btn>
           </div>
 
           <div class="track-timeline" aria-label="Track lengths in beats">
-            <button
+            <div
               v-for="entry in trackTimingEntries"
               :key="entry.track.id"
-              type="button"
+              role="button"
+              tabindex="0"
               class="track-timeline-row"
               :class="{ selected: entry.track.id === selectedTrackId }"
               @click="handleTrackSelection(entry.track.id)"
+              @keydown.enter.prevent="handleTrackSelection(entry.track.id)"
+              @keydown.space.prevent="handleTrackSelection(entry.track.id)"
             >
               <div class="track-timeline-meta">
-                <strong>{{ entry.track.name }}</strong>
+                <input
+                  class="track-name-input"
+                  :value="entry.track.name"
+                  :aria-label="`Track name for ${entry.track.name || 'unnamed track'}`"
+                  @click.stop
+                  @focus="handleTrackSelection(entry.track.id)"
+                  @input="handleTrackNameInput(entry.track.id, ($event.target as HTMLInputElement).value)"
+                  @blur="commitTrackName(entry.track.id)"
+                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                />
                 <span>{{ formatBeats(entry.totalBeats) }} beats · {{ formatBars(entry.totalBars) }} bars</span>
               </div>
               <div class="track-timeline-bar">
@@ -261,7 +259,19 @@
                   aria-hidden="true"
                 ></span>
               </div>
-            </button>
+              <v-btn
+                class="track-delete-btn"
+                icon
+                size="x-small"
+                variant="text"
+                color="error"
+                :disabled="tracks.length <= 1"
+                :title="tracks.length <= 1 ? 'Cannot delete the only track' : `Delete ${entry.track.name}`"
+                @click.stop="removeTrack(entry.track.id)"
+              >
+                <v-icon size="18">mdi-trash-can-outline</v-icon>
+              </v-btn>
+            </div>
           </div>
         </div>
       </div>
@@ -583,14 +593,17 @@
             <EditableSlider :label="'Pre-delay (' + Number(reverbPreDelay).toFixed(2) + 's)'" :min="0" :max="1" :step="0.01" v-model="reverbPreDelay" @update:modelValue="handleReverbDraftChange" />
           </v-col>
           <v-col cols="12" md="4">
-            <EditableSlider :label="'Global Reverb Wet (' + Number(reverbWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="reverbWet" @update:modelValue="handleReverbDraftChange" />
+            <EditableSlider :label="'Dry Level (' + Number(reverbDry).toFixed(1) + ' dB)'" :min="-96" :max="12" :step="0.1" v-model="reverbDry" @update:modelValue="handleReverbDraftChange" />
           </v-col>
         </v-row>
         <v-row class="compact-row">
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
+            <EditableSlider :label="'Reverb Wet Return (' + Number(reverbWet).toFixed(1) + ' dB)'" :min="-96" :max="12" :step="0.1" v-model="reverbWet" @update:modelValue="handleReverbDraftChange" />
+          </v-col>
+          <v-col cols="12" md="4">
             <EditableSlider :label="'Reverb Low Cut (' + Number(reverbLowCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbLowCut" @update:modelValue="handleReverbDraftChange" />
           </v-col>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
             <EditableSlider :label="'Reverb High Cut (' + Number(reverbHighCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbHighCut" @update:modelValue="handleReverbDraftChange" />
           </v-col>
         </v-row>
@@ -642,6 +655,28 @@
             <v-spacer></v-spacer>
             <v-btn variant="text" @click="cancelPresetRename">Cancel</v-btn>
             <v-btn color="primary" @click="confirmPresetRename" :disabled="!canSubmitPresetRename">Rename</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="showCreatePresetDialog" max-width="460px">
+        <v-card class="rename-dialog-card">
+          <v-card-title class="text-h6">New Preset</v-card-title>
+          <v-card-text>
+            <v-text-field
+              ref="createPresetInputRef"
+              v-model="createPresetInput"
+              label="Preset name"
+              density="comfortable"
+              variant="outlined"
+              autofocus
+              @keydown.enter.prevent="confirmCreatePreset"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="cancelCreatePreset">Cancel</v-btn>
+            <v-btn color="primary" @click="confirmCreatePreset" :disabled="!canSubmitCreatePreset">Create</v-btn>
           </v-card-actions>
         </v-card>
       </v-dialog>
@@ -889,6 +924,7 @@ export default defineComponent({
       reverbEnabled: initialState.draft.reverb.enabled,
       reverbDecay: initialState.draft.reverb.decay,
       reverbPreDelay: initialState.draft.reverb.preDelay,
+      reverbDry: initialState.draft.reverb.dry,
       reverbWet: initialState.draft.reverb.wet,
       reverbLowCut: initialState.draft.reverb.lowCut,
       reverbHighCut: initialState.draft.reverb.highCut,
@@ -914,11 +950,14 @@ export default defineComponent({
       isDirty: initialState.isDirty,
       showRenamePresetDialog: false,
       renamePresetInput: '',
+      showCreatePresetDialog: false,
+      createPresetInput: '',
       isExporting: false,
       exportFormat: null as 'midi' | 'wav' | null,
       exportProgress: 0,
       exportStatus: '',
       transportMenuOpen: false,
+      presetMenuOpen: false,
       controlDeckHeight: 0,
       controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
@@ -939,12 +978,6 @@ export default defineComponent({
         value: preset.id,
       }));
     },
-    trackOptions(): Array<{ title: string; value: string }> {
-      return this.tracks.map((track) => ({
-        title: `${track.name} (ch ${track.midiChannel})`,
-        value: track.id,
-      }));
-    },
     canSubmitPresetRename(): boolean {
       if (!this.currentPreset) {
         return false;
@@ -952,6 +985,9 @@ export default defineComponent({
 
       const nextName = sanitizePresetName(this.renamePresetInput);
       return nextName !== this.currentPreset.name;
+    },
+    canSubmitCreatePreset(): boolean {
+      return this.createPresetInput.trim().length > 0;
     },
     exportFormatLabel(): string {
       return this.exportFormat === 'wav' ? 'WAV mix' : this.exportFormat === 'midi' ? 'MIDI file' : '';
@@ -1207,47 +1243,48 @@ export default defineComponent({
     },
     addTrack() {
       const nextTrack = normalizePresetTrackData({
+        ...DEFAULT_PRESET_TRACK_DATA,
+        id: undefined,
         name: this.buildUniqueTrackName(`Track ${this.tracks.length + 1}`),
-        numerator: this.currentTrack?.numerator ?? DEFAULT_PRESET_TRACK_DATA.numerator,
-        denominator: this.currentTrack?.denominator ?? DEFAULT_PRESET_TRACK_DATA.denominator,
-        waveform: this.currentTrack?.waveform ?? DEFAULT_PRESET_TRACK_DATA.waveform,
-        sequenceInput: this.currentTrack?.sequenceInput ?? DEFAULT_PRESET_TRACK_DATA.sequenceInput,
-        octave: this.currentTrack?.octave ?? DEFAULT_PRESET_TRACK_DATA.octave,
-        lengthFactor: this.currentTrack?.lengthFactor ?? DEFAULT_PRESET_TRACK_DATA.lengthFactor,
+        sequenceInput: '',
         midiChannel: this.nextTrackChannel(),
-        gain: this.currentTrack?.gain ?? DEFAULT_PRESET_TRACK_DATA.gain,
-        velocityMultiplier: this.currentTrack?.velocityMultiplier ?? DEFAULT_PRESET_TRACK_DATA.velocityMultiplier,
-        delay: this.currentTrack?.delay ?? DEFAULT_PRESET_TRACK_DATA.delay,
-        repeats: this.currentTrack?.repeats ?? DEFAULT_PRESET_TRACK_DATA.repeats,
-        attack: this.currentTrack?.attack ?? DEFAULT_PRESET_TRACK_DATA.attack,
-        release: this.currentTrack?.release ?? DEFAULT_PRESET_TRACK_DATA.release,
-        unisonVoices: this.currentTrack?.unisonVoices ?? DEFAULT_PRESET_TRACK_DATA.unisonVoices,
-        unisonDetune: this.currentTrack?.unisonDetune ?? DEFAULT_PRESET_TRACK_DATA.unisonDetune,
-        tremoloEnabled: this.currentTrack?.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled,
-        tremoloFrequency: this.currentTrack?.tremoloFrequency ?? DEFAULT_PRESET_TRACK_DATA.tremoloFrequency,
-        tremoloDepth: this.currentTrack?.tremoloDepth ?? DEFAULT_PRESET_TRACK_DATA.tremoloDepth,
-        tremoloSpread: this.currentTrack?.tremoloSpread ?? DEFAULT_PRESET_TRACK_DATA.tremoloSpread,
-        vibratoEnabled: this.currentTrack?.vibratoEnabled ?? DEFAULT_PRESET_TRACK_DATA.vibratoEnabled,
-        vibratoFrequency: this.currentTrack?.vibratoFrequency ?? DEFAULT_PRESET_TRACK_DATA.vibratoFrequency,
-        vibratoDepth: this.currentTrack?.vibratoDepth ?? DEFAULT_PRESET_TRACK_DATA.vibratoDepth,
-        filterEnabled: this.currentTrack?.filterEnabled ?? DEFAULT_PRESET_TRACK_DATA.filterEnabled,
-        filterType: this.currentTrack?.filterType ?? DEFAULT_PRESET_TRACK_DATA.filterType,
-        filterFrequency: this.currentTrack?.filterFrequency ?? DEFAULT_PRESET_TRACK_DATA.filterFrequency,
-        filterRolloff: this.currentTrack?.filterRolloff ?? DEFAULT_PRESET_TRACK_DATA.filterRolloff,
-        filterQ: this.currentTrack?.filterQ ?? DEFAULT_PRESET_TRACK_DATA.filterQ,
-        filterGain: this.currentTrack?.filterGain ?? DEFAULT_PRESET_TRACK_DATA.filterGain,
-        filterKeyFollow: this.currentTrack?.filterKeyFollow ?? DEFAULT_PRESET_TRACK_DATA.filterKeyFollow,
-        limiterGain: this.currentTrack?.limiterGain ?? DEFAULT_PRESET_TRACK_DATA.limiterGain,
-        echoEnabled: this.currentTrack?.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled,
-        echoDelay: this.currentTrack?.echoDelay ?? DEFAULT_PRESET_TRACK_DATA.echoDelay,
-        echoFeedback: this.currentTrack?.echoFeedback ?? DEFAULT_PRESET_TRACK_DATA.echoFeedback,
-        echoWet: this.currentTrack?.echoWet ?? DEFAULT_PRESET_TRACK_DATA.echoWet,
-        echoPingPong: this.currentTrack?.echoPingPong ?? DEFAULT_PRESET_TRACK_DATA.echoPingPong,
-        reverbWet: this.currentTrack?.reverbWet ?? DEFAULT_PRESET_TRACK_DATA.reverbWet,
       }, this.tracks.length);
 
       this.tracks = [...this.tracks, nextTrack];
       this.selectedTrackId = nextTrack.id;
+      this.syncTrackEditorFromCurrent();
+      this.handleDraftChange();
+    },
+    handleTrackNameInput(trackId: string, nextName: string) {
+      this.tracks = this.tracks.map((track) => track.id === trackId ? { ...track, name: nextName } : track);
+      this.refreshDirtyState();
+    },
+    commitTrackName(trackId: string) {
+      const track = this.tracks.find((entry) => entry.id === trackId);
+      if (!track) {
+        return;
+      }
+
+      const nextName = this.buildUniqueTrackName(track.name, track.id);
+      this.tracks = this.tracks.map((entry) => entry.id === trackId ? { ...entry, name: nextName } : entry);
+      this.refreshDirtyState();
+    },
+    removeTrack(trackId: string) {
+      const trackToRemove = this.tracks.find((track) => track.id === trackId);
+      if (!trackToRemove || this.tracks.length <= 1) {
+        return;
+      }
+
+      if (!window.confirm(`Delete track "${trackToRemove.name}"?`)) {
+        return;
+      }
+
+      const removedIndex = this.tracks.findIndex((track) => track.id === trackId);
+      const nextTracks = this.tracks.filter((track) => track.id !== trackId);
+      this.tracks = nextTracks;
+      if (this.selectedTrackId === trackId) {
+        this.selectedTrackId = nextTracks[Math.max(0, removedIndex - 1)]?.id ?? nextTracks[0]?.id ?? null;
+      }
       this.syncTrackEditorFromCurrent();
       this.handleDraftChange();
     },
@@ -1257,15 +1294,7 @@ export default defineComponent({
         return;
       }
 
-      if (!window.confirm(`Delete track "${currentTrack.name}"?`)) {
-        return;
-      }
-
-      const nextTracks = this.tracks.filter((track) => track.id !== currentTrack.id);
-      this.tracks = nextTracks;
-      this.selectedTrackId = nextTracks[0]?.id ?? null;
-      this.syncTrackEditorFromCurrent();
-      this.handleDraftChange();
+      this.removeTrack(currentTrack.id);
     },
     renameCurrentTrack() {
       const currentTrack = this.currentTrack;
@@ -1474,7 +1503,7 @@ export default defineComponent({
         offlineReverb.reverb.set({
           decay: this.reverbDecay,
           preDelay: this.reverbPreDelay,
-          wet: this.reverbEnabled ? this.dbToWetMix(this.reverbWet) : 0,
+          wet: this.reverbEnabled ? 1 : 0,
         });
 
         for (const entry of allTrackNotes) {
@@ -1552,6 +1581,7 @@ export default defineComponent({
           enabled: this.reverbEnabled,
           decay: this.reverbDecay,
           preDelay: this.reverbPreDelay,
+          dry: this.reverbDry,
           wet: this.reverbWet,
           lowCut: this.reverbLowCut,
           highCut: this.reverbHighCut,
@@ -1565,6 +1595,7 @@ export default defineComponent({
       this.reverbEnabled = normalized.reverb.enabled;
       this.reverbDecay = normalized.reverb.decay;
       this.reverbPreDelay = normalized.reverb.preDelay;
+      this.reverbDry = normalized.reverb.dry;
       this.reverbWet = normalized.reverb.wet;
       this.reverbLowCut = normalized.reverb.lowCut;
       this.reverbHighCut = normalized.reverb.highCut;
@@ -1622,6 +1653,43 @@ export default defineComponent({
       this.renameCurrentPreset(this.renamePresetInput);
       this.cancelPresetRename();
     },
+    openCreatePresetDialog() {
+      this.createPresetInput = this.buildUniquePresetName('New preset');
+      this.showCreatePresetDialog = true;
+      this.focusCreatePresetInput();
+    },
+    focusCreatePresetInput() {
+      this.$nextTick(() => {
+        window.requestAnimationFrame(() => {
+          const input = (this.$refs.createPresetInputRef as { $el?: HTMLElement } | undefined)?.$el?.querySelector('input') as HTMLInputElement | null;
+          input?.focus();
+          input?.select();
+        });
+      });
+    },
+    cancelCreatePreset() {
+      this.showCreatePresetDialog = false;
+      this.createPresetInput = '';
+    },
+    confirmCreatePreset() {
+      if (!this.canSubmitCreatePreset) {
+        return;
+      }
+
+      const name = this.buildUniquePresetName(this.createPresetInput);
+      const preset = createNamedPreset(name, DEFAULT_PRESET_DATA);
+      const nextLibrary: PresetLibrary = {
+        ...this.presetLibrary,
+        presets: [...this.presetLibrary.presets, preset],
+        selectedPresetId: preset.id,
+      };
+
+      this.persistPresetLibrary(nextLibrary);
+      this.selectedPresetId = preset.id;
+      this.applyDraftData(preset.data);
+      this.refreshDirtyState();
+      this.cancelCreatePreset();
+    },
     persistPresetLibrary(library: PresetLibrary) {
       this.presetLibrary = library;
       savePresetLibrary(library);
@@ -1649,6 +1717,12 @@ export default defineComponent({
     },
     handleReverbDraftChange() {
       this.updateReverbChain();
+      for (const track of this.tracks) {
+        const chain = this.trackSynths[track.id];
+        if (chain) {
+          this.updateTrackChainSettings(track, chain);
+        }
+      }
       this.refreshDirtyState();
     },
     confirmDiscardChanges(actionLabel: string): boolean {
@@ -1754,29 +1828,15 @@ export default defineComponent({
       window.alert(`Created preset "${newPreset.name}".`);
     },
     createNewPreset() {
+      this.presetMenuOpen = false;
       if (!this.confirmDiscardChanges('Create a new preset and discard them')) {
         this.selectedPresetId = this.presetLibrary.selectedPresetId;
         return;
       }
 
-      const suggestedName = this.buildUniquePresetName('New preset');
-      const requestedName = window.prompt('Name for the new preset:', suggestedName);
-      if (requestedName === null) {
-        return;
-      }
-
-      const name = this.buildUniquePresetName(requestedName);
-      const preset = createNamedPreset(name, DEFAULT_PRESET_DATA);
-      const nextLibrary: PresetLibrary = {
-        ...this.presetLibrary,
-        presets: [...this.presetLibrary.presets, preset],
-        selectedPresetId: preset.id,
-      };
-
-      this.persistPresetLibrary(nextLibrary);
-      this.selectedPresetId = preset.id;
-      this.applyDraftData(preset.data);
-      this.refreshDirtyState();
+      this.$nextTick(() => {
+        this.openCreatePresetDialog();
+      });
     },
     deleteCurrentPreset() {
       const currentPreset = this.currentPreset;
@@ -1952,7 +2012,7 @@ export default defineComponent({
       const reverb = markRaw(new Tone.Reverb({
         decay: this.reverbDecay,
         preDelay: this.reverbPreDelay,
-        wet: this.reverbEnabled ? this.dbToWetMix(this.reverbWet) : 0,
+        wet: this.reverbEnabled ? 1 : 0,
       }).toDestination()) as Tone.Reverb;
 
       lowCut.chain(highCut, reverb);
@@ -2056,7 +2116,7 @@ export default defineComponent({
       chain.reverb.set({
         decay: this.reverbDecay,
         preDelay: this.reverbPreDelay,
-        wet: this.reverbEnabled ? this.dbToWetMix(this.reverbWet) : 0,
+        wet: this.reverbEnabled ? 1 : 0,
       });
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
@@ -2103,7 +2163,8 @@ export default defineComponent({
         wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
       });
       chain.outputGain.gain.value = this.dbToGain(track.gain);
-      chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet) : 0;
+      chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
+      chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
     },
     updateSynths(trackId?: string, createMissingChains = true) {
@@ -2511,21 +2572,22 @@ export default defineComponent({
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .control-deck-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(111, 214, 231, 0.32);
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 209, 0.34);
   background:
-    linear-gradient(135deg, rgba(7, 14, 20, 0.92), rgba(9, 25, 34, 0.9)),
-    radial-gradient(circle at top right, rgba(225, 167, 73, 0.18), transparent 45%);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+    linear-gradient(120deg, rgba(4, 13, 19, 0.95), rgba(12, 22, 43, 0.9) 52%, rgba(13, 34, 26, 0.9)),
+    radial-gradient(circle at 14% 10%, rgba(0, 255, 209, 0.18), transparent 38%),
+    radial-gradient(circle at 82% 20%, rgba(255, 63, 164, 0.18), transparent 36%);
+  box-shadow: 0 0 22px rgba(0, 255, 209, 0.14), 0 14px 30px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(12px);
 }
 
@@ -2535,13 +2597,14 @@ export default defineComponent({
 }
 
 .toolbar-panel {
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(111, 214, 231, 0.32);
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(111, 214, 231, 0.26);
   background:
-    linear-gradient(135deg, rgba(7, 14, 20, 0.92), rgba(9, 25, 34, 0.9)),
-    radial-gradient(circle at top right, rgba(225, 167, 73, 0.18), transparent 45%);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+    linear-gradient(135deg, rgba(5, 14, 20, 0.92), rgba(12, 20, 40, 0.88)),
+    radial-gradient(circle at top right, rgba(255, 63, 164, 0.12), transparent 42%),
+    radial-gradient(circle at bottom left, rgba(111, 255, 124, 0.1), transparent 44%);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
 }
 
@@ -2558,8 +2621,13 @@ export default defineComponent({
   margin: 0;
   color: #f4fbff;
   font-size: clamp(1.2rem, 2vw, 1.6rem);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   line-height: 1;
+  background: linear-gradient(90deg, #f8fdff, #00ffd1 38%, #ff4fa3 72%, #f4d84c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 18px rgba(0, 255, 209, 0.7), 0 0 28px rgba(255, 79, 163, 0.34);
 }
 
 .version-pill {
@@ -2574,6 +2642,24 @@ export default defineComponent({
 
 .toolbar-icon-btn {
   color: #d5f5ff;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.header-icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(159, 244, 255, 0.22);
+  box-shadow: 0 0 14px rgba(0, 255, 209, 0.14);
+}
+
+.play-toggle-btn {
+  box-shadow: 0 0 16px rgba(111, 255, 124, 0.18);
 }
 
 .transport-actions {
@@ -2682,14 +2768,16 @@ export default defineComponent({
   align-items: center;
 }
 
-.track-actions-menu-btn {
-  min-width: 168px;
+.track-strip-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(236, 248, 255, 0.9);
+  font-weight: 800;
 }
 
-.track-action-menu {
-  min-width: 220px;
-  border: 1px solid rgba(139, 213, 231, 0.3);
-  background: rgba(4, 12, 17, 0.96);
+.track-add-btn {
+  box-shadow: 0 0 16px rgba(255, 79, 163, 0.18);
 }
 
 .track-timeline {
@@ -2700,23 +2788,26 @@ export default defineComponent({
 
 .track-timeline-row {
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   display: grid;
-  grid-template-columns: minmax(118px, 0.42fr) minmax(160px, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(132px, 0.34fr) minmax(160px, 1fr) auto;
+  gap: 8px;
   align-items: center;
-  padding: 7px 9px;
-  border: 1px solid rgba(124, 208, 228, 0.28);
-  border-radius: 12px;
+  padding: 5px 7px;
+  border: 1px solid rgba(124, 208, 228, 0.24);
+  border-radius: 10px;
   color: #e9f9ff;
-  background: rgba(3, 11, 16, 0.42);
+  background: linear-gradient(90deg, rgba(3, 11, 16, 0.52), rgba(16, 22, 46, 0.4));
   cursor: pointer;
   text-align: left;
 }
 
 .track-timeline-row.selected {
-  border-color: rgba(244, 176, 88, 0.76);
-  background: rgba(47, 27, 8, 0.42);
+  border-color: rgba(0, 255, 209, 0.76);
+  background:
+    linear-gradient(90deg, rgba(0, 255, 209, 0.16), rgba(255, 79, 163, 0.12)),
+    rgba(8, 18, 28, 0.72);
+  box-shadow: inset 0 0 18px rgba(0, 255, 209, 0.1), 0 0 14px rgba(0, 255, 209, 0.12);
 }
 
 .track-timeline-meta {
@@ -2725,11 +2816,30 @@ export default defineComponent({
   gap: 1px;
 }
 
-.track-timeline-meta strong,
 .track-timeline-meta span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.track-name-input {
+  width: 100%;
+  min-width: 0;
+  color: #f9fdff;
+  font: inherit;
+  font-weight: 800;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 2px 5px;
+  outline: none;
+}
+
+.track-name-input:hover,
+.track-name-input:focus {
+  border-color: rgba(0, 255, 209, 0.42);
+  background: rgba(0, 255, 209, 0.08);
+  box-shadow: 0 0 12px rgba(0, 255, 209, 0.12);
 }
 
 .track-timeline-meta span {
@@ -2739,7 +2849,7 @@ export default defineComponent({
 
 .track-timeline-bar {
   min-width: 0;
-  height: 18px;
+  height: 16px;
   display: flex;
   gap: 3px;
   padding: 3px;
@@ -2763,7 +2873,16 @@ export default defineComponent({
 }
 
 .track-timeline-segment.repeat {
-  background: linear-gradient(90deg, rgba(111, 214, 231, 0.92), rgba(74, 142, 236, 0.86));
+  background: linear-gradient(90deg, rgba(0, 255, 209, 0.94), rgba(255, 79, 163, 0.82), rgba(244, 216, 76, 0.86));
+}
+
+.track-delete-btn {
+  opacity: 0.76;
+}
+
+.track-delete-btn:hover,
+.track-delete-btn:focus-visible {
+  opacity: 1;
 }
 
 .track-timeline-segment.pad {
@@ -2805,11 +2924,12 @@ export default defineComponent({
 
 .editor-surface {
   background:
-    linear-gradient(145deg, rgba(9, 22, 30, 0.78), rgba(3, 10, 14, 0.88)),
-    radial-gradient(circle at 80% 0%, rgba(228, 171, 77, 0.16), transparent 52%);
-  border: 1px solid rgba(122, 206, 226, 0.3);
-  border-radius: 20px;
-  box-shadow: 0 24px 40px rgba(0, 0, 0, 0.32);
+    linear-gradient(145deg, rgba(8, 20, 30, 0.78), rgba(5, 10, 18, 0.9)),
+    radial-gradient(circle at 14% 4%, rgba(0, 255, 209, 0.12), transparent 40%),
+    radial-gradient(circle at 86% 0%, rgba(255, 79, 163, 0.13), transparent 42%);
+  border: 1px solid rgba(122, 206, 226, 0.24);
+  border-radius: 18px;
+  box-shadow: 0 0 28px rgba(0, 255, 209, 0.08), 0 24px 40px rgba(0, 0, 0, 0.32);
 }
 
 .control-sections {
@@ -2817,11 +2937,31 @@ export default defineComponent({
 }
 
 .control-section {
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   border: 1px solid rgba(127, 211, 231, 0.26);
-  border-radius: 14px !important;
+  border-radius: 12px !important;
   overflow: hidden;
-  background: rgba(4, 13, 19, 0.46);
+  background: linear-gradient(135deg, rgba(4, 13, 19, 0.56), rgba(15, 19, 42, 0.38));
+}
+
+.control-section :deep(.v-expansion-panel-title) {
+  min-height: 30px !important;
+  padding: 4px 12px;
+  color: #ecf8ff;
+}
+
+.control-section :deep(.v-expansion-panel-text__wrapper) {
+  padding: 0 10px 11px;
+}
+
+.control-section :deep(.v-row) {
+  margin-top: -10px;
+  margin-bottom: -10px;
+}
+
+.control-section :deep(.v-col) {
+  padding-top: 3px;
+  padding-bottom: 3px;
 }
 
 :deep(.v-label),
@@ -2868,7 +3008,7 @@ export default defineComponent({
 }
 
 .compact-row {
-  margin-top: -4px;
+  margin-top: -10px;
 }
 
 @media (max-width: 960px) {
@@ -2910,20 +3050,9 @@ export default defineComponent({
     font-size: 0.7rem;
   }
 
-  .transport-actions {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px;
-  }
-
   .dependent-settings-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
-  }
-
-  .transport-actions-menu-btn,
-  .track-actions-menu-btn {
-    width: 100%;
-    min-width: 0;
   }
 
   .preset-panel {
@@ -2963,17 +3092,32 @@ export default defineComponent({
   }
 
   .track-strip {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .track-timeline-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "meta delete"
+      "bar bar";
     gap: 6px;
-    min-height: 58px;
+    min-height: 56px;
+  }
+
+  .track-timeline-meta {
+    grid-area: meta;
   }
 
   .track-timeline-bar {
-    height: 22px;
+    grid-area: bar;
+  }
+
+  .track-delete-btn {
+    grid-area: delete;
+  }
+
+  .track-timeline-bar {
+    height: 18px;
   }
 
   .selected-track-duration-card {

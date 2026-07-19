@@ -63,6 +63,7 @@ export interface PresetReverbData {
   enabled: boolean;
   decay: number;
   preDelay: number;
+  dry: number;
   wet: number;
   lowCut: number;
   highCut: number;
@@ -160,11 +161,12 @@ export const DEFAULT_PRESET_DATA: PresetData = {
   tracks: [DEFAULT_PRESET_TRACK_DATA],
   reverb: {
   enabled: true,
-  decay: 3,
-  preDelay: 0.02,
-  wet: -7,
+  decay: 8,
+  preDelay: 0.04,
+  dry: 0,
+  wet: -2,
   lowCut: 39,
-  highCut: 119,
+  highCut: 112,
   },
 };
 
@@ -264,6 +266,7 @@ export function clonePresetReverbData(reverb: PresetReverbData): PresetReverbDat
     enabled: reverb.enabled,
     decay: reverb.decay,
     preDelay: reverb.preDelay,
+    dry: reverb.dry,
     wet: reverb.wet,
     lowCut: reverb.lowCut,
     highCut: reverb.highCut,
@@ -276,7 +279,8 @@ export function normalizePresetReverbData(value: unknown): PresetReverbData {
     enabled: raw.enabled ?? DEFAULT_PRESET_DATA.reverb.enabled,
     decay: clamp(parseNumber(raw.decay, DEFAULT_PRESET_DATA.reverb.decay), 0.1, 30),
     preDelay: clamp(parseNumber(raw.preDelay, DEFAULT_PRESET_DATA.reverb.preDelay), 0, 1),
-    wet: clamp(parseNumber(raw.wet, DEFAULT_PRESET_DATA.reverb.wet), -96, 0),
+    dry: clamp(parseNumber(raw.dry, DEFAULT_PRESET_DATA.reverb.dry), -96, 12),
+    wet: clamp(parseNumber(raw.wet, DEFAULT_PRESET_DATA.reverb.wet), -96, 12),
     lowCut: clamp(parseNumber(raw.lowCut, DEFAULT_PRESET_DATA.reverb.lowCut), 0, 127),
     highCut: clamp(parseNumber(raw.highCut, DEFAULT_PRESET_DATA.reverb.highCut), 0, 127),
   };
@@ -339,9 +343,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     numerator: clamp(parseInteger(raw.numerator?.toString(), DEFAULT_PRESET_TRACK_DATA.numerator), 1, 16),
     denominator: clamp(parseInteger(raw.denominator?.toString(), DEFAULT_PRESET_TRACK_DATA.denominator), 1, 16),
     waveform: normalizeWaveform(raw.waveform),
-    sequenceInput: typeof raw.sequenceInput === 'string' && raw.sequenceInput.trim().length > 0
-      ? raw.sequenceInput
-      : DEFAULT_PRESET_TRACK_DATA.sequenceInput,
+    sequenceInput: typeof raw.sequenceInput === 'string' ? raw.sequenceInput : DEFAULT_PRESET_TRACK_DATA.sequenceInput,
     octave: clamp(parseInteger(raw.octave?.toString(), DEFAULT_PRESET_TRACK_DATA.octave), 0, 10),
     lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_TRACK_DATA.lengthFactor), 1, 400),
     midiChannel: clamp(parseInteger(raw.midiChannel?.toString(), DEFAULT_PRESET_TRACK_DATA.midiChannel), 1, 16),
@@ -434,6 +436,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
     || left.reverb.enabled !== right.reverb.enabled
     || left.reverb.decay !== right.reverb.decay
     || left.reverb.preDelay !== right.reverb.preDelay
+    || left.reverb.dry !== right.reverb.dry
     || left.reverb.wet !== right.reverb.wet
     || left.reverb.lowCut !== right.reverb.lowCut
     || left.reverb.highCut !== right.reverb.highCut) {

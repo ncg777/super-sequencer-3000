@@ -116,12 +116,14 @@ function updateFromSlider(nextValue: unknown): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  min-height: 20px;
 }
 
 .editable-slider__label {
   color: #ffffff;
   font-weight: 600;
+  font-size: 0.82rem;
   background: transparent;
   border: none;
   padding: 0;
@@ -137,5 +139,18 @@ function updateFromSlider(nextValue: unknown): void {
 
 .editable-slider__input {
   max-width: 140px;
+}
+
+.editable-slider :deep(.v-slider) {
+  margin-top: -8px;
+  margin-bottom: -14px;
+}
+
+.editable-slider :deep(.v-slider-track) {
+  height: 4px !important;
+}
+
+.editable-slider :deep(.v-slider-thumb) {
+  --v-slider-thumb-size: 14px;
 }
 </style>
