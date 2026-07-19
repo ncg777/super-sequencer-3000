@@ -226,6 +226,43 @@
               </v-list>
             </v-menu>
           </div>
+
+          <div class="track-timeline" aria-label="Track lengths in beats">
+            <button
+              v-for="entry in trackTimingEntries"
+              :key="entry.track.id"
+              type="button"
+              class="track-timeline-row"
+              :class="{ selected: entry.track.id === selectedTrackId }"
+              @click="handleTrackSelection(entry.track.id)"
+            >
+              <div class="track-timeline-meta">
+                <strong>{{ entry.track.name }}</strong>
+                <span>{{ formatBeats(entry.totalBeats) }} beats · {{ formatBars(entry.totalBars) }} bars</span>
+              </div>
+              <div class="track-timeline-bar">
+                <span
+                  v-if="entry.delayBeats > 0"
+                  class="track-timeline-segment delay"
+                  :style="{ flexGrow: entry.delayBeats }"
+                  :title="`${formatBeats(entry.delayBeats)} beat delay`"
+                ></span>
+                <span
+                  v-for="repeat in entry.repeatBlocks"
+                  :key="repeat"
+                  class="track-timeline-segment repeat"
+                  :style="{ flexGrow: entry.patternBeats }"
+                  :title="`Repeat ${repeat}: ${formatBeats(entry.patternBeats)} beats`"
+                ></span>
+                <span
+                  v-if="entry.padBeats > 0"
+                  class="track-timeline-segment pad"
+                  :style="{ flexGrow: entry.padBeats }"
+                  aria-hidden="true"
+                ></span>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -271,6 +308,15 @@
             />
           </v-col>
         </v-row>
+
+        <div v-if="selectedTrackTiming" class="selected-track-duration-card">
+          <div>
+            <span class="duration-label">Selected track length</span>
+            <strong>{{ formatBeats(selectedTrackTiming.totalBeats) }} beats</strong>
+          </div>
+          <div>{{ formatBars(selectedTrackTiming.totalBars) }} bars including {{ formatBeats(selectedTrackTiming.delayBeats) }} beat delay</div>
+          <div>{{ selectedTrackTiming.repeats }} × {{ selectedTrackTiming.sequenceLength }} steps at {{ selectedTrackTiming.numerator }}/{{ selectedTrackTiming.denominator }}</div>
+        </div>
             </v-expansion-panel-text>
           </v-expansion-panel>
 
@@ -485,9 +531,9 @@
           </v-expansion-panel>
 
           <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Soft Limiter</v-expansion-panel-title>
+            <v-expansion-panel-title>Tanh Drive</v-expansion-panel-title>
             <v-expansion-panel-text>
-              <EditableSlider :label="'Limiter Gain (' + Number(trackLimiterGain).toFixed(1) + ' dB)'" :min="-48" :max="48" :step="0.1" v-model="trackLimiterGain" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Tanh Drive (' + Number(trackLimiterGain).toFixed(1) + ' dB before tanh)'" :min="-48" :max="72" :step="0.1" v-model="trackLimiterGain" @update:modelValue="handleTrackDraftChange" />
             </v-expansion-panel-text>
           </v-expansion-panel>
 
@@ -526,26 +572,26 @@
             <v-expansion-panel-text>
         <v-row>
           <v-col cols="12">
-            <v-switch v-model="reverbEnabled" label="Enable High Quality Global Reverb" hide-details density="compact" @update:modelValue="handleDraftChange" />
+            <v-switch v-model="reverbEnabled" label="Enable High Quality Global Reverb" hide-details density="compact" @update:modelValue="handleReverbDraftChange" />
           </v-col>
         </v-row>
         <v-row class="compact-row">
           <v-col cols="12" md="4">
-            <EditableSlider :label="'Reverb Decay (' + Number(reverbDecay).toFixed(2) + 's)'" :min="0.1" :max="30" :step="0.1" v-model="reverbDecay" @update:modelValue="handleDraftChange" />
+            <EditableSlider :label="'Reverb Decay (' + Number(reverbDecay).toFixed(2) + 's)'" :min="0.1" :max="30" :step="0.1" v-model="reverbDecay" @update:modelValue="handleReverbDraftChange" />
           </v-col>
           <v-col cols="12" md="4">
-            <EditableSlider :label="'Pre-delay (' + Number(reverbPreDelay).toFixed(2) + 's)'" :min="0" :max="1" :step="0.01" v-model="reverbPreDelay" @update:modelValue="handleDraftChange" />
+            <EditableSlider :label="'Pre-delay (' + Number(reverbPreDelay).toFixed(2) + 's)'" :min="0" :max="1" :step="0.01" v-model="reverbPreDelay" @update:modelValue="handleReverbDraftChange" />
           </v-col>
           <v-col cols="12" md="4">
-            <EditableSlider :label="'Global Reverb Wet (' + Number(reverbWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="reverbWet" @update:modelValue="handleDraftChange" />
+            <EditableSlider :label="'Global Reverb Wet (' + Number(reverbWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="reverbWet" @update:modelValue="handleReverbDraftChange" />
           </v-col>
         </v-row>
         <v-row class="compact-row">
           <v-col cols="12" md="6">
-            <EditableSlider :label="'Reverb Low Cut (' + Number(reverbLowCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbLowCut" @update:modelValue="handleDraftChange" />
+            <EditableSlider :label="'Reverb Low Cut (' + Number(reverbLowCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbLowCut" @update:modelValue="handleReverbDraftChange" />
           </v-col>
           <v-col cols="12" md="6">
-            <EditableSlider :label="'Reverb High Cut (' + Number(reverbHighCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbHighCut" @update:modelValue="handleDraftChange" />
+            <EditableSlider :label="'Reverb High Cut (' + Number(reverbHighCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbHighCut" @update:modelValue="handleReverbDraftChange" />
           </v-col>
         </v-row>
             </v-expansion-panel-text>
@@ -620,7 +666,7 @@
                 <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
               <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
               <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-              <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, filter, echo, and reverb send.</li>
+              <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, filter, tanh drive, echo, and reverb send.</li>
               <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
               <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
                 representation.</li>
@@ -629,6 +675,8 @@
               <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
               <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
               <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
+              <li><strong>Track Length View</strong>: The track strip shows each track's delay, repeats, and total duration in beats/bars with compact selectable blocks.</li>
+              <li><strong>Tanh Drive</strong>: Applies the selected dB gain before a tanh waveshaper, so high values amplify and distort while the final track signal remains softly bounded.</li>
               <li><strong>Instrument/Modulation/Filter</strong>: Shape each track with attack/release, unison voices, tremolo, vibrato, and a key-following multimode filter.</li>
               <li><strong>Effects</strong>: Add optional per-track feedback echo and send each track into the global high-quality reverb.</li>
               <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
@@ -756,6 +804,21 @@ interface ReverbAudioChain {
   reverb: Tone.Reverb;
 }
 
+interface TrackTimingEntry {
+  track: PresetTrackData;
+  sequenceLength: number;
+  numerator: number;
+  denominator: number;
+  repeats: number;
+  delayBeats: number;
+  patternBeats: number;
+  activeBeats: number;
+  totalBeats: number;
+  totalBars: number;
+  padBeats: number;
+  repeatBlocks: number[];
+}
+
 function buildInitialState() {
   const presetLibrary = loadPresetLibrary();
   const selectedPreset = getSelectedPreset(presetLibrary);
@@ -859,6 +922,7 @@ export default defineComponent({
       controlDeckHeight: 0,
       controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
+      rebuildTrackLoopsTimer: null as number | null,
       expandedPanels: [0, 1, 2, 3, 4, 5] as number[],
     };
   },
@@ -926,6 +990,38 @@ export default defineComponent({
         track,
         notes: this.computeActualNotes(track),
       }));
+    },
+    trackTimingEntries(): TrackTimingEntry[] {
+      const entries = this.tracks.map((track) => {
+        const sequenceLength = this.parseSequence(track.sequenceInput).length;
+        const patternBeats = sequenceLength / Math.max(1, track.denominator);
+        const delayBeats = track.delay * track.numerator;
+        const activeBeats = patternBeats * track.repeats;
+        const totalBeats = delayBeats + activeBeats;
+        const totalBars = track.numerator > 0 ? totalBeats / track.numerator : 0;
+        return {
+          track,
+          sequenceLength,
+          numerator: track.numerator,
+          denominator: track.denominator,
+          repeats: track.repeats,
+          delayBeats,
+          patternBeats,
+          activeBeats,
+          totalBeats,
+          totalBars,
+          padBeats: 0,
+          repeatBlocks: Array.from({ length: track.repeats }, (_, index) => index + 1),
+        };
+      });
+      const maxBeats = Math.max(1, ...entries.map((entry) => entry.totalBeats));
+      return entries.map((entry) => ({
+        ...entry,
+        padBeats: Math.max(0, maxBeats - entry.totalBeats),
+      }));
+    },
+    selectedTrackTiming(): TrackTimingEntry | null {
+      return this.trackTimingEntries.find((entry) => entry.track.id === this.selectedTrackId) ?? this.trackTimingEntries[0] ?? null;
     },
   },
   methods: {
@@ -1141,6 +1237,7 @@ export default defineComponent({
         filterQ: this.currentTrack?.filterQ ?? DEFAULT_PRESET_TRACK_DATA.filterQ,
         filterGain: this.currentTrack?.filterGain ?? DEFAULT_PRESET_TRACK_DATA.filterGain,
         filterKeyFollow: this.currentTrack?.filterKeyFollow ?? DEFAULT_PRESET_TRACK_DATA.filterKeyFollow,
+        limiterGain: this.currentTrack?.limiterGain ?? DEFAULT_PRESET_TRACK_DATA.limiterGain,
         echoEnabled: this.currentTrack?.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled,
         echoDelay: this.currentTrack?.echoDelay ?? DEFAULT_PRESET_TRACK_DATA.echoDelay,
         echoFeedback: this.currentTrack?.echoFeedback ?? DEFAULT_PRESET_TRACK_DATA.echoFeedback,
@@ -1191,8 +1288,20 @@ export default defineComponent({
       this.handleDraftChange();
     },
     handleTrackDraftChange() {
+      const previousTrack = this.currentTrack ? clonePresetTrackData(this.currentTrack) : null;
       this.applyTrackEditorToCurrent();
-      this.handleDraftChange();
+      const nextTrack = this.currentTrack;
+      this.refreshDirtyState();
+
+      if (!nextTrack) {
+        return;
+      }
+
+      if (this.isRunning && previousTrack && this.didTrackTimingChange(previousTrack, nextTrack)) {
+        this.scheduleTrackLoopRebuild();
+      }
+
+      this.updateSynths(nextTrack.id, false);
     },
     getTrackStepDuration(trackNotes: number[][], index: number): number {
       if (trackNotes.length === 0) {
@@ -1221,6 +1330,20 @@ export default defineComponent({
     },
     clampNormalRange(value: number): number {
       return Math.max(0, Math.min(1, value));
+    },
+    formatBeats(value: number): string {
+      return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, '');
+    },
+    formatBars(value: number): string {
+      return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, '');
+    },
+    didTrackTimingChange(previous: PresetTrackData, next: PresetTrackData): boolean {
+      return previous.numerator !== next.numerator
+        || previous.denominator !== next.denominator
+        || previous.delay !== next.delay
+        || previous.repeats !== next.repeats
+        || previous.sequenceInput !== next.sequenceInput
+        || previous.octave !== next.octave;
     },
     dbToWetMix(db: number): number {
       return this.clampNormalRange(this.dbToGain(db));
@@ -1455,16 +1578,18 @@ export default defineComponent({
       this.syncTrackEditorFromCurrent();
       this.applyRealtimeSettings();
     },
-    applyRealtimeSettings() {
+    applyRealtimeSettings(options: { rebuildLoops?: boolean; createMissingChains?: boolean } = {}) {
+      const rebuildLoops = options.rebuildLoops ?? true;
+      const createMissingChains = options.createMissingChains ?? this.isRunning;
       Tone.getTransport().bpm.value = this.bpm;
       const signatureTrack = this.currentTrack ?? this.tracks[0];
       if (signatureTrack) {
         Tone.getTransport().timeSignature = [signatureTrack.numerator, signatureTrack.denominator];
       }
-      this.updateSynths();
+      this.updateSynths(undefined, createMissingChains);
 
-      if (this.isRunning) {
-        this.rebuildTrackLoops();
+      if (this.isRunning && rebuildLoops) {
+        this.scheduleTrackLoopRebuild();
       }
     },
     refreshDirtyState() {
@@ -1520,6 +1645,10 @@ export default defineComponent({
     },
     handleDraftChange() {
       this.applyRealtimeSettings();
+      this.refreshDirtyState();
+    },
+    handleReverbDraftChange() {
+      this.updateReverbChain();
       this.refreshDirtyState();
     },
     confirmDiscardChanges(actionLabel: string): boolean {
@@ -1846,10 +1975,10 @@ export default defineComponent({
       const reverbSend = markRaw(new Tone.Gain(0));
 
       tremolo.start();
-      synth.chain(filter, limiterGain, limiter, vibrato, tremolo, echo, outputGain);
-      outputGain.connect(dryGain);
+      synth.chain(filter, outputGain, vibrato, tremolo, echo, limiterGain, limiter);
+      limiter.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
-      outputGain.connect(reverbSend);
+      limiter.connect(reverbSend);
 
       return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, maxDelay, dryGain, reverbSend, outputGain };
     },
@@ -1867,6 +1996,7 @@ export default defineComponent({
 
       const chain = this.createTrackAudioChain(track.echoPingPong, maxDelay);
       this.trackSynths[track.id] = chain;
+      this.updateTrackChainSettings(track, chain);
       return chain;
     },
     getWaveformType(waveform: string): 'sine' | 'square' | 'triangle' | 'sawtooth' {
@@ -1976,19 +2106,27 @@ export default defineComponent({
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
     },
-    updateSynths() {
+    updateSynths(trackId?: string, createMissingChains = true) {
       const activeTrackIds = new Set(this.tracks.map((track) => track.id));
-      for (const [trackId, chain] of Object.entries(this.trackSynths)) {
-        if (!activeTrackIds.has(trackId)) {
+      for (const [existingTrackId, chain] of Object.entries(this.trackSynths)) {
+        if (!activeTrackIds.has(existingTrackId)) {
           this.disposeTrackChain(chain);
-          delete this.trackSynths[trackId];
+          delete this.trackSynths[existingTrackId];
         }
       }
 
       this.updateReverbChain();
 
-      for (const track of this.tracks) {
-        const chain = this.getOrCreateTrackChain(track);
+      const tracksToUpdate = trackId
+        ? this.tracks.filter((track) => track.id === trackId)
+        : this.tracks;
+
+      for (const track of tracksToUpdate) {
+        const existing = this.trackSynths[track.id];
+        if (!existing && !createMissingChains) {
+          continue;
+        }
+        const chain = existing ?? this.getOrCreateTrackChain(track);
         this.updateTrackChainSettings(track, chain);
       }
     },
@@ -2058,9 +2196,28 @@ export default defineComponent({
       }
       this.trackLoops = {};
     },
+    scheduleTrackLoopRebuild() {
+      if (!this.isRunning) {
+        return;
+      }
+
+      if (this.rebuildTrackLoopsTimer !== null) {
+        window.clearTimeout(this.rebuildTrackLoopsTimer);
+      }
+
+      this.rebuildTrackLoopsTimer = window.setTimeout(() => {
+        this.rebuildTrackLoopsTimer = null;
+        this.rebuildTrackLoops();
+      }, 90);
+    },
     rebuildTrackLoops() {
       if (!this.isRunning) {
         return;
+      }
+
+      if (this.rebuildTrackLoopsTimer !== null) {
+        window.clearTimeout(this.rebuildTrackLoopsTimer);
+        this.rebuildTrackLoopsTimer = null;
       }
 
       this.stopTrackLoops();
@@ -2088,7 +2245,8 @@ export default defineComponent({
         }
 
         const part = markRaw(new Tone.Part<{ time: number; step: number }>((when, event) => {
-          this.playTrackStep(entry.track, entry.notes, event.step, when);
+          const liveTrack = this.tracks.find((track) => track.id === entry.track.id) ?? entry.track;
+          this.playTrackStep(liveTrack, entry.notes, event.step, when);
         }, events));
         part.loop = true;
         part.loopStart = 0;
@@ -2279,6 +2437,10 @@ export default defineComponent({
       document.removeEventListener('click', this.audioContextResumeHandler);
       document.removeEventListener('touchstart', this.audioContextResumeHandler);
       document.removeEventListener('keydown', this.audioContextResumeHandler);
+    }
+    if (this.rebuildTrackLoopsTimer !== null) {
+      window.clearTimeout(this.rebuildTrackLoopsTimer);
+      this.rebuildTrackLoopsTimer = null;
     }
     this.stopSequencer();
     for (const chain of Object.values(this.trackSynths)) {
@@ -2530,6 +2692,108 @@ export default defineComponent({
   background: rgba(4, 12, 17, 0.96);
 }
 
+.track-timeline {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.track-timeline-row {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(118px, 0.42fr) minmax(160px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(124, 208, 228, 0.28);
+  border-radius: 12px;
+  color: #e9f9ff;
+  background: rgba(3, 11, 16, 0.42);
+  cursor: pointer;
+  text-align: left;
+}
+
+.track-timeline-row.selected {
+  border-color: rgba(244, 176, 88, 0.76);
+  background: rgba(47, 27, 8, 0.42);
+}
+
+.track-timeline-meta {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.track-timeline-meta strong,
+.track-timeline-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-timeline-meta span {
+  color: rgba(220, 247, 255, 0.74);
+  font-size: 0.76rem;
+}
+
+.track-timeline-bar {
+  min-width: 0;
+  height: 18px;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.track-timeline-segment {
+  min-width: 5px;
+  border-radius: 999px;
+}
+
+.track-timeline-segment.delay {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(150, 171, 183, 0.58),
+    rgba(150, 171, 183, 0.58) 4px,
+    rgba(94, 112, 124, 0.38) 4px,
+    rgba(94, 112, 124, 0.38) 8px
+  );
+}
+
+.track-timeline-segment.repeat {
+  background: linear-gradient(90deg, rgba(111, 214, 231, 0.92), rgba(74, 142, 236, 0.86));
+}
+
+.track-timeline-segment.pad {
+  min-width: 0;
+  background: rgba(124, 208, 228, 0.1);
+}
+
+.selected-track-duration-card {
+  margin: 0 12px 16px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 208, 228, 0.28);
+  border-radius: 12px;
+  color: rgba(232, 248, 255, 0.86);
+  background: rgba(3, 11, 16, 0.42);
+  font-size: 0.9rem;
+}
+
+.selected-track-duration-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #f4fbff;
+}
+
+.duration-label {
+  color: rgba(220, 247, 255, 0.74);
+}
+
 .preset-file-input {
   display: none;
 }
@@ -2700,6 +2964,21 @@ export default defineComponent({
 
   .track-strip {
     grid-template-columns: 1fr;
+  }
+
+  .track-timeline-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    min-height: 58px;
+  }
+
+  .track-timeline-bar {
+    height: 22px;
+  }
+
+  .selected-track-duration-card {
+    margin-left: 0;
+    margin-right: 0;
   }
 
   .compact-row {
