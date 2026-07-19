@@ -367,7 +367,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     filterQ: clamp(parseNumber(raw.filterQ, DEFAULT_PRESET_TRACK_DATA.filterQ), 0.0001, 30),
     filterGain: clamp(parseNumber(raw.filterGain, DEFAULT_PRESET_TRACK_DATA.filterGain), -48, 48),
     filterKeyFollow: clamp(parseNumber(raw.filterKeyFollow, DEFAULT_PRESET_TRACK_DATA.filterKeyFollow), -200, 200),
-    limiterGain: clamp(parseNumber(raw.limiterGain, DEFAULT_PRESET_TRACK_DATA.limiterGain), -48, 48),
+    limiterGain: clamp(parseNumber(raw.limiterGain, DEFAULT_PRESET_TRACK_DATA.limiterGain), -48, 72),
     echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
     echoDelay: normalizeEchoDelay(raw.echoDelay),
     echoFeedback: clamp(parseNumber(raw.echoFeedback, DEFAULT_PRESET_TRACK_DATA.echoFeedback), 0, 0.95),
