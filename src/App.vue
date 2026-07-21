@@ -293,7 +293,7 @@
           <v-col cols="12">
             <v-select
               v-model="trackWaveform"
-              label="Waveform"
+              label="Tonewheel Waveform"
               :items="['sine', 'square', 'triangle', 'sawtooth']"
               hide-details="auto"
               density="comfortable"
@@ -443,7 +443,7 @@
           </v-expansion-panel>
 
           <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Instrument</v-expansion-panel-title>
+            <v-expansion-panel-title>Tonewheel</v-expansion-panel-title>
             <v-expansion-panel-text>
         <v-row class="compact-row">
           <v-col cols="12" md="6">
@@ -454,11 +454,8 @@
           </v-col>
         </v-row>
         <v-row class="compact-row">
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Unison voices (' + trackUnisonVoices + ')'" :min="1" :max="8" :step="1" v-model="trackUnisonVoices" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Unison detune (' + Number(trackUnisonDetune).toFixed(1) + ' cents)'" :min="0" :max="100" :step="0.5" v-model="trackUnisonDetune" @update:modelValue="handleTrackDraftChange" />
+          <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
+            <EditableSlider :label="label + ' Drawbar (' + trackTonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="trackTonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
           </v-col>
         </v-row>
             </v-expansion-panel-text>
@@ -1046,6 +1043,7 @@ import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
   ECHO_DELAY_OPTIONS,
+  TONEWHEEL_DRAWBAR_LABELS,
   arePresetDataEqual,
   buildUniqueFolderName,
   buildUniquePresetNameInFolder,
@@ -1174,6 +1172,8 @@ export default defineComponent({
       trackRelease: firstTrack.release,
       trackUnisonVoices: firstTrack.unisonVoices,
       trackUnisonDetune: firstTrack.unisonDetune,
+      trackTonewheelDrawbars: firstTrack.tonewheelDrawbars.slice(),
+      tonewheelDrawbarLabels: TONEWHEEL_DRAWBAR_LABELS,
       trackTremoloEnabled: firstTrack.tremoloEnabled,
       trackTremoloFrequency: firstTrack.tremoloFrequency,
       trackTremoloDepth: firstTrack.tremoloDepth,
@@ -1558,6 +1558,7 @@ export default defineComponent({
       this.trackRelease = track.release;
       this.trackUnisonVoices = track.unisonVoices;
       this.trackUnisonDetune = track.unisonDetune;
+      this.trackTonewheelDrawbars = track.tonewheelDrawbars.slice();
       this.trackTremoloEnabled = track.tremoloEnabled;
       this.trackTremoloFrequency = track.tremoloFrequency;
       this.trackTremoloDepth = track.tremoloDepth;
@@ -1604,6 +1605,7 @@ export default defineComponent({
         release: this.trackRelease,
         unisonVoices: this.trackUnisonVoices,
         unisonDetune: this.trackUnisonDetune,
+        tonewheelDrawbars: this.trackTonewheelDrawbars,
         tremoloEnabled: this.trackTremoloEnabled,
         tremoloFrequency: this.trackTremoloFrequency,
         tremoloDepth: this.trackTremoloDepth,
@@ -2011,7 +2013,7 @@ export default defineComponent({
               chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(entry.track, notes), eventTime);
 
               chain.synth.triggerAttackRelease(
-                notes.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
+                this.getTrackPlaybackFrequencies(entry.track, notes),
                 duration,
                 eventTime,
                 velocity,
@@ -2761,8 +2763,41 @@ export default defineComponent({
       return 'sine';
     },
     getOscillatorType(track: PresetTrackData): string {
+      return 'custom';
+    },
+    getTonewheelPartials(track: PresetTrackData): number[] {
+      const partialIndices = [1, 3, 2, 4, 6, 8, 10, 12, 16];
+      const maximumPartial = 64;
+      const partials = Array.from({ length: maximumPartial }, () => 0);
       const waveform = this.getWaveformType(track.waveform);
-      return track.unisonVoices > 1 ? `fat${waveform}` : waveform;
+
+      const addWaveformHarmonics = (basePartial: number, amplitude: number) => {
+        for (let harmonic = 1; basePartial * harmonic <= maximumPartial; harmonic += 1) {
+          if (waveform === 'square' && harmonic % 2 === 0) {
+            continue;
+          }
+          if (waveform === 'triangle' && harmonic % 2 === 0) {
+            continue;
+          }
+
+          const harmonicAmplitude = waveform === 'triangle'
+            ? (Math.floor(harmonic / 2) % 2 === 0 ? 1 : -1) / (harmonic * harmonic)
+            : waveform === 'sawtooth'
+              ? -1 / harmonic
+              : 1 / harmonic;
+          partials[basePartial * harmonic - 1] += amplitude * harmonicAmplitude;
+        }
+      };
+
+      partialIndices.forEach((partialIndex, drawbarIndex) => {
+        addWaveformHarmonics(partialIndex, track.tonewheelDrawbars[drawbarIndex] / 8);
+      });
+
+      const normalizer = Math.max(1, Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
+      return partials.map((amplitude) => amplitude / normalizer);
+    },
+    getTrackPlaybackFrequencies(track: PresetTrackData, notes: number[]): number[] {
+      return notes.map((note) => Tone.Frequency(note - 12, 'midi').toFrequency());
     },
     getTrackFilterFrequency(track: PresetTrackData, notes: number[] = []): number {
       if (!track.filterEnabled || notes.length === 0 || track.filterKeyFollow === 0) {
@@ -2811,8 +2846,9 @@ export default defineComponent({
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
       const oscillatorOptions = {
         type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
-        count: track.unisonVoices,
-        spread: track.unisonDetune,
+        count: 1,
+        spread: 0,
+        partials: this.getTonewheelPartials(track),
       } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
 
       chain.synth.set({
@@ -3091,7 +3127,7 @@ export default defineComponent({
         const chain = this.getOrCreateTrackChain(track);
         chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(track, arr), when);
         chain.synth.triggerAttackRelease(
-          arr.map((note) => Tone.Frequency(note, 'midi').toFrequency()),
+          this.getTrackPlaybackFrequencies(track, arr),
           noteDuration.toString() + 's',
           when,
           vel,

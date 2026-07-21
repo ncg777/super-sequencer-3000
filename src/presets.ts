@@ -16,6 +16,7 @@ export interface PresetTrackData {
   release: number;
   unisonVoices: number;
   unisonDetune: number;
+  tonewheelDrawbars: number[];
   tremoloEnabled: boolean;
   tremoloFrequency: number;
   tremoloDepth: number;
@@ -58,6 +59,9 @@ export const ECHO_DELAY_OPTIONS = [
   '1/16D',
   '1/16T',
 ] as const;
+
+export const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
+export const TONEWHEEL_DRAWBAR_LABELS = ["16'", "5 1/3'", "8'", "4'", "2 2/3'", "2'", "1 3/5'", "1 1/3'", "1'"];
 
 export interface PresetReverbData {
   enabled: boolean;
@@ -179,6 +183,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   release: 0.12,
   unisonVoices: 1,
   unisonDetune: 12,
+  tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
   tremoloEnabled: false,
   tremoloFrequency: 5,
   tremoloDepth: 0.35,
@@ -302,7 +307,15 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function normalizeWaveform(value: unknown): PresetTrackData['waveform'] {
+  if (value === 'tonewheel') {
+    return 'sine';
+  }
   return typeof value === 'string' && WAVEFORMS.has(value) ? value : DEFAULT_PRESET_TRACK_DATA.waveform;
+}
+
+function normalizeTonewheelDrawbars(value: unknown): number[] {
+  const raw = Array.isArray(value) ? value : [];
+  return DEFAULT_TONEWHEEL_DRAWBARS.map((fallback, index) => clamp(parseNumber(raw[index], fallback), 0, 8));
 }
 
 function normalizeFilterType(value: unknown): PresetTrackData['filterType'] {
@@ -377,6 +390,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     release: track.release,
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
+    tonewheelDrawbars: track.tonewheelDrawbars.slice(),
     tremoloEnabled: track.tremoloEnabled,
     tremoloFrequency: track.tremoloFrequency,
     tremoloDepth: track.tremoloDepth,
@@ -422,6 +436,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     release: clamp(parseNumber(raw.release, DEFAULT_PRESET_TRACK_DATA.release), 0, 20),
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
+    tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
     tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
     tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
     tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
@@ -530,6 +545,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.release !== rightTrack.release
       || leftTrack.unisonVoices !== rightTrack.unisonVoices
       || leftTrack.unisonDetune !== rightTrack.unisonDetune
+      || leftTrack.tonewheelDrawbars.some((drawbar, drawbarIndex) => drawbar !== rightTrack.tonewheelDrawbars[drawbarIndex])
       || leftTrack.tremoloEnabled !== rightTrack.tremoloEnabled
       || leftTrack.tremoloFrequency !== rightTrack.tremoloFrequency
       || leftTrack.tremoloDepth !== rightTrack.tremoloDepth

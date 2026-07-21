@@ -31,6 +31,8 @@ export interface GenerateTrackOptions {
   release?: number;
   unisonVoices?: number;
   unisonDetune?: number;
+  /** Nine Hammond-style drawbar levels (0-8) used by the tonewheel waveform. */
+  tonewheelDrawbars?: number[];
   tremoloEnabled?: boolean;
   tremoloFrequency?: number;
   tremoloDepth?: number;
@@ -75,6 +77,8 @@ const ECHO_DELAY_OPTIONS = [
 ] as const;
 
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
+const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
+const TONEWHEEL_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 
 export interface GenerateReverbOptions {
   enabled?: boolean;
@@ -206,6 +210,14 @@ function getStepDuration(actualNotes: number[][], index: number): number {
   return 1;
 }
 
+function normalizeTonewheelDrawbars(value: unknown): number[] {
+  const raw = Array.isArray(value) ? value : [];
+  return DEFAULT_TONEWHEEL_DRAWBARS.map((fallback, index) => {
+    const drawbar = raw[index];
+    return typeof drawbar === 'number' && Number.isFinite(drawbar) ? clamp(drawbar, 0, 8) : fallback;
+  });
+}
+
 function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrackOptions>> {
   const fallbackTrack: Required<GenerateTrackOptions> = {
     name: 'Track 1',
@@ -224,6 +236,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     release: 0.12,
     unisonVoices: 1,
     unisonDetune: 12,
+    tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
     tremoloEnabled: false,
     tremoloFrequency: 5,
     tremoloDepth: 0.35,
@@ -266,6 +279,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     release: clamp(track.release ?? fallbackTrack.release, 0, 20),
     unisonVoices: clamp(track.unisonVoices ?? fallbackTrack.unisonVoices, 1, 8),
     unisonDetune: clamp(track.unisonDetune ?? fallbackTrack.unisonDetune, 0, 100),
+    tonewheelDrawbars: normalizeTonewheelDrawbars(track.tonewheelDrawbars),
     tremoloEnabled: Boolean(track.tremoloEnabled ?? fallbackTrack.tremoloEnabled),
     tremoloFrequency: clamp(track.tremoloFrequency ?? fallbackTrack.tremoloFrequency, 0.01, 40),
     tremoloDepth: clamp(track.tremoloDepth ?? fallbackTrack.tremoloDepth, 0, 1),
@@ -369,6 +383,14 @@ function sampleOscillator(phase: number, waveform: string): number {
     default:
       return Math.sin(2 * Math.PI * phase);
   }
+}
+
+function sampleTonewheel(phase: number, waveform: string, drawbars: number[]): number {
+  const amplitudes = drawbars.map((drawbar) => drawbar / 8);
+  const normalizer = Math.max(1, Math.sqrt(amplitudes.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
+  return amplitudes.reduce((sample, amplitude, index) => (
+    sample + amplitude * sampleOscillator((phase * TONEWHEEL_RATIOS[index]) % 1, waveform) / normalizer
+  ), 0);
 }
 
 function getRenderTrailSeconds(prepared: PreparedRenderData): number {
@@ -647,7 +669,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
         const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));
 
         for (const midiNote of notes) {
-          const voiceCount = entry.track.unisonVoices;
+          const voiceCount = 1;
 
           for (let voice = 0; voice < voiceCount; voice += 1) {
             const detuneOffset = voiceCount === 1 ? 0 : ((voice / (voiceCount - 1)) - 0.5) * entry.track.unisonDetune;
@@ -678,8 +700,9 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               const vibrato = entry.track.vibratoEnabled
                 ? Math.pow(2, Math.sin(2 * Math.PI * entry.track.vibratoFrequency * t) * entry.track.vibratoDepth / 12)
                 : 1;
+              const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, entry.track.tonewheelDrawbars);
               const sample = applySimpleFilter(
-                sampleOscillator(phase, entry.track.waveform) * noteAmplitude * env * tremolo / Math.sqrt(voiceCount),
+                oscillatorSample * noteAmplitude * env * tremolo / Math.sqrt(voiceCount),
                 filterState,
                 entry.track,
                 filterCutoff,
