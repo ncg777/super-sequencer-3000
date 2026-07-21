@@ -2773,6 +2773,9 @@ export default defineComponent({
 
       const addWaveformHarmonics = (basePartial: number, amplitude: number) => {
         for (let harmonic = 1; basePartial * harmonic <= maximumPartial; harmonic += 1) {
+          if (waveform === 'sine' && harmonic > 1) {
+            continue;
+          }
           if (waveform === 'square' && harmonic % 2 === 0) {
             continue;
           }
@@ -2784,7 +2787,7 @@ export default defineComponent({
             ? (Math.floor(harmonic / 2) % 2 === 0 ? 1 : -1) / (harmonic * harmonic)
             : waveform === 'sawtooth'
               ? -1 / harmonic
-              : 1 / harmonic;
+              : 1;
           partials[basePartial * harmonic - 1] += amplitude * harmonicAmplitude;
         }
       };
