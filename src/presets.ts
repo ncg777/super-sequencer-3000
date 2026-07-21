@@ -81,36 +81,83 @@ export interface NamedPreset {
   name: string;
   createdAt: string;
   updatedAt: string;
+  folderId: string | null;
   data: PresetData;
 }
 
+export interface PresetFolder {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  parentFolderId: string | null;
+}
+
 export interface PresetLibrary {
-  version: 1;
+  version: 2;
   migratedLegacy: boolean;
   selectedPresetId: string | null;
+  folders: PresetFolder[];
   presets: NamedPreset[];
 }
 
 export interface SinglePresetExport {
-  version: 1;
+  version: 2;
   kind: 'single-preset';
   exportedAt: string;
   preset: NamedPreset;
 }
 
 export interface PresetLibraryExport {
-  version: 1;
+  version: 2;
   kind: 'preset-library';
   exportedAt: string;
   selectedPresetId: string | null;
+  folders: PresetFolder[];
   presets: NamedPreset[];
 }
 
-export type PresetImportPayload = SinglePresetExport | PresetLibraryExport;
+export interface SinglePresetImportPayload {
+  version: 1 | 2;
+  kind: 'single-preset';
+  exportedAt: string;
+  preset: NamedPreset;
+}
+
+export interface PresetLibraryImportPayload {
+  version: 1 | 2;
+  kind: 'preset-library';
+  exportedAt: string;
+  selectedPresetId: string | null;
+  folders: PresetFolder[];
+  presets: NamedPreset[];
+}
+
+export type PresetImportPayload = SinglePresetImportPayload | PresetLibraryImportPayload;
 
 export interface MergeImportedPresetsResult {
   presets: NamedPreset[];
   importedPresets: NamedPreset[];
+  selectedPresetId: string | null;
+}
+
+export interface MergeImportedPresetLibraryResult {
+  library: PresetLibrary;
+  importedFolders: PresetFolder[];
+  importedPresets: NamedPreset[];
+  selectedPresetId: string | null;
+}
+
+export interface DeleteFolderRecursiveResult {
+  library: PresetLibrary;
+  deletedFolderIds: string[];
+  deletedPresetIds: string[];
+  selectedPresetId: string | null;
+}
+
+export interface DeletePresetResult {
+  library: PresetLibrary;
+  deletedPreset: NamedPreset | null;
   selectedPresetId: string | null;
 }
 
@@ -170,7 +217,9 @@ export const DEFAULT_PRESET_DATA: PresetData = {
   },
 };
 
-const STORAGE_KEY = 'ss3k_preset_library_v1';
+const STORAGE_KEY_V2 = 'ss3k_preset_library_v2';
+const STORAGE_KEY_V1 = 'ss3k_preset_library_v1';
+const ROOT_FOLDER_ID = null;
 const LEGACY_KEYS = {
   bpm: 'ss3k_bpm',
   numerator: 'ss3k_numerator',
@@ -198,6 +247,14 @@ type LegacyTrackFields = {
   gain?: number;
   delay?: number;
   repeats?: number;
+};
+
+type LegacyNamedPreset = Omit<NamedPreset, 'folderId'>;
+type LegacyPresetLibrary = {
+  version?: 1;
+  migratedLegacy?: boolean;
+  selectedPresetId?: string | null;
+  presets?: LegacyNamedPreset[];
 };
 
 function isoNow(): string {
@@ -270,6 +327,16 @@ export function clonePresetReverbData(reverb: PresetReverbData): PresetReverbDat
     wet: reverb.wet,
     lowCut: reverb.lowCut,
     highCut: reverb.highCut,
+  };
+}
+
+export function clonePresetFolder(folder: PresetFolder): PresetFolder {
+  return {
+    id: folder.id,
+    name: folder.name,
+    createdAt: folder.createdAt,
+    updatedAt: folder.updatedAt,
+    parentFolderId: folder.parentFolderId,
   };
 }
 
@@ -499,7 +566,18 @@ export function createNamedPreset(name: string, data: PresetData, createdAt = is
     name: sanitizePresetName(name),
     createdAt,
     updatedAt: createdAt,
+    folderId: ROOT_FOLDER_ID,
     data: normalizedData,
+  };
+}
+
+export function createPresetFolder(name: string, parentFolderId: string | null = ROOT_FOLDER_ID, createdAt = isoNow()): PresetFolder {
+  return {
+    id: createId(),
+    name: sanitizeFolderName(name),
+    createdAt,
+    updatedAt: createdAt,
+    parentFolderId,
   };
 }
 
@@ -508,8 +586,13 @@ export function sanitizePresetName(name: string | null | undefined): string {
   return trimmed && trimmed.length > 0 ? trimmed : 'Untitled preset';
 }
 
+export function sanitizeFolderName(name: string | null | undefined): string {
+  const trimmed = name?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : 'Untitled folder';
+}
+
 function normalizeNamedPreset(value: unknown, index: number): NamedPreset {
-  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<NamedPreset>;
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<NamedPreset> & Partial<LegacyNamedPreset>;
   const createdAt = typeof raw.createdAt === 'string' && raw.createdAt.length > 0 ? raw.createdAt : isoNow();
   const updatedAt = typeof raw.updatedAt === 'string' && raw.updatedAt.length > 0 ? raw.updatedAt : createdAt;
 
@@ -518,7 +601,117 @@ function normalizeNamedPreset(value: unknown, index: number): NamedPreset {
     name: sanitizePresetName(raw.name),
     createdAt,
     updatedAt,
+    folderId: typeof raw.folderId === 'string' && raw.folderId.length > 0 ? raw.folderId : ROOT_FOLDER_ID,
     data: normalizePresetData(raw.data),
+  };
+}
+
+function normalizePresetFolder(value: unknown, index: number): PresetFolder {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<PresetFolder>;
+  const createdAt = typeof raw.createdAt === 'string' && raw.createdAt.length > 0 ? raw.createdAt : isoNow();
+  const updatedAt = typeof raw.updatedAt === 'string' && raw.updatedAt.length > 0 ? raw.updatedAt : createdAt;
+
+  return {
+    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : `folder-${index + 1}-${createId()}`,
+    name: sanitizeFolderName(raw.name),
+    createdAt,
+    updatedAt,
+    parentFolderId: typeof raw.parentFolderId === 'string' && raw.parentFolderId.length > 0 ? raw.parentFolderId : ROOT_FOLDER_ID,
+  };
+}
+
+function dedupeFolderIds(folders: PresetFolder[], blockedIds: Set<string>): PresetFolder[] {
+  const seen = new Set<string>();
+  return folders.map((folder) => {
+    let id = folder.id;
+    while (seen.has(id) || blockedIds.has(id)) {
+      id = `folder-${createId()}`;
+    }
+    seen.add(id);
+    blockedIds.add(id);
+    return id === folder.id ? folder : { ...folder, id };
+  });
+}
+
+function dedupePresetIds(presets: NamedPreset[], blockedIds: Set<string>): NamedPreset[] {
+  const seen = new Set<string>();
+  return presets.map((preset) => {
+    let id = preset.id;
+    while (seen.has(id) || blockedIds.has(id)) {
+      id = `preset-${createId()}`;
+    }
+    seen.add(id);
+    blockedIds.add(id);
+    return id === preset.id ? preset : { ...preset, id };
+  });
+}
+
+function repairFolderGraph(folders: PresetFolder[]): PresetFolder[] {
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const cleaned = folders.map((folder) => ({
+    ...folder,
+    parentFolderId: folder.parentFolderId && folderIds.has(folder.parentFolderId) && folder.parentFolderId !== folder.id
+      ? folder.parentFolderId
+      : ROOT_FOLDER_ID,
+  }));
+
+  const parentById = new Map(cleaned.map((folder) => [folder.id, folder.parentFolderId]));
+  const fixedParentById = new Map(parentById);
+
+  for (const folder of cleaned) {
+    const visited = new Set<string>([folder.id]);
+    let cursor = parentById.get(folder.id) ?? ROOT_FOLDER_ID;
+
+    while (cursor) {
+      if (visited.has(cursor)) {
+        fixedParentById.set(folder.id, ROOT_FOLDER_ID);
+        break;
+      }
+      visited.add(cursor);
+      cursor = parentById.get(cursor) ?? ROOT_FOLDER_ID;
+    }
+  }
+
+  return cleaned.map((folder) => {
+    const nextParent = fixedParentById.get(folder.id) ?? ROOT_FOLDER_ID;
+    return nextParent === folder.parentFolderId ? folder : { ...folder, parentFolderId: nextParent };
+  });
+}
+
+function normalizeLibraryFromParts(
+  rawFolders: unknown[],
+  rawPresets: unknown[],
+  selectedPresetId: string | null | undefined,
+  migratedLegacy: boolean,
+): PresetLibrary | null {
+  let folders = rawFolders.map((folder, index) => normalizePresetFolder(folder, index));
+  let presets = rawPresets.map((preset, index) => normalizeNamedPreset(preset, index));
+
+  const blockedIds = new Set<string>();
+  folders = dedupeFolderIds(folders, blockedIds);
+  presets = dedupePresetIds(presets, blockedIds);
+
+  folders = repairFolderGraph(folders);
+  const validFolderIds = new Set(folders.map((folder) => folder.id));
+  presets = presets.map((preset) => ({
+    ...preset,
+    folderId: preset.folderId && validFolderIds.has(preset.folderId) ? preset.folderId : ROOT_FOLDER_ID,
+  }));
+
+  if (presets.length === 0) {
+    return null;
+  }
+
+  const resolvedSelectedPresetId = typeof selectedPresetId === 'string' && presets.some((preset) => preset.id === selectedPresetId)
+    ? selectedPresetId
+    : presets[0].id;
+
+  return {
+    version: 2,
+    migratedLegacy,
+    selectedPresetId: resolvedSelectedPresetId,
+    folders,
+    presets,
   };
 }
 
@@ -527,34 +720,166 @@ function normalizeLibrary(value: unknown): PresetLibrary | null {
     return null;
   }
 
-  const raw = value as Partial<PresetLibrary>;
-  const presets = Array.isArray(raw.presets)
-    ? raw.presets.map((preset, index) => normalizeNamedPreset(preset, index))
-    : [];
+  const raw = value as Partial<PresetLibrary> & LegacyPresetLibrary & Record<string, unknown>;
+  const rawPresets = Array.isArray(raw.presets) ? raw.presets : [];
+  const rawFolders = Array.isArray(raw.folders) ? raw.folders : [];
 
-  if (presets.length === 0) {
-    return null;
+  const library = normalizeLibraryFromParts(rawFolders, rawPresets, raw.selectedPresetId ?? null, Boolean(raw.migratedLegacy));
+  if (library) {
+    return library;
   }
 
-  const selectedPresetId = typeof raw.selectedPresetId === 'string' && presets.some((preset) => preset.id === raw.selectedPresetId)
-    ? raw.selectedPresetId
-    : presets[0].id;
+  // Fall back to v1 shape if folders were absent and presets were malformed in v2 coercion.
+  if ((raw.version === 1 || !('folders' in raw)) && Array.isArray(raw.presets)) {
+    return normalizeLibraryFromParts([], raw.presets, raw.selectedPresetId ?? null, Boolean(raw.migratedLegacy));
+  }
 
+  return null;
+}
+
+function cloneLibrary(library: PresetLibrary): PresetLibrary {
   return {
-    version: 1,
-    migratedLegacy: Boolean(raw.migratedLegacy),
-    selectedPresetId,
-    presets,
+    version: 2,
+    migratedLegacy: library.migratedLegacy,
+    selectedPresetId: library.selectedPresetId,
+    folders: library.folders.map((folder) => clonePresetFolder(folder)),
+    presets: library.presets.map((preset) => ({ ...preset, data: clonePresetData(preset.data) })),
   };
+}
+
+function withNormalizedLibrary(library: PresetLibrary): PresetLibrary {
+  return normalizeLibrary(library) ?? createDefaultLibrary();
+}
+
+export function listChildFolders(library: PresetLibrary, parentFolderId: string | null): PresetFolder[] {
+  return library.folders.filter((folder) => folder.parentFolderId === parentFolderId);
+}
+
+export function listFolderPresets(library: PresetLibrary, folderId: string | null): NamedPreset[] {
+  return library.presets.filter((preset) => preset.folderId === folderId);
+}
+
+export function getFolderById(library: PresetLibrary, folderId: string | null): PresetFolder | null {
+  if (!folderId) {
+    return null;
+  }
+  return library.folders.find((folder) => folder.id === folderId) ?? null;
+}
+
+export function getFolderPath(library: PresetLibrary, folderId: string | null): PresetFolder[] {
+  if (!folderId) {
+    return [];
+  }
+
+  const byId = new Map(library.folders.map((folder) => [folder.id, folder]));
+  const path: PresetFolder[] = [];
+  const visited = new Set<string>();
+  let cursor = byId.get(folderId) ?? null;
+
+  while (cursor && !visited.has(cursor.id)) {
+    path.unshift(cursor);
+    visited.add(cursor.id);
+    cursor = cursor.parentFolderId ? byId.get(cursor.parentFolderId) ?? null : null;
+  }
+
+  return path;
+}
+
+export function getFolderDescendantIds(library: PresetLibrary, folderId: string): string[] {
+  const childrenByParent = new Map<string, string[]>();
+  for (const folder of library.folders) {
+    if (!folder.parentFolderId) {
+      continue;
+    }
+    const existing = childrenByParent.get(folder.parentFolderId) ?? [];
+    existing.push(folder.id);
+    childrenByParent.set(folder.parentFolderId, existing);
+  }
+
+  const descendants: string[] = [];
+  const stack = [...(childrenByParent.get(folderId) ?? [])];
+  const visited = new Set<string>();
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+    descendants.push(current);
+    for (const child of childrenByParent.get(current) ?? []) {
+      if (!visited.has(child)) {
+        stack.push(child);
+      }
+    }
+  }
+
+  return descendants;
+}
+
+export function isFolderDescendant(library: PresetLibrary, folderId: string, possibleDescendantId: string | null): boolean {
+  if (!possibleDescendantId) {
+    return false;
+  }
+  if (possibleDescendantId === folderId) {
+    return true;
+  }
+  return getFolderDescendantIds(library, folderId).includes(possibleDescendantId);
+}
+
+function ensureUniqueName(existingNames: Set<string>, baseName: string, fallback: (value: string) => string): string {
+  const candidate = fallback(baseName);
+  if (!existingNames.has(candidate)) {
+    existingNames.add(candidate);
+    return candidate;
+  }
+
+  let suffix = 2;
+  while (existingNames.has(`${candidate} (${suffix})`)) {
+    suffix += 1;
+  }
+
+  const uniqueName = `${candidate} (${suffix})`;
+  existingNames.add(uniqueName);
+  return uniqueName;
+}
+
+export function buildUniquePresetNameInFolder(
+  library: PresetLibrary,
+  baseName: string,
+  folderId: string | null,
+  excludedPresetId?: string,
+): string {
+  const names = new Set(
+    library.presets
+      .filter((preset) => preset.folderId === folderId && preset.id !== excludedPresetId)
+      .map((preset) => preset.name),
+  );
+  return ensureUniqueName(names, baseName, sanitizePresetName);
+}
+
+export function buildUniqueFolderName(
+  library: PresetLibrary,
+  baseName: string,
+  parentFolderId: string | null,
+  excludedFolderId?: string,
+): string {
+  const names = new Set(
+    library.folders
+      .filter((folder) => folder.parentFolderId === parentFolderId && folder.id !== excludedFolderId)
+      .map((folder) => folder.name),
+  );
+  return ensureUniqueName(names, baseName, sanitizeFolderName);
 }
 
 function createDefaultLibrary(): PresetLibrary {
   const preset = createNamedPreset('Default', DEFAULT_PRESET_DATA);
 
   return {
-    version: 1,
+    version: 2,
     migratedLegacy: false,
     selectedPresetId: preset.id,
+    folders: [],
     presets: [preset],
   };
 }
@@ -584,20 +909,31 @@ function migrateLegacyPreset(): PresetLibrary | null {
   const migratedPreset = createNamedPreset('Migrated preset', readLegacyPresetData());
 
   return {
-    version: 1,
+    version: 2,
     migratedLegacy: true,
     selectedPresetId: migratedPreset.id,
+    folders: [],
     presets: [migratedPreset],
   };
 }
 
 export function loadPresetLibrary(): PresetLibrary {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY_V2);
     if (stored) {
       const parsed = JSON.parse(stored) as unknown;
       const library = normalizeLibrary(parsed);
       if (library) {
+        return library;
+      }
+    }
+
+    const legacyStored = localStorage.getItem(STORAGE_KEY_V1);
+    if (legacyStored) {
+      const parsedLegacy = JSON.parse(legacyStored) as unknown;
+      const library = normalizeLibrary(parsedLegacy);
+      if (library) {
+        savePresetLibrary(library);
         return library;
       }
     }
@@ -612,8 +948,8 @@ export function loadPresetLibrary(): PresetLibrary {
 }
 
 export function savePresetLibrary(library: PresetLibrary): void {
-  const normalizedLibrary = normalizeLibrary(library) ?? createDefaultLibrary();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedLibrary));
+  const normalizedLibrary = withNormalizedLibrary(library);
+  localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(normalizedLibrary));
 }
 
 export function getSelectedPreset(library: PresetLibrary): NamedPreset {
@@ -660,21 +996,25 @@ export function hasUrlPresetOverrides(search: string): boolean {
 }
 
 export function buildSinglePresetExport(preset: NamedPreset): SinglePresetExport {
+  // Single-preset exports are portable and do not depend on library folder topology.
+  const normalizedPreset = normalizeNamedPreset({ ...preset, folderId: ROOT_FOLDER_ID }, 0);
   return {
-    version: 1,
+    version: 2,
     kind: 'single-preset',
     exportedAt: isoNow(),
-    preset: normalizeNamedPreset(preset, 0),
+    preset: normalizedPreset,
   };
 }
 
 export function buildPresetLibraryExport(library: PresetLibrary): PresetLibraryExport {
+  const normalizedLibrary = withNormalizedLibrary(library);
   return {
-    version: 1,
+    version: 2,
     kind: 'preset-library',
     exportedAt: isoNow(),
-    selectedPresetId: library.selectedPresetId,
-    presets: library.presets.map((preset, index) => normalizeNamedPreset(preset, index)),
+    selectedPresetId: normalizedLibrary.selectedPresetId,
+    folders: normalizedLibrary.folders.map((folder, index) => normalizePresetFolder(folder, index)),
+    presets: normalizedLibrary.presets.map((preset, index) => normalizeNamedPreset(preset, index)),
   };
 }
 
@@ -686,16 +1026,17 @@ export function parsePresetImportPayload(text: string): PresetImportPayload {
   }
 
   const raw = parsed as Record<string, unknown>;
-  if (raw.version !== 1) {
+  if (raw.version !== 1 && raw.version !== 2) {
     throw new Error('Unsupported preset file version.');
   }
 
   if (raw.kind === 'single-preset') {
+    const normalizedPreset = normalizeNamedPreset(raw.preset, 0);
     return {
-      version: 1,
+      version: raw.version,
       kind: 'single-preset',
       exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : isoNow(),
-      preset: normalizeNamedPreset(raw.preset, 0),
+      preset: raw.version === 1 ? { ...normalizedPreset, folderId: ROOT_FOLDER_ID } : normalizedPreset,
     };
   }
 
@@ -704,38 +1045,31 @@ export function parsePresetImportPayload(text: string): PresetImportPayload {
       throw new Error('Preset library files must contain at least one preset.');
     }
 
-    const presets = raw.presets.map((preset, index) => normalizeNamedPreset(preset, index));
-    const selectedPresetId = typeof raw.selectedPresetId === 'string' && presets.some((preset) => preset.id === raw.selectedPresetId)
-      ? raw.selectedPresetId
-      : presets[0].id;
+    const folders = raw.version === 2 && Array.isArray(raw.folders)
+      ? raw.folders
+      : [];
+
+    const normalizedLibrary = normalizeLibraryFromParts(
+      folders,
+      raw.presets,
+      typeof raw.selectedPresetId === 'string' ? raw.selectedPresetId : null,
+      false,
+    );
+    if (!normalizedLibrary) {
+      throw new Error('Preset library import file has invalid content.');
+    }
 
     return {
-      version: 1,
+      version: raw.version,
       kind: 'preset-library',
       exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : isoNow(),
-      selectedPresetId,
-      presets,
+      selectedPresetId: normalizedLibrary.selectedPresetId,
+      folders: normalizedLibrary.folders,
+      presets: normalizedLibrary.presets,
     };
   }
 
   throw new Error('Unrecognized preset file format.');
-}
-
-function ensureUniqueName(existingNames: Set<string>, baseName: string): string {
-  const candidate = sanitizePresetName(baseName);
-  if (!existingNames.has(candidate)) {
-    existingNames.add(candidate);
-    return candidate;
-  }
-
-  let suffix = 2;
-  while (existingNames.has(`${candidate} (${suffix})`)) {
-    suffix += 1;
-  }
-
-  const uniqueName = `${candidate} (${suffix})`;
-  existingNames.add(uniqueName);
-  return uniqueName;
 }
 
 export function mergeImportedPresets(
@@ -759,7 +1093,8 @@ export function mergeImportedPresets(
     const mergedPreset: NamedPreset = {
       ...normalizedPreset,
       id: nextId,
-      name: ensureUniqueName(existingNames, normalizedPreset.name),
+      name: ensureUniqueName(existingNames, normalizedPreset.name, sanitizePresetName),
+      folderId: ROOT_FOLDER_ID,
     };
 
     idMap.set(normalizedPreset.id, nextId);
@@ -773,6 +1108,269 @@ export function mergeImportedPresets(
   return {
     presets: [...existingPresets, ...imported],
     importedPresets: imported,
+    selectedPresetId,
+  };
+}
+
+export function createFolder(library: PresetLibrary, name: string, parentFolderId: string | null): { library: PresetLibrary; folder: PresetFolder } {
+  const normalized = withNormalizedLibrary(library);
+  const validatedParent = parentFolderId && normalized.folders.some((folder) => folder.id === parentFolderId)
+    ? parentFolderId
+    : ROOT_FOLDER_ID;
+
+  const folder = createPresetFolder(buildUniqueFolderName(normalized, name, validatedParent), validatedParent);
+  const nextLibrary = withNormalizedLibrary({
+    ...normalized,
+    folders: [...normalized.folders, folder],
+  });
+
+  return {
+    library: nextLibrary,
+    folder,
+  };
+}
+
+export function renameFolder(library: PresetLibrary, folderId: string, name: string): PresetLibrary {
+  const normalized = withNormalizedLibrary(library);
+  const target = normalized.folders.find((folder) => folder.id === folderId);
+  if (!target) {
+    return normalized;
+  }
+
+  const uniqueName = buildUniqueFolderName(normalized, name, target.parentFolderId, target.id);
+  return withNormalizedLibrary({
+    ...normalized,
+    folders: normalized.folders.map((folder) => folder.id === target.id
+      ? { ...folder, name: uniqueName, updatedAt: isoNow() }
+      : folder),
+  });
+}
+
+export function moveFolder(library: PresetLibrary, folderId: string, parentFolderId: string | null): PresetLibrary {
+  const normalized = withNormalizedLibrary(library);
+  const target = normalized.folders.find((folder) => folder.id === folderId);
+  if (!target) {
+    return normalized;
+  }
+
+  if (parentFolderId === folderId || isFolderDescendant(normalized, folderId, parentFolderId)) {
+    return normalized;
+  }
+
+  const validatedParent = parentFolderId && normalized.folders.some((folder) => folder.id === parentFolderId)
+    ? parentFolderId
+    : ROOT_FOLDER_ID;
+  const uniqueName = buildUniqueFolderName(normalized, target.name, validatedParent, target.id);
+
+  return withNormalizedLibrary({
+    ...normalized,
+    folders: normalized.folders.map((folder) => folder.id === target.id
+      ? { ...folder, parentFolderId: validatedParent, name: uniqueName, updatedAt: isoNow() }
+      : folder),
+  });
+}
+
+export function renamePreset(library: PresetLibrary, presetId: string, name: string): PresetLibrary {
+  const normalized = withNormalizedLibrary(library);
+  const target = normalized.presets.find((preset) => preset.id === presetId);
+  if (!target) {
+    return normalized;
+  }
+
+  const uniqueName = buildUniquePresetNameInFolder(normalized, name, target.folderId, target.id);
+  return withNormalizedLibrary({
+    ...normalized,
+    presets: normalized.presets.map((preset) => preset.id === target.id
+      ? { ...preset, name: uniqueName, updatedAt: isoNow() }
+      : preset),
+  });
+}
+
+export function movePresetToFolder(library: PresetLibrary, presetId: string, folderId: string | null): PresetLibrary {
+  const normalized = withNormalizedLibrary(library);
+  const target = normalized.presets.find((preset) => preset.id === presetId);
+  if (!target) {
+    return normalized;
+  }
+
+  const validatedFolderId = folderId && normalized.folders.some((folder) => folder.id === folderId)
+    ? folderId
+    : ROOT_FOLDER_ID;
+  const uniqueName = buildUniquePresetNameInFolder(normalized, target.name, validatedFolderId, target.id);
+
+  return withNormalizedLibrary({
+    ...normalized,
+    presets: normalized.presets.map((preset) => preset.id === target.id
+      ? { ...preset, folderId: validatedFolderId, name: uniqueName, updatedAt: isoNow() }
+      : preset),
+  });
+}
+
+export function deletePreset(library: PresetLibrary, presetId: string): DeletePresetResult {
+  const normalized = withNormalizedLibrary(library);
+  const deletedPreset = normalized.presets.find((preset) => preset.id === presetId) ?? null;
+  if (!deletedPreset) {
+    return {
+      library: normalized,
+      deletedPreset: null,
+      selectedPresetId: normalized.selectedPresetId,
+    };
+  }
+
+  const remaining = normalized.presets.filter((preset) => preset.id !== presetId);
+  const nextPresets = remaining.length > 0
+    ? remaining
+    : [createNamedPreset('Default', DEFAULT_PRESET_DATA)];
+  const nextSelectedPresetId = nextPresets.some((preset) => preset.id === normalized.selectedPresetId)
+    ? normalized.selectedPresetId
+    : nextPresets[0].id;
+
+  return {
+    library: withNormalizedLibrary({
+      ...normalized,
+      presets: nextPresets,
+      selectedPresetId: nextSelectedPresetId,
+    }),
+    deletedPreset,
+    selectedPresetId: nextSelectedPresetId,
+  };
+}
+
+export function deleteFolderRecursive(library: PresetLibrary, folderId: string): DeleteFolderRecursiveResult {
+  const normalized = withNormalizedLibrary(library);
+  if (!normalized.folders.some((folder) => folder.id === folderId)) {
+    return {
+      library: normalized,
+      deletedFolderIds: [],
+      deletedPresetIds: [],
+      selectedPresetId: normalized.selectedPresetId,
+    };
+  }
+
+  const deletedFolderIds = [folderId, ...getFolderDescendantIds(normalized, folderId)];
+  const folderSet = new Set(deletedFolderIds);
+  const deletedPresetIds = normalized.presets
+    .filter((preset) => preset.folderId && folderSet.has(preset.folderId))
+    .map((preset) => preset.id);
+  const deletedPresetSet = new Set(deletedPresetIds);
+  const nextFolders = normalized.folders.filter((folder) => !folderSet.has(folder.id));
+  const remaining = normalized.presets.filter((preset) => !deletedPresetSet.has(preset.id));
+  const nextPresets = remaining.length > 0
+    ? remaining
+    : [createNamedPreset('Default', DEFAULT_PRESET_DATA)];
+  const nextSelectedPresetId = nextPresets.some((preset) => preset.id === normalized.selectedPresetId)
+    ? normalized.selectedPresetId
+    : nextPresets[0].id;
+
+  return {
+    library: withNormalizedLibrary({
+      ...normalized,
+      folders: nextFolders,
+      presets: nextPresets,
+      selectedPresetId: nextSelectedPresetId,
+    }),
+    deletedFolderIds,
+    deletedPresetIds,
+    selectedPresetId: nextSelectedPresetId,
+  };
+}
+
+export function mergeImportedPresetLibrary(
+  existingLibrary: PresetLibrary,
+  imported: PresetLibraryImportPayload,
+  options?: {
+    preferredSelectedPresetId?: string | null;
+    singlePresetDestinationFolderId?: string | null;
+  },
+): MergeImportedPresetLibraryResult {
+  const normalizedExisting = withNormalizedLibrary(existingLibrary);
+  const importedLibrary = withNormalizedLibrary({
+    version: 2,
+    migratedLegacy: false,
+    selectedPresetId: imported.selectedPresetId,
+    folders: imported.folders,
+    presets: imported.presets,
+  });
+
+  const usedIds = new Set<string>([
+    ...normalizedExisting.folders.map((folder) => folder.id),
+    ...normalizedExisting.presets.map((preset) => preset.id),
+  ]);
+
+  const folderIdMap = new Map<string, string>();
+  const importedFolders: PresetFolder[] = [];
+  for (const folder of importedLibrary.folders) {
+    let nextId = folder.id;
+    while (usedIds.has(nextId)) {
+      nextId = `folder-${createId()}`;
+    }
+    usedIds.add(nextId);
+    folderIdMap.set(folder.id, nextId);
+    importedFolders.push({ ...folder, id: nextId });
+  }
+
+  const existingWithFolders: PresetLibrary = {
+    ...normalizedExisting,
+    folders: [...normalizedExisting.folders],
+    presets: [...normalizedExisting.presets],
+  };
+
+  const remappedFolders = importedFolders.map((folder) => {
+    const mappedParentId = folder.parentFolderId
+      ? (folderIdMap.get(folder.parentFolderId) ?? ROOT_FOLDER_ID)
+      : ROOT_FOLDER_ID;
+    const name = buildUniqueFolderName(existingWithFolders, folder.name, mappedParentId);
+    const nextFolder: PresetFolder = {
+      ...folder,
+      parentFolderId: mappedParentId,
+      name,
+    };
+    existingWithFolders.folders.push(nextFolder);
+    return nextFolder;
+  });
+
+  const presetIdMap = new Map<string, string>();
+  const importedPresets: NamedPreset[] = [];
+  for (const preset of importedLibrary.presets) {
+    let nextId = preset.id;
+    while (usedIds.has(nextId)) {
+      nextId = `preset-${createId()}`;
+    }
+    usedIds.add(nextId);
+
+    const mappedFolderId = options?.singlePresetDestinationFolderId !== undefined
+      ? options.singlePresetDestinationFolderId
+      : (preset.folderId ? folderIdMap.get(preset.folderId) ?? ROOT_FOLDER_ID : ROOT_FOLDER_ID);
+    const validFolderId = mappedFolderId && existingWithFolders.folders.some((folder) => folder.id === mappedFolderId)
+      ? mappedFolderId
+      : ROOT_FOLDER_ID;
+    const name = buildUniquePresetNameInFolder(existingWithFolders, preset.name, validFolderId);
+
+    const nextPreset: NamedPreset = {
+      ...preset,
+      id: nextId,
+      folderId: validFolderId,
+      name,
+    };
+    existingWithFolders.presets.push(nextPreset);
+    importedPresets.push(nextPreset);
+    presetIdMap.set(preset.id, nextId);
+  }
+
+  const preferredSelectedPresetId = options?.preferredSelectedPresetId ?? imported.selectedPresetId;
+  const selectedPresetId = preferredSelectedPresetId
+    ? (presetIdMap.get(preferredSelectedPresetId) ?? importedPresets[0]?.id ?? null)
+    : (importedPresets[0]?.id ?? null);
+
+  const nextLibrary = withNormalizedLibrary({
+    ...existingWithFolders,
+    selectedPresetId: selectedPresetId ?? existingWithFolders.selectedPresetId,
+  });
+
+  return {
+    library: nextLibrary,
+    importedFolders: remappedFolders,
+    importedPresets,
     selectedPresetId,
   };
 }

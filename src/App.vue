@@ -113,19 +113,18 @@
 
         <div v-show="!controlDeckCollapsed" class="toolbar-panel preset-panel">
           <div class="preset-inline-row">
-            <v-select
-              v-model="selectedPresetId"
-              label="Preset"
-              :item-title="'title'"
-              :item-value="'value'"
-              :items="presetOptions"
-              hide-details
-              density="compact"
+            <v-btn
+              class="preset-browser-launch"
+              color="primary"
               variant="outlined"
-              prepend-inner-icon="mdi-bookmark-multiple-outline"
-              class="preset-select"
-              @update:modelValue="handlePresetSelection"
-            />
+              prepend-icon="mdi-folder-multiple-outline"
+              @click="openPresetBrowser"
+            >
+              <div class="preset-browser-launch-content">
+                <span class="preset-browser-launch-name">{{ currentPreset?.name ?? 'No preset selected' }}</span>
+                <span class="preset-browser-launch-path">{{ currentPresetFolderPathLabel }}</span>
+              </div>
+            </v-btn>
             <div class="preset-state-pill" :class="{ dirty: isDirty }">
               <v-icon size="16">{{ isDirty ? 'mdi-circle-edit-outline' : 'mdi-check-circle-outline' }}</v-icon>
               <span>{{ isDirty ? 'Unsaved changes' : 'Saved' }}</span>
@@ -672,6 +671,257 @@
         </v-card>
       </v-dialog>
 
+      <v-dialog v-model="showPresetBrowser" max-width="1120px" :fullscreen="$vuetify.display.xs">
+        <v-card class="preset-browser-card">
+          <v-card-title class="preset-browser-title">
+            <div>
+              <div class="text-h6">Preset Browser</div>
+              <div class="text-caption preset-browser-subtitle">Browse folders, search presets, and manage your library.</div>
+            </div>
+            <v-spacer></v-spacer>
+            <v-btn icon variant="text" @click="showPresetBrowser = false" title="Close preset browser">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </v-card-title>
+          <v-card-text class="preset-browser-body">
+            <div class="preset-browser-toolbar">
+              <v-text-field
+                v-model="presetBrowserSearch"
+                density="compact"
+                variant="outlined"
+                hide-details
+                prepend-inner-icon="mdi-magnify"
+                label="Search presets or paths"
+                class="preset-browser-search"
+              />
+              <v-btn color="secondary" variant="tonal" prepend-icon="mdi-folder-plus-outline" @click="createFolderInActivePresetFolder">
+                New Folder
+              </v-btn>
+              <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline" @click="createPresetInActiveFolder">
+                New Preset
+              </v-btn>
+            </div>
+
+            <div class="preset-browser-layout">
+              <div class="preset-browser-tree">
+                <button
+                  type="button"
+                  class="preset-folder-row"
+                  :class="{ active: activePresetFolderId === null }"
+                  @click="selectPresetFolder(null)"
+                >
+                  <span class="preset-folder-row-title">Root</span>
+                </button>
+
+                <div
+                  v-for="row in presetBrowserTreeRows"
+                  :key="row.folder.id"
+                  class="preset-folder-row"
+                  :class="{ active: activePresetFolderId === row.folder.id }"
+                  :style="{ paddingLeft: `${10 + row.level * 14}px` }"
+                >
+                  <button
+                    type="button"
+                    class="preset-folder-expand"
+                    :disabled="!row.hasChildren"
+                    @click.stop="togglePresetFolderExpanded(row.folder.id)"
+                  >
+                    <v-icon size="16">{{ row.hasChildren ? (row.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right') : 'mdi-circle-small' }}</v-icon>
+                  </button>
+                  <button
+                    type="button"
+                    class="preset-folder-row-label"
+                    @click="selectPresetFolder(row.folder.id)"
+                  >
+                    {{ row.folder.name }}
+                  </button>
+                  <v-menu location="bottom end">
+                    <template #activator="{ props }">
+                      <v-btn v-bind="props" icon size="x-small" variant="text" class="preset-item-menu-btn" title="Folder actions">
+                        <v-icon size="16">mdi-dots-horizontal</v-icon>
+                      </v-btn>
+                    </template>
+                    <v-list density="compact" class="preset-action-menu">
+                      <v-list-item title="New subfolder" prepend-icon="mdi-folder-plus-outline" @click="createFolderInPresetFolder(row.folder.id)" />
+                      <v-list-item title="Rename folder" prepend-icon="mdi-form-textbox" @click="renamePresetFolder(row.folder.id)" />
+                      <v-list-item title="Move folder" prepend-icon="mdi-folder-move-outline" @click="openMoveFolderDialog(row.folder.id)" />
+                      <v-list-item title="Delete folder" prepend-icon="mdi-delete-outline" @click="deletePresetFolder(row.folder.id)" />
+                    </v-list>
+                  </v-menu>
+                </div>
+              </div>
+
+              <div class="preset-browser-content">
+                <div class="preset-browser-path-row">
+                  <span class="preset-browser-path-label">Current folder</span>
+                  <strong>{{ activePresetFolderPathLabel }}</strong>
+                </div>
+
+                <template v-if="presetBrowserSearch.trim().length > 0">
+                  <div class="preset-browser-section-title">Search results</div>
+                  <div v-if="presetBrowserSearchResults.length === 0" class="preset-browser-empty">No presets match your search.</div>
+                  <div
+                    v-for="entry in presetBrowserSearchResults"
+                    :key="entry.preset.id"
+                    class="preset-item-row"
+                    :class="{ active: entry.preset.id === selectedPresetId }"
+                  >
+                    <button type="button" class="preset-item-load" @click="loadPresetFromBrowser(entry.preset.id)">
+                      <span class="preset-item-name">{{ entry.preset.name }}</span>
+                      <span class="preset-item-path">{{ entry.path }}</span>
+                    </button>
+                    <v-menu location="bottom end">
+                      <template #activator="{ props }">
+                        <v-btn v-bind="props" icon size="x-small" variant="text" class="preset-item-menu-btn" title="Preset actions">
+                          <v-icon size="16">mdi-dots-horizontal</v-icon>
+                        </v-btn>
+                      </template>
+                      <v-list density="compact" class="preset-action-menu">
+                        <v-list-item title="Load preset" prepend-icon="mdi-folder-open-outline" @click="loadPresetFromBrowser(entry.preset.id)" />
+                        <v-list-item title="Rename preset" prepend-icon="mdi-form-textbox" @click="renamePresetFromBrowser(entry.preset.id)" />
+                        <v-list-item title="Move preset" prepend-icon="mdi-folder-move-outline" @click="openMovePresetDialog(entry.preset.id)" />
+                        <v-list-item title="Delete preset" prepend-icon="mdi-delete-outline" @click="deletePresetFromBrowser(entry.preset.id)" />
+                      </v-list>
+                    </v-menu>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <div class="preset-browser-section-title">Folders</div>
+                  <div v-if="activePresetChildFolders.length === 0" class="preset-browser-empty">No folders here yet.</div>
+                  <div
+                    v-for="folder in activePresetChildFolders"
+                    :key="folder.id"
+                    class="preset-item-row folder"
+                  >
+                    <button type="button" class="preset-item-load" @click="selectPresetFolder(folder.id)">
+                      <span class="preset-item-name">{{ folder.name }}</span>
+                      <span class="preset-item-path">Open folder</span>
+                    </button>
+                    <v-menu location="bottom end">
+                      <template #activator="{ props }">
+                        <v-btn v-bind="props" icon size="x-small" variant="text" class="preset-item-menu-btn" title="Folder actions">
+                          <v-icon size="16">mdi-dots-horizontal</v-icon>
+                        </v-btn>
+                      </template>
+                      <v-list density="compact" class="preset-action-menu">
+                        <v-list-item title="New subfolder" prepend-icon="mdi-folder-plus-outline" @click="createFolderInPresetFolder(folder.id)" />
+                        <v-list-item title="Rename folder" prepend-icon="mdi-form-textbox" @click="renamePresetFolder(folder.id)" />
+                        <v-list-item title="Move folder" prepend-icon="mdi-folder-move-outline" @click="openMoveFolderDialog(folder.id)" />
+                        <v-list-item title="Delete folder" prepend-icon="mdi-delete-outline" @click="deletePresetFolder(folder.id)" />
+                      </v-list>
+                    </v-menu>
+                  </div>
+
+                  <div class="preset-browser-section-title">Presets</div>
+                  <div v-if="activePresetFolderPresets.length === 0" class="preset-browser-empty">No presets in this folder.</div>
+                  <div
+                    v-for="preset in activePresetFolderPresets"
+                    :key="preset.id"
+                    class="preset-item-row"
+                    :class="{ active: preset.id === selectedPresetId }"
+                  >
+                    <button type="button" class="preset-item-load" @click="loadPresetFromBrowser(preset.id)">
+                      <span class="preset-item-name">{{ preset.name }}</span>
+                      <span class="preset-item-path">{{ formatFolderPath(preset.folderId) }}</span>
+                    </button>
+                    <v-menu location="bottom end">
+                      <template #activator="{ props }">
+                        <v-btn v-bind="props" icon size="x-small" variant="text" class="preset-item-menu-btn" title="Preset actions">
+                          <v-icon size="16">mdi-dots-horizontal</v-icon>
+                        </v-btn>
+                      </template>
+                      <v-list density="compact" class="preset-action-menu">
+                        <v-list-item title="Load preset" prepend-icon="mdi-folder-open-outline" @click="loadPresetFromBrowser(preset.id)" />
+                        <v-list-item title="Rename preset" prepend-icon="mdi-form-textbox" @click="renamePresetFromBrowser(preset.id)" />
+                        <v-list-item title="Move preset" prepend-icon="mdi-folder-move-outline" @click="openMovePresetDialog(preset.id)" />
+                        <v-list-item title="Delete preset" prepend-icon="mdi-delete-outline" @click="deletePresetFromBrowser(preset.id)" />
+                      </v-list>
+                    </v-menu>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="showMoveDestinationDialog" max-width="480px">
+        <v-card class="rename-dialog-card">
+          <v-card-title class="text-h6">Move {{ moveDialogMode === 'folder' ? 'Folder' : 'Preset' }}</v-card-title>
+          <v-card-text>
+            <v-select
+              v-model="moveDestinationFolderId"
+              label="Destination folder"
+              :items="availableMoveDestinationOptions"
+              item-title="title"
+              item-value="value"
+              density="comfortable"
+              variant="outlined"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="cancelMoveDialog">Cancel</v-btn>
+            <v-btn color="primary" @click="confirmMoveDialog">Move</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="showPresetBrowserNameDialog" max-width="460px">
+        <v-card class="rename-dialog-card">
+          <v-card-title class="text-h6">{{ presetBrowserNameDialogTitle }}</v-card-title>
+          <v-card-text>
+            <v-text-field
+              v-model="presetBrowserNameInput"
+              label="Name"
+              density="comfortable"
+              variant="outlined"
+              autofocus
+              @keydown.enter.prevent="confirmPresetBrowserNameDialog"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="cancelPresetBrowserNameDialog">Cancel</v-btn>
+            <v-btn color="primary" @click="confirmPresetBrowserNameDialog" :disabled="!canSubmitPresetBrowserNameDialog">Save</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="showConfirmDialog" max-width="460px" persistent>
+        <v-card class="rename-dialog-card">
+          <v-card-title class="text-h6">{{ confirmDialogTitle }}</v-card-title>
+          <v-card-text>{{ confirmDialogMessage }}</v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="resolveConfirmDialog(false)">Cancel</v-btn>
+            <v-btn color="error" @click="resolveConfirmDialog(true)">{{ confirmDialogConfirmLabel }}</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="showInputDialog" max-width="460px" persistent>
+        <v-card class="rename-dialog-card">
+          <v-card-title class="text-h6">{{ inputDialogTitle }}</v-card-title>
+          <v-card-text>
+            <v-text-field
+              v-model="inputDialogValue"
+              :label="inputDialogLabel"
+              density="comfortable"
+              variant="outlined"
+              autofocus
+              @keydown.enter.prevent="resolveInputDialog(true)"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="resolveInputDialog(false)">Cancel</v-btn>
+            <v-btn color="primary" @click="resolveInputDialog(true)" :disabled="inputDialogValue.trim().length === 0">{{ inputDialogConfirmLabel }}</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
       <v-dialog v-model="showHelp" max-width="800px">
         <v-card class="pa-4 bg-black">
           <v-card-title class="pa-4">
@@ -688,6 +938,7 @@
             <p>GateRunner now stores your work as named presets. Changes affect the current draft immediately for playback and URL sharing, but the preset itself is only updated when you use <strong>Save</strong> or <strong>Save As</strong>. You can also export a single preset or the full preset library to JSON and import them back later.</p>
             <ul>
               <li><strong>Preset</strong>: Pick a named preset, create a new one, save your current draft, or delete presets you no longer need.</li>
+              <li><strong>Preset Browser</strong>: Open the preset browser to organize presets into nested folders, search by name/path, and move or delete folders and presets.</li>
               <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
                 <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
               <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
@@ -768,6 +1019,18 @@
         <v-btn variant="text" @click="showPlaybackError = false">Close</v-btn>
       </template>
     </v-snackbar>
+
+    <v-snackbar
+      v-model="showAppNotice"
+      :timeout="3000"
+      :color="appNoticeColor"
+      location="top"
+    >
+      {{ appNoticeMessage }}
+      <template #actions>
+        <v-btn variant="text" @click="showAppNotice = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </v-app>
 </template>
 
@@ -784,19 +1047,32 @@ import {
   DEFAULT_PRESET_TRACK_DATA,
   ECHO_DELAY_OPTIONS,
   arePresetDataEqual,
+  buildUniqueFolderName,
+  buildUniquePresetNameInFolder,
   buildDraftFromUrl,
   buildPresetLibraryExport,
   buildSinglePresetExport,
   clonePresetData,
   clonePresetTrackData,
+  createFolder,
   createNamedPreset,
+  deleteFolderRecursive,
+  deletePreset,
+  getFolderPath,
   getSelectedPreset,
   hasUrlPresetOverrides,
+  isFolderDescendant,
+  listChildFolders,
+  listFolderPresets,
   loadPresetLibrary,
-  mergeImportedPresets,
+  mergeImportedPresetLibrary,
+  moveFolder,
+  movePresetToFolder,
   normalizePresetData,
   normalizePresetTrackData,
   parsePresetImportPayload,
+  renameFolder,
+  renamePreset,
   sanitizePresetName,
   sanitizeTrackName,
   savePresetLibrary,
@@ -804,6 +1080,8 @@ import {
   type NamedPreset,
   type EchoDelayValue,
   type PresetData,
+  type PresetFolder,
+  type PresetLibraryImportPayload,
   type PresetLibrary,
   type PresetTrackData,
 } from './presets';
@@ -844,6 +1122,13 @@ interface TrackTimingEntry {
   repeatBlocks: number[];
 }
 
+interface PresetFolderTreeRow {
+  folder: PresetFolder;
+  level: number;
+  expanded: boolean;
+  hasChildren: boolean;
+}
+
 function buildInitialState() {
   const presetLibrary = loadPresetLibrary();
   const selectedPreset = getSelectedPreset(presetLibrary);
@@ -853,6 +1138,7 @@ function buildInitialState() {
   return {
     presetLibrary,
     selectedPresetId: selectedPreset.id,
+    selectedPresetFolderId: selectedPreset.folderId,
     selectedTrackId,
     isDirty: hasUrlPresetOverrides(window.location.search) || !arePresetDataEqual(draft, selectedPreset.data),
     draft,
@@ -936,7 +1222,34 @@ export default defineComponent({
       activeNotes: [] as number[],
       presetLibrary: initialState.presetLibrary as PresetLibrary,
       selectedPresetId: initialState.selectedPresetId as string | null,
+      activePresetFolderId: initialState.selectedPresetFolderId as string | null,
       isDirty: initialState.isDirty,
+      showPresetBrowser: false,
+      presetBrowserSearch: '',
+      expandedPresetFolderIds: [] as string[],
+      showMoveDestinationDialog: false,
+      moveDialogMode: null as 'preset' | 'folder' | null,
+      moveTargetId: null as string | null,
+      moveDestinationFolderId: null as string | null,
+      showPresetBrowserNameDialog: false,
+      presetBrowserNameDialogMode: null as 'new-folder' | 'rename-folder' | 'new-preset' | 'rename-preset' | null,
+      presetBrowserNameDialogTargetId: null as string | null,
+      presetBrowserNameDialogFolderId: null as string | null,
+      presetBrowserNameInput: '',
+      showConfirmDialog: false,
+      confirmDialogTitle: 'Confirm',
+      confirmDialogMessage: '',
+      confirmDialogConfirmLabel: 'Confirm',
+      confirmDialogResolver: null as ((value: boolean) => void) | null,
+      showInputDialog: false,
+      inputDialogTitle: 'Input',
+      inputDialogLabel: 'Value',
+      inputDialogConfirmLabel: 'Save',
+      inputDialogValue: '',
+      inputDialogResolver: null as ((value: string | null) => void) | null,
+      showAppNotice: false,
+      appNoticeMessage: '',
+      appNoticeColor: 'info',
       showRenamePresetDialog: false,
       renamePresetInput: '',
       showCreatePresetDialog: false,
@@ -961,11 +1274,132 @@ export default defineComponent({
     currentTrack(): PresetTrackData | null {
       return this.tracks.find((track) => track.id === this.selectedTrackId) ?? this.tracks[0] ?? null;
     },
-    presetOptions(): Array<{ title: string; value: string }> {
-      return this.presetLibrary.presets.map((preset) => ({
-        title: preset.name,
-        value: preset.id,
-      }));
+    currentPresetFolderPath(): PresetFolder[] {
+      return this.currentPreset ? getFolderPath(this.presetLibrary, this.currentPreset.folderId) : [];
+    },
+    currentPresetFolderPathLabel(): string {
+      if (!this.currentPreset) {
+        return 'Root';
+      }
+      const segments = this.currentPresetFolderPath.map((folder) => folder.name);
+      return segments.length > 0 ? segments.join(' / ') : 'Root';
+    },
+    activePresetFolderPathLabel(): string {
+      const segments = getFolderPath(this.presetLibrary, this.activePresetFolderId).map((folder) => folder.name);
+      return segments.length > 0 ? segments.join(' / ') : 'Root';
+    },
+    presetBrowserTreeRows(): PresetFolderTreeRow[] {
+      const childrenByParent = new Map<string | null, PresetFolder[]>();
+      for (const folder of this.presetLibrary.folders) {
+        const key = folder.parentFolderId;
+        const existing = childrenByParent.get(key) ?? [];
+        existing.push(folder);
+        childrenByParent.set(key, existing);
+      }
+
+      for (const folders of childrenByParent.values()) {
+        folders.sort((left, right) => left.name.localeCompare(right.name));
+      }
+
+      const expanded = new Set(this.expandedPresetFolderIds);
+      const showAll = this.presetBrowserSearch.trim().length > 0;
+      const rows: PresetFolderTreeRow[] = [];
+
+      const walk = (parentFolderId: string | null, level: number) => {
+        for (const folder of childrenByParent.get(parentFolderId) ?? []) {
+          const hasChildren = (childrenByParent.get(folder.id)?.length ?? 0) > 0;
+          const isExpanded = showAll || expanded.has(folder.id);
+          rows.push({
+            folder,
+            level,
+            expanded: isExpanded,
+            hasChildren,
+          });
+          if (hasChildren && isExpanded) {
+            walk(folder.id, level + 1);
+          }
+        }
+      };
+
+      walk(null, 0);
+      return rows;
+    },
+    activePresetChildFolders(): PresetFolder[] {
+      return listChildFolders(this.presetLibrary, this.activePresetFolderId)
+        .slice()
+        .sort((left, right) => left.name.localeCompare(right.name));
+    },
+    activePresetFolderPresets(): NamedPreset[] {
+      return listFolderPresets(this.presetLibrary, this.activePresetFolderId)
+        .slice()
+        .sort((left, right) => left.name.localeCompare(right.name));
+    },
+    presetBrowserSearchResults(): Array<{ preset: NamedPreset; path: string }> {
+      const query = this.presetBrowserSearch.trim().toLowerCase();
+      if (!query) {
+        return [];
+      }
+
+      return this.presetLibrary.presets
+        .filter((preset) => {
+          const path = this.formatFolderPath(preset.folderId).toLowerCase();
+          return preset.name.toLowerCase().includes(query) || path.includes(query);
+        })
+        .map((preset) => ({
+          preset,
+          path: this.formatFolderPath(preset.folderId),
+        }))
+        .sort((left, right) => left.preset.name.localeCompare(right.preset.name));
+    },
+    presetMoveDestinationOptions(): Array<{ title: string; value: string | null }> {
+      const options: Array<{ title: string; value: string | null }> = [
+        {
+          title: 'Root',
+          value: null,
+        },
+      ];
+
+      for (const folder of this.presetLibrary.folders) {
+        options.push({
+          title: this.formatFolderPath(folder.id),
+          value: folder.id,
+        });
+      }
+
+      return options.sort((left, right) => left.title.localeCompare(right.title));
+    },
+    availableMoveDestinationOptions(): Array<{ title: string; value: string | null }> {
+      if (this.moveDialogMode !== 'folder' || !this.moveTargetId) {
+        return this.presetMoveDestinationOptions;
+      }
+
+      return this.presetMoveDestinationOptions.filter((option) => {
+        if (option.value === this.moveTargetId) {
+          return false;
+        }
+        if (!option.value) {
+          return true;
+        }
+        return !isFolderDescendant(this.presetLibrary, this.moveTargetId!, option.value);
+      });
+    },
+    presetBrowserNameDialogTitle(): string {
+      if (this.presetBrowserNameDialogMode === 'new-folder') {
+        return 'New Folder';
+      }
+      if (this.presetBrowserNameDialogMode === 'rename-folder') {
+        return 'Rename Folder';
+      }
+      if (this.presetBrowserNameDialogMode === 'new-preset') {
+        return 'New Preset';
+      }
+      if (this.presetBrowserNameDialogMode === 'rename-preset') {
+        return 'Rename Preset';
+      }
+      return 'Name';
+    },
+    canSubmitPresetBrowserNameDialog(): boolean {
+      return this.presetBrowserNameInput.trim().length > 0;
     },
     canSubmitPresetRename(): boolean {
       if (!this.currentPreset) {
@@ -1258,13 +1692,14 @@ export default defineComponent({
       this.tracks = this.tracks.map((entry) => entry.id === trackId ? { ...entry, name: nextName } : entry);
       this.refreshDirtyState();
     },
-    removeTrack(trackId: string) {
+    async removeTrack(trackId: string) {
       const trackToRemove = this.tracks.find((track) => track.id === trackId);
       if (!trackToRemove || this.tracks.length <= 1) {
         return;
       }
 
-      if (!window.confirm(`Delete track "${trackToRemove.name}"?`)) {
+      const confirmed = await this.askForConfirmation('Delete Track', `Delete track "${trackToRemove.name}"?`, 'Delete');
+      if (!confirmed) {
         return;
       }
 
@@ -1277,22 +1712,27 @@ export default defineComponent({
       this.syncTrackEditorFromCurrent();
       this.handleDraftChange();
     },
-    removeCurrentTrack() {
+    async removeCurrentTrack() {
       const currentTrack = this.currentTrack;
       if (!currentTrack || this.tracks.length <= 1) {
         return;
       }
 
-      this.removeTrack(currentTrack.id);
+      await this.removeTrack(currentTrack.id);
     },
-    renameCurrentTrack() {
+    async renameCurrentTrack() {
       const currentTrack = this.currentTrack;
       if (!currentTrack) {
         return;
       }
 
       const suggestedName = this.buildUniqueTrackName(currentTrack.name, currentTrack.id);
-      const requestedName = window.prompt(`Rename track "${currentTrack.name}"`, suggestedName);
+      const requestedName = await this.askForTextInput({
+        title: `Rename ${currentTrack.name}`,
+        label: 'Track name',
+        initialValue: suggestedName,
+        confirmLabel: 'Rename',
+      });
       if (requestedName === null) {
         return;
       }
@@ -1304,6 +1744,46 @@ export default defineComponent({
 
       this.tracks = this.tracks.map((track) => track.id === currentTrack.id ? { ...track, name: nextName } : track);
       this.handleDraftChange();
+    },
+    showNotice(message: string, color: 'info' | 'success' | 'warning' | 'error' = 'info') {
+      this.appNoticeMessage = message;
+      this.appNoticeColor = color;
+      this.showAppNotice = true;
+    },
+    askForConfirmation(title: string, message: string, confirmLabel = 'Confirm'): Promise<boolean> {
+      this.confirmDialogTitle = title;
+      this.confirmDialogMessage = message;
+      this.confirmDialogConfirmLabel = confirmLabel;
+      this.showConfirmDialog = true;
+
+      return new Promise((resolve) => {
+        this.confirmDialogResolver = resolve;
+      });
+    },
+    resolveConfirmDialog(value: boolean) {
+      const resolver = this.confirmDialogResolver;
+      this.confirmDialogResolver = null;
+      this.showConfirmDialog = false;
+      resolver?.(value);
+    },
+    askForTextInput(options: { title: string; label: string; initialValue: string; confirmLabel?: string }): Promise<string | null> {
+      this.inputDialogTitle = options.title;
+      this.inputDialogLabel = options.label;
+      this.inputDialogValue = options.initialValue;
+      this.inputDialogConfirmLabel = options.confirmLabel ?? 'Save';
+      this.showInputDialog = true;
+
+      return new Promise((resolve) => {
+        this.inputDialogResolver = resolve;
+      });
+    },
+    resolveInputDialog(submit: boolean) {
+      const resolver = this.inputDialogResolver;
+      this.inputDialogResolver = null;
+      const value = submit ? this.inputDialogValue.trim() : null;
+      this.showInputDialog = false;
+      resolver?.(value && value.length > 0 ? value : null);
+      this.inputDialogValue = '';
     },
     handleTrackDraftChange() {
       const previousTrack = this.currentTrack ? clonePresetTrackData(this.currentTrack) : null;
@@ -1616,6 +2096,217 @@ export default defineComponent({
       const currentPreset = this.currentPreset;
       this.isDirty = currentPreset ? !arePresetDataEqual(this.getDraftData(), currentPreset.data) : false;
     },
+    formatFolderPath(folderId: string | null): string {
+      const segments = getFolderPath(this.presetLibrary, folderId).map((folder) => folder.name);
+      return segments.length > 0 ? segments.join(' / ') : 'Root';
+    },
+    openPresetBrowser() {
+      this.activePresetFolderId = this.currentPreset?.folderId ?? this.activePresetFolderId ?? null;
+      this.showPresetBrowser = true;
+    },
+    selectPresetFolder(folderId: string | null) {
+      this.activePresetFolderId = folderId;
+      if (folderId && !this.expandedPresetFolderIds.includes(folderId)) {
+        this.expandedPresetFolderIds = [...this.expandedPresetFolderIds, folderId];
+      }
+    },
+    togglePresetFolderExpanded(folderId: string) {
+      if (this.expandedPresetFolderIds.includes(folderId)) {
+        this.expandedPresetFolderIds = this.expandedPresetFolderIds.filter((id) => id !== folderId);
+      } else {
+        this.expandedPresetFolderIds = [...this.expandedPresetFolderIds, folderId];
+      }
+    },
+    openPresetBrowserNameDialog(
+      mode: 'new-folder' | 'rename-folder' | 'new-preset' | 'rename-preset',
+      options: {
+        targetId?: string | null;
+        folderId?: string | null;
+        initialName?: string;
+      } = {},
+    ) {
+      this.presetBrowserNameDialogMode = mode;
+      this.presetBrowserNameDialogTargetId = options.targetId ?? null;
+      this.presetBrowserNameDialogFolderId = options.folderId ?? null;
+      this.presetBrowserNameInput = options.initialName ?? '';
+      this.showPresetBrowserNameDialog = true;
+    },
+    cancelPresetBrowserNameDialog() {
+      this.showPresetBrowserNameDialog = false;
+      this.presetBrowserNameDialogMode = null;
+      this.presetBrowserNameDialogTargetId = null;
+      this.presetBrowserNameDialogFolderId = null;
+      this.presetBrowserNameInput = '';
+    },
+    confirmPresetBrowserNameDialog() {
+      if (!this.canSubmitPresetBrowserNameDialog || !this.presetBrowserNameDialogMode) {
+        return;
+      }
+
+      const value = this.presetBrowserNameInput;
+      if (this.presetBrowserNameDialogMode === 'new-folder') {
+        const result = createFolder(this.presetLibrary, value, this.presetBrowserNameDialogFolderId);
+        this.persistPresetLibrary(result.library);
+        this.activePresetFolderId = result.folder.id;
+        if (!this.expandedPresetFolderIds.includes(result.folder.id)) {
+          this.expandedPresetFolderIds = [...this.expandedPresetFolderIds, result.folder.id];
+        }
+      } else if (this.presetBrowserNameDialogMode === 'rename-folder' && this.presetBrowserNameDialogTargetId) {
+        this.persistPresetLibrary(renameFolder(this.presetLibrary, this.presetBrowserNameDialogTargetId, value));
+      } else if (this.presetBrowserNameDialogMode === 'new-preset') {
+        const folderId = this.presetBrowserNameDialogFolderId;
+        const name = this.buildUniquePresetName(value, folderId);
+        const preset = {
+          ...createNamedPreset(name, DEFAULT_PRESET_DATA),
+          folderId,
+        };
+        this.persistPresetLibrary({
+          ...this.presetLibrary,
+          presets: [...this.presetLibrary.presets, preset],
+        });
+      } else if (this.presetBrowserNameDialogMode === 'rename-preset' && this.presetBrowserNameDialogTargetId) {
+        this.persistPresetLibrary(renamePreset(this.presetLibrary, this.presetBrowserNameDialogTargetId, value));
+      }
+
+      this.cancelPresetBrowserNameDialog();
+    },
+    createFolderInPresetFolder(parentFolderId: string | null) {
+      const suggestedName = buildUniqueFolderName(this.presetLibrary, 'New folder', parentFolderId);
+      this.openPresetBrowserNameDialog('new-folder', {
+        folderId: parentFolderId,
+        initialName: suggestedName,
+      });
+    },
+    createFolderInActivePresetFolder() {
+      this.createFolderInPresetFolder(this.activePresetFolderId);
+    },
+    renamePresetFolder(folderId: string) {
+      const folder = this.presetLibrary.folders.find((entry) => entry.id === folderId);
+      if (!folder) {
+        return;
+      }
+
+      const suggested = buildUniqueFolderName(this.presetLibrary, folder.name, folder.parentFolderId, folder.id);
+      this.openPresetBrowserNameDialog('rename-folder', {
+        targetId: folderId,
+        folderId: folder.parentFolderId,
+        initialName: suggested,
+      });
+    },
+    async deletePresetFolder(folderId: string) {
+      const folder = this.presetLibrary.folders.find((entry) => entry.id === folderId);
+      if (!folder) {
+        return;
+      }
+
+      const result = deleteFolderRecursive(this.presetLibrary, folderId);
+      if (result.deletedFolderIds.length === 0) {
+        return;
+      }
+
+      const shouldDelete = await this.askForConfirmation(
+        'Delete Folder',
+        `Delete folder "${folder.name}" and ${result.deletedFolderIds.length - 1} subfolder(s), plus ${result.deletedPresetIds.length} preset(s)? This cannot be undone.`,
+        'Delete',
+      );
+      if (!shouldDelete) {
+        return;
+      }
+
+      const deletedCurrentPreset = this.currentPreset ? result.deletedPresetIds.includes(this.currentPreset.id) : false;
+      if (deletedCurrentPreset && !(await this.confirmDiscardChanges('Delete this folder subtree and discard them'))) {
+        return;
+      }
+
+      this.persistPresetLibrary(result.library);
+      this.activePresetFolderId = null;
+
+      if (deletedCurrentPreset && result.selectedPresetId) {
+        this.loadPresetById(result.selectedPresetId, result.library);
+      } else {
+        this.selectedPresetId = this.presetLibrary.selectedPresetId;
+      }
+    },
+    createPresetInActiveFolder() {
+      const folderId = this.activePresetFolderId;
+      const suggested = buildUniquePresetNameInFolder(this.presetLibrary, 'New preset', folderId);
+      this.openPresetBrowserNameDialog('new-preset', {
+        folderId,
+        initialName: suggested,
+      });
+    },
+    renamePresetFromBrowser(presetId: string) {
+      const preset = this.presetLibrary.presets.find((entry) => entry.id === presetId);
+      if (!preset) {
+        return;
+      }
+
+      const suggested = buildUniquePresetNameInFolder(this.presetLibrary, preset.name, preset.folderId, preset.id);
+      this.openPresetBrowserNameDialog('rename-preset', {
+        targetId: presetId,
+        folderId: preset.folderId,
+        initialName: suggested,
+      });
+      if (this.currentPreset?.id === presetId) {
+        this.selectedPresetId = presetId;
+      }
+    },
+    async deletePresetFromBrowser(presetId: string) {
+      const preset = this.presetLibrary.presets.find((entry) => entry.id === presetId);
+      if (!preset) {
+        return;
+      }
+
+      const shouldDelete = await this.askForConfirmation('Delete Preset', `Delete preset "${preset.name}"? This cannot be undone.`, 'Delete');
+      if (!shouldDelete) {
+        return;
+      }
+
+      const deletingCurrent = this.currentPreset?.id === presetId;
+      if (deletingCurrent && !(await this.confirmDiscardChanges(`Delete preset "${preset.name}" and discard them`))) {
+        return;
+      }
+
+      const result = deletePreset(this.presetLibrary, presetId);
+      this.persistPresetLibrary(result.library);
+      if (deletingCurrent && result.selectedPresetId) {
+        this.loadPresetById(result.selectedPresetId, result.library);
+      }
+    },
+    openMovePresetDialog(presetId: string) {
+      this.moveDialogMode = 'preset';
+      this.moveTargetId = presetId;
+      const preset = this.presetLibrary.presets.find((entry) => entry.id === presetId);
+      this.moveDestinationFolderId = preset?.folderId ?? null;
+      this.showMoveDestinationDialog = true;
+    },
+    openMoveFolderDialog(folderId: string) {
+      this.moveDialogMode = 'folder';
+      this.moveTargetId = folderId;
+      const folder = this.presetLibrary.folders.find((entry) => entry.id === folderId);
+      this.moveDestinationFolderId = folder?.parentFolderId ?? null;
+      this.showMoveDestinationDialog = true;
+    },
+    cancelMoveDialog() {
+      this.showMoveDestinationDialog = false;
+      this.moveDialogMode = null;
+      this.moveTargetId = null;
+      this.moveDestinationFolderId = null;
+    },
+    confirmMoveDialog() {
+      if (!this.moveDialogMode || !this.moveTargetId) {
+        this.cancelMoveDialog();
+        return;
+      }
+
+      if (this.moveDialogMode === 'preset') {
+        this.persistPresetLibrary(movePresetToFolder(this.presetLibrary, this.moveTargetId, this.moveDestinationFolderId));
+      } else {
+        this.persistPresetLibrary(moveFolder(this.presetLibrary, this.moveTargetId, this.moveDestinationFolderId));
+      }
+
+      this.cancelMoveDialog();
+    },
     openRenamePresetDialog() {
       const currentPreset = this.currentPreset;
       if (!currentPreset) {
@@ -1643,7 +2334,7 @@ export default defineComponent({
       this.cancelPresetRename();
     },
     openCreatePresetDialog() {
-      this.createPresetInput = this.buildUniquePresetName('New preset');
+      this.createPresetInput = this.buildUniquePresetName('New preset', this.activePresetFolderId);
       this.showCreatePresetDialog = true;
       this.focusCreatePresetInput();
     },
@@ -1665,8 +2356,12 @@ export default defineComponent({
         return;
       }
 
-      const name = this.buildUniquePresetName(this.createPresetInput);
-      const preset = createNamedPreset(name, DEFAULT_PRESET_DATA);
+      const folderId = this.activePresetFolderId;
+      const name = this.buildUniquePresetName(this.createPresetInput, folderId);
+      const preset = {
+        ...createNamedPreset(name, DEFAULT_PRESET_DATA),
+        folderId,
+      };
       const nextLibrary: PresetLibrary = {
         ...this.presetLibrary,
         presets: [...this.presetLibrary.presets, preset],
@@ -1682,6 +2377,10 @@ export default defineComponent({
     persistPresetLibrary(library: PresetLibrary) {
       this.presetLibrary = library;
       savePresetLibrary(library);
+
+      if (this.activePresetFolderId && !library.folders.some((folder) => folder.id === this.activePresetFolderId)) {
+        this.activePresetFolderId = null;
+      }
     },
     loadPresetById(presetId: string, libraryOverride?: PresetLibrary) {
       const library = libraryOverride ?? this.presetLibrary;
@@ -1697,6 +2396,7 @@ export default defineComponent({
 
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = preset.id;
+      this.activePresetFolderId = preset.folderId;
       this.applyDraftData(preset.data);
       this.refreshDirtyState();
     },
@@ -1714,43 +2414,35 @@ export default defineComponent({
       }
       this.refreshDirtyState();
     },
-    confirmDiscardChanges(actionLabel: string): boolean {
+    async confirmDiscardChanges(actionLabel: string): Promise<boolean> {
       if (!this.isDirty) {
         return true;
       }
 
-      return window.confirm(`You have unsaved changes. ${actionLabel}?`);
+      return this.askForConfirmation('Unsaved Changes', `You have unsaved changes. ${actionLabel}?`, 'Continue');
     },
-    handlePresetSelection(nextPresetId: string | null) {
+    async handlePresetSelection(nextPresetId: string | null) {
       const currentPresetId = this.presetLibrary.selectedPresetId;
       if (!nextPresetId || nextPresetId === currentPresetId) {
         return;
       }
 
-      if (!this.confirmDiscardChanges('Load another preset and discard them')) {
+      if (!(await this.confirmDiscardChanges('Load another preset and discard them'))) {
         this.selectedPresetId = currentPresetId;
         return;
       }
 
       this.loadPresetById(nextPresetId);
     },
-    buildUniquePresetName(baseName: string, excludedPresetId?: string): string {
-      const existingNames = new Set(
-        this.presetLibrary.presets
-          .filter((preset) => preset.id !== excludedPresetId)
-          .map((preset) => preset.name),
-      );
-      const sanitizedBaseName = sanitizePresetName(baseName);
-      if (!existingNames.has(sanitizedBaseName)) {
-        return sanitizedBaseName;
+    async loadPresetFromBrowser(presetId: string) {
+      const before = this.presetLibrary.selectedPresetId;
+      await this.handlePresetSelection(presetId);
+      if (this.presetLibrary.selectedPresetId !== before) {
+        this.showPresetBrowser = false;
       }
-
-      let suffix = 2;
-      while (existingNames.has(`${sanitizedBaseName} (${suffix})`)) {
-        suffix += 1;
-      }
-
-      return `${sanitizedBaseName} (${suffix})`;
+    },
+    buildUniquePresetName(baseName: string, folderId: string | null, excludedPresetId?: string): string {
+      return buildUniquePresetNameInFolder(this.presetLibrary, baseName, folderId, excludedPresetId);
     },
     renameCurrentPreset(baseName?: string) {
       const currentPreset = this.currentPreset;
@@ -1758,24 +2450,16 @@ export default defineComponent({
         return;
       }
 
-      const nextName = this.buildUniquePresetName(baseName ?? currentPreset.name, currentPreset.id);
+      const nextName = this.buildUniquePresetName(baseName ?? currentPreset.name, currentPreset.folderId, currentPreset.id);
       if (nextName === currentPreset.name) {
         return;
       }
 
-      const renamedPreset: NamedPreset = {
-        ...currentPreset,
-        name: nextName,
-      };
-      const nextLibrary: PresetLibrary = {
-        ...this.presetLibrary,
-        presets: this.presetLibrary.presets.map((preset) => preset.id === renamedPreset.id ? renamedPreset : preset),
-        selectedPresetId: renamedPreset.id,
-      };
-
+      const nextLibrary = renamePreset(this.presetLibrary, currentPreset.id, nextName);
       this.persistPresetLibrary(nextLibrary);
-      this.selectedPresetId = renamedPreset.id;
-      window.alert(`Renamed preset to "${renamedPreset.name}".`);
+      this.selectedPresetId = currentPreset.id;
+      const renamed = nextLibrary.presets.find((preset) => preset.id === currentPreset.id);
+      this.showNotice(`Renamed preset to "${renamed?.name ?? nextName}".`, 'success');
     },
     saveCurrentPreset() {
       const currentPreset = this.currentPreset;
@@ -1793,17 +2477,26 @@ export default defineComponent({
       this.persistPresetLibrary(nextLibrary);
       this.selectedPresetId = updatedPreset.id;
       this.refreshDirtyState();
-      window.alert(`Saved preset "${updatedPreset.name}".`);
+      this.showNotice(`Saved preset "${updatedPreset.name}".`, 'success');
     },
-    saveAsPreset() {
-      const suggestedName = this.buildUniquePresetName(`${this.currentPreset?.name ?? 'Preset'} Copy`);
-      const requestedName = window.prompt('Name for the new preset copy:', suggestedName);
+    async saveAsPreset() {
+      const folderId = this.currentPreset?.folderId ?? null;
+      const suggestedName = this.buildUniquePresetName(`${this.currentPreset?.name ?? 'Preset'} Copy`, folderId);
+      const requestedName = await this.askForTextInput({
+        title: 'Save Preset Copy',
+        label: 'Preset name',
+        initialValue: suggestedName,
+        confirmLabel: 'Create',
+      });
       if (requestedName === null) {
         return;
       }
 
-      const name = this.buildUniquePresetName(requestedName);
-      const newPreset = createNamedPreset(name, this.getDraftData());
+      const name = this.buildUniquePresetName(requestedName, folderId);
+      const newPreset = {
+        ...createNamedPreset(name, this.getDraftData()),
+        folderId,
+      };
       const nextLibrary: PresetLibrary = {
         ...this.presetLibrary,
         presets: [...this.presetLibrary.presets, newPreset],
@@ -1814,46 +2507,43 @@ export default defineComponent({
       this.selectedPresetId = newPreset.id;
       this.applyDraftData(newPreset.data);
       this.refreshDirtyState();
-      window.alert(`Created preset "${newPreset.name}".`);
+      this.showNotice(`Created preset "${newPreset.name}".`, 'success');
     },
-    createNewPreset() {
+    async createNewPreset() {
       this.presetMenuOpen = false;
-      if (!this.confirmDiscardChanges('Create a new preset and discard them')) {
+      if (!(await this.confirmDiscardChanges('Create a new preset and discard them'))) {
         this.selectedPresetId = this.presetLibrary.selectedPresetId;
         return;
       }
+
+      this.activePresetFolderId = this.currentPreset?.folderId ?? null;
 
       this.$nextTick(() => {
         this.openCreatePresetDialog();
       });
     },
-    deleteCurrentPreset() {
+    async deleteCurrentPreset() {
       const currentPreset = this.currentPreset;
       if (!currentPreset) {
         return;
       }
 
-      if (!this.confirmDiscardChanges(`Delete preset "${currentPreset.name}" and discard them`)) {
+      if (!(await this.confirmDiscardChanges(`Delete preset "${currentPreset.name}" and discard them`))) {
         this.selectedPresetId = this.presetLibrary.selectedPresetId;
         return;
       }
 
-      if (!window.confirm(`Delete preset "${currentPreset.name}"? This cannot be undone.`)) {
+      const shouldDelete = await this.askForConfirmation('Delete Preset', `Delete preset "${currentPreset.name}"? This cannot be undone.`, 'Delete');
+      if (!shouldDelete) {
         this.selectedPresetId = this.presetLibrary.selectedPresetId;
         return;
       }
 
-      const remainingPresets = this.presetLibrary.presets.filter((preset) => preset.id !== currentPreset.id);
-      const fallbackPreset = remainingPresets[0] ?? createNamedPreset('Default', DEFAULT_PRESET_DATA);
-      const nextPresets = remainingPresets.length > 0 ? remainingPresets : [fallbackPreset];
-      const nextLibrary: PresetLibrary = {
-        ...this.presetLibrary,
-        presets: nextPresets,
-        selectedPresetId: fallbackPreset.id,
-      };
-
-      this.persistPresetLibrary(nextLibrary);
+      const result = deletePreset(this.presetLibrary, currentPreset.id);
+      this.persistPresetLibrary(result.library);
+      const fallbackPreset = result.library.presets.find((preset) => preset.id === result.selectedPresetId) ?? result.library.presets[0];
       this.selectedPresetId = fallbackPreset.id;
+      this.activePresetFolderId = fallbackPreset.folderId;
       this.applyDraftData(fallbackPreset.data);
       this.refreshDirtyState();
     },
@@ -1911,12 +2601,22 @@ export default defineComponent({
 
       try {
         const payload = parsePresetImportPayload(await file.text());
-        const importedPresets = payload.kind === 'single-preset' ? [payload.preset] : payload.presets;
-        const preferredSelectedPresetId = payload.kind === 'single-preset' ? payload.preset.id : payload.selectedPresetId;
-        const mergeResult = mergeImportedPresets(this.presetLibrary.presets, importedPresets, preferredSelectedPresetId);
+        const importedLibrary: PresetLibraryImportPayload = payload.kind === 'single-preset'
+          ? {
+            version: payload.version,
+            kind: 'preset-library',
+            exportedAt: payload.exportedAt,
+            selectedPresetId: payload.preset.id,
+            folders: [],
+            presets: [payload.preset],
+          }
+          : payload;
+        const mergeResult = mergeImportedPresetLibrary(this.presetLibrary, importedLibrary, {
+          preferredSelectedPresetId: importedLibrary.selectedPresetId,
+          singlePresetDestinationFolderId: payload.kind === 'single-preset' ? this.activePresetFolderId : undefined,
+        });
         const nextLibrary: PresetLibrary = {
-          ...this.presetLibrary,
-          presets: mergeResult.presets,
+          ...mergeResult.library,
           selectedPresetId: this.presetLibrary.selectedPresetId,
         };
 
@@ -1925,20 +2625,20 @@ export default defineComponent({
 
         const importedCount = mergeResult.importedPresets.length;
         if (importedCount === 0) {
-          window.alert('No presets were imported.');
+          this.showNotice('No presets were imported.', 'warning');
           return;
         }
 
-        if (mergeResult.selectedPresetId && this.confirmDiscardChanges('Load the imported preset and discard them')) {
+        if (mergeResult.selectedPresetId && await this.confirmDiscardChanges('Load the imported preset and discard them')) {
           this.loadPresetById(mergeResult.selectedPresetId, nextLibrary);
         } else {
           this.selectedPresetId = this.presetLibrary.selectedPresetId;
         }
 
-        window.alert(`Imported ${importedCount} preset${importedCount === 1 ? '' : 's'}.`);
+        this.showNotice(`Imported ${importedCount} preset${importedCount === 1 ? '' : 's'}.`, 'success');
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to import preset file.';
-        window.alert(message);
+        this.showNotice(message, 'error');
       } finally {
         input.value = '';
       }
@@ -2436,7 +3136,7 @@ export default defineComponent({
         this.exportStatus = 'MIDI export complete.';
       } catch (error) {
         console.error('Failed to export MIDI:', error);
-        window.alert('MIDI export failed. Please try again.');
+        this.showNotice('MIDI export failed. Please try again.', 'error');
       } finally {
         this.finishExport();
       }
@@ -2466,7 +3166,7 @@ export default defineComponent({
         this.setWavExportProgress(100, 'WAV export complete.');
       } catch (error) {
         console.error('Failed to export WAV:', error);
-        window.alert('WAV export failed. Please try again.');
+        this.showNotice('WAV export failed. Please try again.', 'error');
       } finally {
         this.finishExport();
       }
@@ -2711,6 +3411,36 @@ export default defineComponent({
   min-width: 760px;
 }
 
+.preset-browser-launch {
+  width: 100%;
+  min-height: 40px;
+  justify-content: flex-start;
+  padding-inline: 10px;
+}
+
+.preset-browser-launch-content {
+  min-width: 0;
+  display: grid;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.preset-browser-launch-name {
+  font-weight: 700;
+  color: #f3fbff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-browser-launch-path {
+  color: rgba(201, 241, 255, 0.7);
+  font-size: 0.73rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .preset-state-pill {
   min-height: 40px;
   padding: 8px 12px;
@@ -2745,6 +3475,193 @@ export default defineComponent({
   min-width: 240px;
   border: 1px solid rgba(139, 213, 231, 0.3);
   background: rgba(4, 12, 17, 0.96);
+}
+
+.preset-browser-card {
+  border: 1px solid rgba(132, 209, 228, 0.32);
+  background: #000000;
+}
+
+.preset-browser-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.preset-browser-subtitle {
+  color: rgba(201, 241, 255, 0.7);
+}
+
+.preset-browser-body {
+  display: grid;
+  gap: 10px;
+  max-height: 72vh;
+}
+
+.preset-browser-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.preset-browser-search {
+  min-width: 0;
+}
+
+.preset-browser-layout {
+  min-height: 420px;
+  display: grid;
+  grid-template-columns: minmax(230px, 0.9fr) minmax(0, 1.4fr);
+  gap: 10px;
+}
+
+.preset-browser-tree,
+.preset-browser-content {
+  border: 1px solid rgba(127, 211, 231, 0.24);
+  background: rgba(2, 10, 15, 0.65);
+  overflow: auto;
+}
+
+.preset-browser-tree {
+  padding: 7px;
+}
+
+.preset-browser-content {
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.preset-browser-path-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  color: rgba(234, 248, 255, 0.88);
+  border-bottom: 1px solid rgba(127, 211, 231, 0.2);
+  padding-bottom: 5px;
+}
+
+.preset-browser-path-label {
+  color: rgba(201, 241, 255, 0.7);
+  font-size: 0.78rem;
+}
+
+.preset-browser-section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(201, 241, 255, 0.72);
+  margin-top: 2px;
+}
+
+.preset-browser-empty {
+  font-size: 0.83rem;
+  color: rgba(201, 241, 255, 0.68);
+  padding: 6px 8px;
+  border: 1px dashed rgba(127, 211, 231, 0.28);
+}
+
+.preset-folder-row {
+  width: 100%;
+  min-height: 31px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(238, 250, 255, 0.9);
+  text-align: left;
+  padding: 1px 4px;
+}
+
+.preset-folder-row.active {
+  border-color: rgba(0, 255, 209, 0.56);
+  background: rgba(0, 255, 209, 0.12);
+}
+
+.preset-folder-expand {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: rgba(225, 247, 255, 0.8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preset-folder-expand:disabled {
+  opacity: 0.42;
+}
+
+.preset-folder-row-label {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 0.84rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-folder-row-title {
+  grid-column: 2;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.preset-item-row {
+  min-height: 38px;
+  border: 1px solid rgba(127, 211, 231, 0.2);
+  background: rgba(8, 22, 31, 0.55);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.preset-item-row.active {
+  border-color: rgba(0, 255, 209, 0.56);
+  background: rgba(0, 255, 209, 0.1);
+}
+
+.preset-item-row.folder {
+  background: rgba(8, 22, 31, 0.4);
+}
+
+.preset-item-load {
+  border: none;
+  background: transparent;
+  color: #e9f9ff;
+  padding: 7px 9px;
+  text-align: left;
+  display: grid;
+  gap: 1px;
+}
+
+.preset-item-name {
+  font-size: 0.87rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-item-path {
+  font-size: 0.72rem;
+  color: rgba(201, 241, 255, 0.68);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-item-menu-btn {
+  margin-right: 2px;
 }
 
 .track-strip {
@@ -3015,6 +3932,10 @@ export default defineComponent({
   .preset-inline-row {
     min-width: 700px;
   }
+
+  .preset-browser-layout {
+    grid-template-columns: minmax(200px, 0.9fr) minmax(0, 1.2fr);
+  }
 }
 
 @media (max-width: 680px) {
@@ -3064,6 +3985,10 @@ export default defineComponent({
     grid-area: selector;
   }
 
+  .preset-browser-launch {
+    grid-area: selector;
+  }
+
   .preset-state-pill {
     grid-area: state;
     font-size: 0.75rem;
@@ -3080,6 +4005,20 @@ export default defineComponent({
     grid-area: menu;
     width: 100%;
     min-width: 0;
+  }
+
+  .preset-browser-body {
+    max-height: none;
+  }
+
+  .preset-browser-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preset-browser-layout {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(160px, 0.75fr) minmax(260px, 1fr);
   }
 
   .track-strip {
