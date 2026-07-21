@@ -129,16 +129,6 @@
               <v-icon size="16">{{ isDirty ? 'mdi-circle-edit-outline' : 'mdi-check-circle-outline' }}</v-icon>
               <span>{{ isDirty ? 'Unsaved changes' : 'Saved' }}</span>
             </div>
-            <v-btn
-              class="preset-rename-btn"
-              color="info"
-              variant="outlined"
-              prepend-icon="mdi-form-textbox"
-              @click="openRenamePresetDialog"
-              :disabled="!currentPreset"
-            >
-              Rename
-            </v-btn>
             <v-menu v-model="presetMenuOpen" location="bottom end">
               <template #activator="{ props }">
                 <v-btn v-bind="props" class="preset-menu-btn" color="secondary" variant="tonal" append-icon="mdi-chevron-down">
@@ -146,6 +136,12 @@
                 </v-btn>
               </template>
               <v-list density="compact" class="preset-action-menu">
+                <v-list-item
+                  title="Rename"
+                  prepend-icon="mdi-form-textbox"
+                  :disabled="!currentPreset"
+                  @click="openRenamePresetDialog"
+                />
                 <v-list-item
                   title="Save"
                   prepend-icon="mdi-content-save-outline"
@@ -3446,7 +3442,7 @@ export default defineComponent({
 
 .preset-inline-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto auto;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   min-width: 760px;
@@ -3502,10 +3498,6 @@ export default defineComponent({
   color: #ffd39a;
   border-color: rgba(244, 176, 88, 0.48);
   background: rgba(47, 27, 8, 0.56);
-}
-
-.preset-rename-btn {
-  min-width: 136px;
 }
 
 .preset-menu-btn {
@@ -4017,7 +4009,7 @@ export default defineComponent({
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "selector state"
-      "rename menu";
+      "menu menu";
     column-gap: 6px;
     row-gap: 8px;
   }
@@ -4036,12 +4028,6 @@ export default defineComponent({
     padding: 6px 10px;
   }
 
-  .preset-rename-btn {
-    grid-area: rename;
-    width: 100%;
-    min-width: 0;
-  }
-
   .preset-menu-btn {
     grid-area: menu;
     width: 100%;
@@ -4049,17 +4035,52 @@ export default defineComponent({
   }
 
   .preset-browser-body {
+    min-height: 0;
     max-height: none;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
   }
 
   .preset-browser-toolbar {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preset-browser-search {
+    grid-column: 1 / -1;
   }
 
   .preset-browser-layout {
     min-height: 0;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(160px, 0.75fr) minmax(260px, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(88px, 20vh);
+    grid-template-areas:
+      "content"
+      "tree";
+    overflow: hidden;
+  }
+
+  .preset-browser-card {
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .preset-browser-title {
+    min-height: 56px;
+    padding-block: 10px;
+    align-items: center;
+  }
+
+  .preset-browser-subtitle {
+    display: none;
+  }
+
+  .preset-browser-tree {
+    grid-area: tree;
+  }
+
+  .preset-browser-content {
+    grid-area: content;
   }
 
   .track-strip {
