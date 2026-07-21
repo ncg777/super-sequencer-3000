@@ -2787,7 +2787,9 @@ export default defineComponent({
             ? (Math.floor(harmonic / 2) % 2 === 0 ? 1 : -1) / (harmonic * harmonic)
             : waveform === 'sawtooth'
               ? -1 / harmonic
-              : 1;
+              : waveform === 'square'
+                ? 1 / harmonic
+                : 1;
           partials[basePartial * harmonic - 1] += amplitude * harmonicAmplitude;
         }
       };
