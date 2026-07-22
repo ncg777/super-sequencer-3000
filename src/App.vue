@@ -281,10 +281,21 @@
       <div class="control-deck-spacer" :style="{ height: `${controlDeckHeight + 12}px` }"></div>
 
       <v-responsive class="editor-surface align-center mx-auto pa-4 pb-8" max-width="980">
-        <v-expansion-panels v-model="expandedPanels" multiple class="control-sections">
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Sequence</v-expansion-panel-title>
-            <v-expansion-panel-text>
+        <div class="control-tabs-layout">
+          <v-tabs v-model="activeControlTab" :direction="$vuetify.display.xs ? 'horizontal' : 'vertical'" class="control-tabs" color="primary">
+            <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
+            <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
+            <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
+            <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
+            <v-tab value="modulation" prepend-icon="mdi-sine-wave">Modulation</v-tab>
+            <v-tab value="filter" prepend-icon="mdi-filter-outline">Filter</v-tab>
+            <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
+            <v-tab value="effects" prepend-icon="mdi-waveform">Effects</v-tab>
+            <v-tab value="reverb" prepend-icon="mdi-weather-rainy">Global Reverb</v-tab>
+          </v-tabs>
+
+          <v-window v-model="activeControlTab" class="control-tab-content">
+            <v-window-item value="sequence" class="control-tab-panel">
         <v-row>
           <v-col cols="12">
             <v-select
@@ -313,12 +324,9 @@
           </v-col>
         </v-row>
 
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Playback</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="playback" class="control-tab-panel">
         <v-row class="compact-row">
           <v-col cols="12">
             <EditableSlider
@@ -435,12 +443,9 @@
             />
           </v-col>
         </v-row>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Tonewheel</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="tonewheel" class="control-tab-panel">
         <v-row class="compact-row">
           <v-col cols="12" md="6">
             <EditableSlider :label="'Attack (' + Number(trackAttack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="trackAttack" @update:modelValue="handleTrackDraftChange" />
@@ -454,12 +459,9 @@
             <EditableSlider :label="label + ' Drawbar (' + trackTonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="trackTonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
         </v-col>
         </v-row>
-         </v-expansion-panel-text>
-         </v-expansion-panel>
+          </v-window-item>
 
-         <v-expansion-panel class="control-section">
-         <v-expansion-panel-title>Unison</v-expansion-panel-title>
-         <v-expansion-panel-text>
+          <v-window-item value="unison" class="control-tab-panel">
              <v-row class="compact-row">
                <v-col cols="12" md="6">
                  <EditableSlider :label="'Unison Voices (' + trackUnisonVoices + ')'" :min="1" :max="8" :step="1" v-model="trackUnisonVoices" @update:modelValue="handleTrackDraftChange" />
@@ -468,12 +470,9 @@
                  <EditableSlider :label="'Unison Detune (' + Number(trackUnisonDetune).toFixed(0) + ' cents)'" :min="0" :max="100" :step="1" v-model="trackUnisonDetune" @update:modelValue="handleTrackDraftChange" />
                </v-col>
              </v-row>
-         </v-expansion-panel-text>
-         </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Modulation</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="modulation" class="control-tab-panel">
         <v-row>
           <v-col cols="12" md="6">
             <v-switch v-model="trackTremoloEnabled" label="Tremolo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
@@ -501,12 +500,9 @@
             <EditableSlider :label="'Vibrato Depth (' + Number(trackVibratoDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackVibratoDepth" @update:modelValue="handleTrackDraftChange" />
           </v-col>
         </v-row>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Filter</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="filter" class="control-tab-panel">
         <v-row>
           <v-col cols="12" md="6">
             <v-switch v-model="trackFilterEnabled" label="Enable Filter" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
@@ -534,19 +530,13 @@
             <v-select v-model="trackFilterRolloff" label="Rolloff" :items="[-12, -24, -48, -96]" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
           </v-col>
         </v-row>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Tanh Drive</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="drive" class="control-tab-panel">
               <EditableSlider :label="'Tanh Drive (' + Number(trackLimiterGain).toFixed(1) + ' dB before tanh)'" :min="-48" :max="72" :step="0.1" v-model="trackLimiterGain" @update:modelValue="handleTrackDraftChange" />
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Effects</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="effects" class="control-tab-panel">
         <v-row>
           <v-col cols="12" md="6">
             <v-switch v-model="trackEchoEnabled" label="Feedback Stereo Echo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
@@ -571,12 +561,9 @@
             <EditableSlider :label="'Track Reverb Send (' + Number(trackReverbWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="trackReverbWet" @update:modelValue="handleTrackDraftChange" />
           </v-col>
         </v-row>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+            </v-window-item>
 
-          <v-expansion-panel class="control-section">
-            <v-expansion-panel-title>Global Reverb</v-expansion-panel-title>
-            <v-expansion-panel-text>
+            <v-window-item value="reverb" class="control-tab-panel">
         <v-row>
           <v-col cols="12">
             <v-switch v-model="reverbEnabled" label="Enable High Quality Global Reverb" hide-details density="compact" @update:modelValue="handleReverbDraftChange" />
@@ -604,9 +591,9 @@
             <EditableSlider :label="'Reverb High Cut (' + Number(reverbHighCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbHighCut" @update:modelValue="handleReverbDraftChange" />
           </v-col>
         </v-row>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
-        </v-expansion-panels>
+            </v-window-item>
+          </v-window>
+        </div>
 
       </v-responsive>
 
@@ -1274,7 +1261,7 @@ export default defineComponent({
       controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
       rebuildTrackLoopsTimer: null as number | null,
-      expandedPanels: [] as number[],
+      activeControlTab: 'sequence',
     };
   },
   computed: {
@@ -3879,16 +3866,37 @@ export default defineComponent({
   box-shadow: 0 0 28px rgba(0, 255, 209, 0.08), 0 24px 40px rgba(0, 0, 0, 0.32);
 }
 
-.control-sections {
-  gap: 2px;
+.control-tabs-layout {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  min-height: 470px;
+  border: 1px solid rgba(127, 211, 231, 0.26);
+  background: #000000;
 }
 
-.control-section {
-  margin-bottom: 1px;
-  border: 1px solid rgba(127, 211, 231, 0.26);
-  border-radius: 0 !important;
-  overflow: hidden;
-  background: #000000;
+.control-tabs {
+  border-right: 1px solid rgba(127, 211, 231, 0.26);
+  background: rgba(3, 11, 16, 0.62);
+}
+
+.control-tabs :deep(.v-tab) {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding-inline: 14px;
+  color: rgba(220, 247, 255, 0.76);
+}
+
+.control-tabs :deep(.v-tab--selected) {
+  color: #f4fbff;
+  background: rgba(0, 255, 209, 0.1);
+}
+
+.control-tab-content {
+  min-width: 0;
+}
+
+.control-tab-panel {
+  padding: 12px 14px 6px;
 }
 
 :deep(.v-btn),
@@ -3897,28 +3905,17 @@ export default defineComponent({
 :deep(.v-list),
 :deep(.v-menu > .v-overlay__content),
 :deep(.v-overlay__content),
-:deep(.v-expansion-panel),
 :deep(.v-progress-linear),
 :deep(.v-snackbar__wrapper) {
   border-radius: 0 !important;
 }
 
-.control-section :deep(.v-expansion-panel-title) {
-  min-height: 30px !important;
-  padding: 4px 12px;
-  color: #ecf8ff;
-}
-
-.control-section :deep(.v-expansion-panel-text__wrapper) {
-  padding: 0 10px 9px;
-}
-
-.control-section :deep(.v-row) {
+.control-tab-panel :deep(.v-row) {
   margin-top: 0;
   margin-bottom: 7px;
 }
 
-.control-section :deep(.v-col) {
+.control-tab-panel :deep(.v-col) {
   padding-top: 2px;
   padding-bottom: 2px;
 }
@@ -4099,6 +4096,34 @@ export default defineComponent({
 
   .track-strip {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .control-tabs-layout {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .control-tabs {
+    border-right: none;
+    border-bottom: 1px solid rgba(127, 211, 231, 0.26);
+  }
+
+  .control-tabs :deep(.v-slide-group__container) {
+    overflow-x: auto;
+  }
+
+  .control-tabs :deep(.v-slide-group__content) {
+    flex-wrap: nowrap;
+  }
+
+  .control-tabs :deep(.v-tab) {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding-inline: 10px;
+  }
+
+  .control-tab-panel {
+    padding: 10px 12px 5px;
   }
 
   .track-timeline-row {
