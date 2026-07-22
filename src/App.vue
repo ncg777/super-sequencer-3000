@@ -380,6 +380,19 @@
         <v-row class="compact-row">
           <v-col cols="12">
             <EditableSlider
+              :label="'Track Phase (' + Number(trackPhase).toFixed(2) + ')'"
+              :min="0"
+              :step="0.01"
+              :max="1"
+              v-model="trackPhase"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row class="compact-row">
+          <v-col cols="12">
+            <EditableSlider
               :label="'Octave shift (' + trackOctave + ')'"
               :min="0"
               :step="1"
@@ -1187,6 +1200,7 @@ export default defineComponent({
       selectedTrackId: initialState.selectedTrackId as string | null,
       trackNumerator: firstTrack.numerator,
       trackDenominator: firstTrack.denominator,
+      trackPhase: firstTrack.phase,
       trackWaveform: firstTrack.waveform,
       trackSequenceInput: firstTrack.sequenceInput,
       trackOctave: firstTrack.octave,
@@ -1519,7 +1533,7 @@ export default defineComponent({
       return track.numerator * (60.0 / this.bpm);
     },
     getTrackDelaySeconds(track: PresetTrackData): number {
-      return track.delay * this.getTrackBarSeconds(track);
+      return track.delay * this.getTrackBarSeconds(track) + track.phase * this.getTrackQuant(track);
     },
     getTrackPatternDuration(track: PresetTrackData, trackNotes: number[][]): number {
       return trackNotes.length * this.getTrackQuant(track);
@@ -1573,6 +1587,7 @@ export default defineComponent({
 
       this.trackNumerator = track.numerator;
       this.trackDenominator = track.denominator;
+      this.trackPhase = track.phase;
       this.trackWaveform = track.waveform;
       this.trackSequenceInput = track.sequenceInput;
       this.trackOctave = track.octave;
@@ -1620,6 +1635,7 @@ export default defineComponent({
         name: currentTrack.name,
         numerator: this.trackNumerator,
         denominator: this.trackDenominator,
+        phase: this.trackPhase,
         waveform: this.trackWaveform,
         sequenceInput: this.trackSequenceInput,
         octave: this.trackOctave,
@@ -1920,6 +1936,7 @@ export default defineComponent({
     didTrackTimingChange(previous: PresetTrackData, next: PresetTrackData): boolean {
       return previous.numerator !== next.numerator
         || previous.denominator !== next.denominator
+        || previous.phase !== next.phase
         || previous.delay !== next.delay
         || previous.repeats !== next.repeats
         || previous.sequenceInput !== next.sequenceInput

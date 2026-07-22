@@ -3,6 +3,7 @@ export interface PresetTrackData {
   name: string;
   numerator: number;
   denominator: number;
+  phase: number;
   waveform: string;
   sequenceInput: string;
   octave: number;
@@ -170,6 +171,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   name: 'Track 1',
   numerator: 4,
   denominator: 4,
+  phase: 0,
   waveform: 'sine',
   sequenceInput: '1 2 4 8',
   octave: 4,
@@ -377,6 +379,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     name: track.name,
     numerator: track.numerator,
     denominator: track.denominator,
+    phase: track.phase,
     waveform: track.waveform,
     sequenceInput: track.sequenceInput,
     octave: track.octave,
@@ -423,6 +426,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     name: sanitizeTrackName(raw.name, index),
     numerator: clamp(parseInteger(raw.numerator?.toString(), DEFAULT_PRESET_TRACK_DATA.numerator), 1, 16),
     denominator: clamp(parseInteger(raw.denominator?.toString(), DEFAULT_PRESET_TRACK_DATA.denominator), 1, 16),
+    phase: clamp(parseNumber(raw.phase, DEFAULT_PRESET_TRACK_DATA.phase), 0, 1),
     waveform: normalizeWaveform(raw.waveform),
     sequenceInput: typeof raw.sequenceInput === 'string' ? raw.sequenceInput : DEFAULT_PRESET_TRACK_DATA.sequenceInput,
     octave: clamp(parseInteger(raw.octave?.toString(), DEFAULT_PRESET_TRACK_DATA.octave), 0, 10),
@@ -532,6 +536,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.name !== rightTrack.name
       || leftTrack.numerator !== rightTrack.numerator
       || leftTrack.denominator !== rightTrack.denominator
+      || leftTrack.phase !== rightTrack.phase
       || leftTrack.waveform !== rightTrack.waveform
       || leftTrack.sequenceInput !== rightTrack.sequenceInput
       || leftTrack.octave !== rightTrack.octave
@@ -992,6 +997,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
         ...firstTrack,
         numerator: params.get('numerator') ?? firstTrack.numerator,
         denominator: params.get('denominator') ?? firstTrack.denominator,
+        phase: params.get('phase') ?? firstTrack.phase,
         waveform: params.get('waveform') ?? firstTrack.waveform,
         sequenceInput: params.get('sequence') ?? firstTrack.sequenceInput,
         octave: params.get('octave') ?? firstTrack.octave,
@@ -1007,7 +1013,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 export function hasUrlPresetOverrides(search: string): boolean {
   const params = new URLSearchParams(search);
 
-  return ['bpm', 'numerator', 'denominator', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats']
+  return ['bpm', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats']
     .some((key) => params.has(key));
 }
 
