@@ -2773,7 +2773,7 @@ export default defineComponent({
       return 'sine';
     },
     getOscillatorType(track: PresetTrackData): string {
-      return 'custom';
+      return track.unisonVoices > 1 ? 'fatcustom' : 'custom';
     },
     getTonewheelPartials(track: PresetTrackData): number[] {
       const partialIndices = [1, 3, 2, 4, 6, 8, 10, 12, 16];
