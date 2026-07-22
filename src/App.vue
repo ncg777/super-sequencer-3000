@@ -450,20 +450,26 @@
           </v-col>
         </v-row>
         <v-row class="compact-row">
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Unison Voices (' + trackUnisonVoices + ')'" :min="1" :max="8" :step="1" v-model="trackUnisonVoices" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Unison Detune (' + Number(trackUnisonDetune).toFixed(0) + ' cents)'" :min="0" :max="100" :step="1" v-model="trackUnisonDetune" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
+        <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
             <EditableSlider :label="label + ' Drawbar (' + trackTonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="trackTonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
+        </v-col>
         </v-row>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
+         </v-expansion-panel-text>
+         </v-expansion-panel>
+
+         <v-expansion-panel class="control-section">
+         <v-expansion-panel-title>Unison</v-expansion-panel-title>
+         <v-expansion-panel-text>
+             <v-row class="compact-row">
+               <v-col cols="12" md="6">
+                 <EditableSlider :label="'Unison Voices (' + trackUnisonVoices + ')'" :min="1" :max="8" :step="1" v-model="trackUnisonVoices" @update:modelValue="handleTrackDraftChange" />
+               </v-col>
+               <v-col cols="12" md="6">
+                 <EditableSlider :label="'Unison Detune (' + Number(trackUnisonDetune).toFixed(0) + ' cents)'" :min="0" :max="100" :step="1" v-model="trackUnisonDetune" @update:modelValue="handleTrackDraftChange" />
+               </v-col>
+             </v-row>
+         </v-expansion-panel-text>
+         </v-expansion-panel>
 
           <v-expansion-panel class="control-section">
             <v-expansion-panel-title>Modulation</v-expansion-panel-title>
@@ -2855,8 +2861,8 @@ export default defineComponent({
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
       const oscillatorOptions = {
         type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
-        count: 1,
-        spread: 0,
+        count: track.unisonVoices,
+        spread: track.unisonDetune,
         partials: this.getTonewheelPartials(track),
       } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
 
