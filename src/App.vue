@@ -253,18 +253,42 @@
                   aria-hidden="true"
                 ></span>
               </div>
-              <v-btn
-                class="track-delete-btn"
-                icon
-                size="x-small"
-                variant="text"
-                color="error"
-                :disabled="tracks.length <= 1"
-                :title="tracks.length <= 1 ? 'Cannot delete the only track' : `Delete ${entry.track.name}`"
-                @click.stop="removeTrack(entry.track.id)"
-              >
-                <v-icon size="18">mdi-trash-can-outline</v-icon>
-              </v-btn>
+              <div class="track-timeline-controls">
+                <v-btn
+                  class="track-mix-btn"
+                  icon
+                  size="x-small"
+                  :variant="isTrackMuted(entry.track.id) ? 'tonal' : 'text'"
+                  :color="isTrackMuted(entry.track.id) ? 'warning' : undefined"
+                  :title="isTrackMuted(entry.track.id) ? `Unmute ${entry.track.name}` : `Mute ${entry.track.name}`"
+                  @click.stop="toggleTrackMuted(entry.track.id)"
+                >
+                  <v-icon size="18">mdi-volume-off</v-icon>
+                </v-btn>
+                <v-btn
+                  class="track-mix-btn"
+                  icon
+                  size="x-small"
+                  :variant="isTrackSoloed(entry.track.id) ? 'tonal' : 'text'"
+                  :color="isTrackSoloed(entry.track.id) ? 'primary' : undefined"
+                  :title="isTrackSoloed(entry.track.id) ? `Unsolo ${entry.track.name}` : `Solo ${entry.track.name}`"
+                  @click.stop="toggleTrackSoloed(entry.track.id)"
+                >
+                  <v-icon size="18">mdi-headphones</v-icon>
+                </v-btn>
+                <v-btn
+                  class="track-delete-btn"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="error"
+                  :disabled="tracks.length <= 1"
+                  :title="tracks.length <= 1 ? 'Cannot delete the only track' : `Delete ${entry.track.name}`"
+                  @click.stop="removeTrack(entry.track.id)"
+                >
+                  <v-icon size="18">mdi-trash-can-outline</v-icon>
+                </v-btn>
+              </div>
             </div>
           </div>
         </div>
@@ -1094,6 +1118,12 @@ interface TrackAudioChain {
   dryGain: Tone.Gain;
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
+  mixGain: Tone.Gain;
+}
+
+interface TrackMixState {
+  muted: boolean;
+  soloed: boolean;
 }
 
 interface ReverbAudioChain {
@@ -1153,6 +1183,7 @@ export default defineComponent({
       bpm: initialState.draft.bpm,
       forte: initialState.draft.forte,
       tracks: initialState.draft.tracks.map((track) => clonePresetTrackData(track)) as PresetTrackData[],
+      trackMixStates: {} as Record<string, TrackMixState>,
       selectedTrackId: initialState.selectedTrackId as string | null,
       trackNumerator: firstTrack.numerator,
       trackDenominator: firstTrack.denominator,
@@ -1673,6 +1704,10 @@ export default defineComponent({
       }, this.tracks.length);
 
       this.tracks = [...this.tracks, nextTrack];
+      this.trackMixStates = {
+        ...this.trackMixStates,
+        [nextTrack.id]: { muted: false, soloed: false },
+      };
       this.selectedTrackId = nextTrack.id;
       this.syncTrackEditorFromCurrent();
       this.handleDraftChange();
@@ -1705,11 +1740,59 @@ export default defineComponent({
       const removedIndex = this.tracks.findIndex((track) => track.id === trackId);
       const nextTracks = this.tracks.filter((track) => track.id !== trackId);
       this.tracks = nextTracks;
+      const nextTrackMixStates: Record<string, TrackMixState> = {};
+      for (const track of nextTracks) {
+        const state = this.trackMixStates[track.id];
+        if (state) {
+          nextTrackMixStates[track.id] = state;
+        }
+      }
+      this.trackMixStates = nextTrackMixStates;
       if (this.selectedTrackId === trackId) {
         this.selectedTrackId = nextTracks[Math.max(0, removedIndex - 1)]?.id ?? nextTracks[0]?.id ?? null;
       }
       this.syncTrackEditorFromCurrent();
       this.handleDraftChange();
+    },
+    getTrackMixState(trackId: string): TrackMixState {
+      return this.trackMixStates[trackId] ?? { muted: false, soloed: false };
+    },
+    isTrackMuted(trackId: string): boolean {
+      return this.getTrackMixState(trackId).muted;
+    },
+    isTrackSoloed(trackId: string): boolean {
+      return this.getTrackMixState(trackId).soloed;
+    },
+    isTrackAudible(trackId: string): boolean {
+      const state = this.getTrackMixState(trackId);
+      return !state.muted && (!this.tracks.some((track) => this.isTrackSoloed(track.id)) || state.soloed);
+    },
+    applyTrackMixState(track: PresetTrackData, chain: TrackAudioChain) {
+      chain.mixGain.gain.value = this.isTrackAudible(track.id) ? 1 : 0;
+    },
+    updateTrackMixStates() {
+      for (const track of this.tracks) {
+        const chain = this.trackSynths[track.id];
+        if (chain) {
+          this.applyTrackMixState(track, chain);
+        }
+      }
+    },
+    toggleTrackMuted(trackId: string) {
+      const state = this.getTrackMixState(trackId);
+      this.trackMixStates = {
+        ...this.trackMixStates,
+        [trackId]: { ...state, muted: !state.muted },
+      };
+      this.updateTrackMixStates();
+    },
+    toggleTrackSoloed(trackId: string) {
+      const state = this.getTrackMixState(trackId);
+      this.trackMixStates = {
+        ...this.trackMixStates,
+        [trackId]: { ...state, soloed: !state.soloed },
+      };
+      this.updateTrackMixStates();
     },
     async removeCurrentTrack() {
       const currentTrack = this.currentTrack;
@@ -2073,6 +2156,7 @@ export default defineComponent({
         ? this.selectedTrackId
         : fallbackTrackId;
       this.tracks = normalized.tracks.map((track) => clonePresetTrackData(track));
+      this.trackMixStates = {};
       this.selectedTrackId = preferredTrackId;
       this.syncTrackEditorFromCurrent();
       this.applyRealtimeSettings();
@@ -2719,16 +2803,18 @@ export default defineComponent({
       const tremolo = markRaw(new Tone.Tremolo());
       const echo = markRaw(echoPingPong ? new Tone.PingPongDelay({ maxDelay }) : new Tone.FeedbackDelay({ maxDelay }));
       const outputGain = markRaw(new Tone.Gain(1));
+      const mixGain = markRaw(new Tone.Gain(1));
       const dryGain = markRaw(new Tone.Gain(1).toDestination());
       const reverbSend = markRaw(new Tone.Gain(0));
 
       tremolo.start();
       synth.chain(filter, outputGain, vibrato, tremolo, echo, limiterGain, limiter);
-      limiter.connect(dryGain);
+      limiter.connect(mixGain);
+      mixGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
-      limiter.connect(reverbSend);
+      mixGain.connect(reverbSend);
 
-      return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, maxDelay, dryGain, reverbSend, outputGain };
+      return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, maxDelay, dryGain, reverbSend, outputGain, mixGain };
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
       const maxDelay = this.getTrackEchoMaxDelay(track);
@@ -2834,6 +2920,7 @@ export default defineComponent({
       chain.dryGain.dispose();
       chain.reverbSend.dispose();
       chain.outputGain.dispose();
+      chain.mixGain.dispose();
     },
     updateReverbChain() {
       const chain = this.getOrCreateReverbChain();
@@ -2890,6 +2977,7 @@ export default defineComponent({
         wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
       });
       chain.outputGain.gain.value = this.dbToGain(track.gain);
+      this.applyTrackMixState(track, chain);
       chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
@@ -3013,7 +3101,7 @@ export default defineComponent({
       const totalLoopDuration = this.getLoopDurationSecondsFromTrackLengths();
 
       for (const entry of this.allTrackActualNotes) {
-        if (entry.notes.length === 0) {
+        if (entry.notes.length === 0 || !this.isTrackAudible(entry.track.id)) {
           continue;
         }
 
@@ -3110,6 +3198,10 @@ export default defineComponent({
       this.activeNotes = [];
     },
     playTrackStep(track: PresetTrackData, trackNotes: number[][], counter: number, when: Tone.Unit.Seconds) {
+      if (!this.isTrackAudible(track.id)) {
+        return;
+      }
+
       const arr = trackNotes[counter % trackNotes.length];
       this.activeNotes = Array.from(new Set([...this.activeNotes, ...arr])).sort((left, right) => left - right);
 
@@ -3747,6 +3839,12 @@ export default defineComponent({
   box-shadow: inset 0 0 18px rgba(0, 255, 209, 0.1), 0 0 14px rgba(0, 255, 209, 0.12);
 }
 
+.track-timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .track-timeline-meta {
   min-width: 0;
   display: grid;
@@ -4138,7 +4236,7 @@ export default defineComponent({
   .track-timeline-row {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "meta delete"
+      "meta controls"
       "bar bar";
     gap: 6px;
     min-height: 56px;
@@ -4154,6 +4252,10 @@ export default defineComponent({
 
   .track-delete-btn {
     grid-area: delete;
+  }
+
+  .track-timeline-controls {
+    grid-area: controls;
   }
 
   .track-timeline-bar {
