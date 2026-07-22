@@ -669,7 +669,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
         const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));
 
         for (const midiNote of notes) {
-          const voiceCount = 1;
+          const voiceCount = entry.track.unisonVoices;
 
           for (let voice = 0; voice < voiceCount; voice += 1) {
             const detuneOffset = voiceCount === 1 ? 0 : ((voice / (voiceCount - 1)) - 0.5) * entry.track.unisonDetune;
