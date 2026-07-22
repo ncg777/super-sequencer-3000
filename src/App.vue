@@ -280,7 +280,7 @@
 
       <div class="control-deck-spacer" :style="{ height: `${controlDeckHeight + 12}px` }"></div>
 
-      <v-responsive class="editor-surface align-center mx-auto pa-4 pb-8" max-width="980">
+      <v-responsive class="editor-surface align-center mx-auto pa-2 pb-8">
         <div class="control-tabs-layout">
           <v-tabs v-model="activeControlTab" :direction="$vuetify.display.xs ? 'horizontal' : 'vertical'" class="control-tabs" color="primary">
             <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
