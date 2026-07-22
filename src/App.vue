@@ -3860,6 +3860,7 @@ export default defineComponent({
 }
 
 .editor-surface {
+  width: min(1120px, calc(100vw - 20px));
   background: #000000;
   border: 1px solid rgba(122, 206, 226, 0.24);
   border-radius: 0;
@@ -3969,6 +3970,10 @@ export default defineComponent({
     top: 8px;
   }
 
+  .editor-surface {
+    width: calc(100vw - 16px);
+  }
+
   .dependent-settings-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
@@ -3991,6 +3996,10 @@ export default defineComponent({
     width: calc(100vw - 10px);
     top: 6px;
     gap: 6px;
+  }
+
+  .editor-surface {
+    width: calc(100vw - 10px);
   }
 
   .toolbar-panel {
