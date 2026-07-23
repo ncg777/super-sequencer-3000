@@ -190,21 +190,22 @@
 
         <div v-show="!controlDeckCollapsed" class="toolbar-panel track-strip-panel">
           <div class="track-strip">
-            <div class="track-strip-heading">
-              <v-icon size="18">mdi-timeline-clock-outline</v-icon>
-              <span>Tracks</span>
-            </div>
-            <v-btn
-              class="track-add-btn"
-              icon
-              size="small"
-              variant="flat"
-              color="secondary"
-              title="Add blank track"
-              @click="addTrack"
-            >
-              <v-icon>mdi-plus</v-icon>
-            </v-btn>
+              <div class="track-strip-heading" style="min-height:16px; height:16px;">
+                <v-icon size="16">mdi-timeline-clock-outline</v-icon>
+                <span>Tracks</span>
+              </div>
+              <v-btn
+                class="track-add-btn"
+                icon
+                size="x-small"
+                variant="flat"
+                color="secondary"
+                title="Add blank track"
+                style="min-width:0; min-height:0; width:20px; height:20px; padding:0;"
+                @click="addTrack"
+              >
+                <v-icon size="16">mdi-plus</v-icon>
+                </v-btn>
           </div>
 
           <div class="track-timeline" aria-label="Track lengths in beats">
@@ -3809,36 +3810,56 @@ export default defineComponent({
 .track-strip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 0;
   align-items: center;
+  padding: 0;
 }
 
 .track-strip-heading {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   color: rgba(236, 248, 255, 0.9);
-  font-weight: 800;
+  font-weight: 700;
+  font-size: 0.78rem;
+  line-height: 1;
+  min-height: 16px;
+  height: 16px;
 }
 
 .track-add-btn {
   box-shadow: 0 0 16px rgba(255, 79, 163, 0.18);
+  height: 20px !important;
+  width: 20px !important;
+  min-height: 20px !important;
+  min-width: 20px !important;
+  padding: 0 !important;
+  margin: 0;
+}
+
+.track-add-btn .v-btn__content {
+  height: 20px !important;
+  width: 20px !important;
+  min-height: 20px !important;
+  min-width: 20px !important;
+  line-height: 20px !important;
+  padding: 0 !important;
 }
 
 .track-timeline {
-  margin-top: 8px;
+  margin-top: 6px;
   display: grid;
-  gap: 6px;
+  gap: 3px;
 }
 
 .track-timeline-row {
   width: 100%;
-  min-height: 40px;
+  min-height: 30px;
   display: grid;
   grid-template-columns: minmax(132px, 0.34fr) minmax(160px, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 5px 7px;
+  padding: 1px 6px;
   border: 1px solid rgba(124, 208, 228, 0.24);
   border-radius: 0;
   color: #e9f9ff;
@@ -3882,7 +3903,7 @@ export default defineComponent({
   background: transparent;
   border: 1px solid transparent;
   border-radius: 0;
-  padding: 2px 5px;
+  padding: 1px 5px;
   outline: none;
 }
 
@@ -3900,10 +3921,10 @@ export default defineComponent({
 
 .track-timeline-bar {
   min-width: 0;
-  height: 16px;
+  height: 14px;
   display: flex;
   gap: 3px;
-  padding: 3px;
+  padding: 2px;
   border-radius: 0;
   background: rgba(0, 0, 0, 0.28);
 }
@@ -4254,16 +4275,20 @@ export default defineComponent({
     grid-template-areas:
       "meta controls"
       "bar bar";
-    gap: 6px;
-    min-height: 56px;
+    gap: 2px;
+    min-height: 40px;
+    padding: 1px 6px;
   }
 
   .track-timeline-meta {
     grid-area: meta;
+    gap: 2px;
   }
 
   .track-timeline-bar {
     grid-area: bar;
+    height: 10px;
+    padding: 1px;
   }
 
   .track-delete-btn {
@@ -4272,10 +4297,6 @@ export default defineComponent({
 
   .track-timeline-controls {
     grid-area: controls;
-  }
-
-  .track-timeline-bar {
-    height: 18px;
   }
 
   .selected-track-duration-card {
