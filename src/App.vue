@@ -741,7 +741,7 @@
                   :class="{ active: activePresetFolderId === null }"
                   @click="selectPresetFolder(null)"
                 >
-                  <span class="preset-folder-row-title">Root</span>
+                  <span class="preset-folder-row-title">/</span>
                 </button>
 
                 <div
@@ -854,7 +854,6 @@
                   >
                     <button type="button" class="preset-item-load" @click="loadPresetFromBrowser(preset.id)">
                       <span class="preset-item-name">{{ preset.name }}</span>
-                      <span class="preset-item-path">{{ formatFolderPath(preset.folderId) }}</span>
                     </button>
                     <v-menu location="bottom end">
                       <template #activator="{ props }">
@@ -1321,14 +1320,14 @@ export default defineComponent({
     },
     currentPresetFolderPathLabel(): string {
       if (!this.currentPreset) {
-        return 'Root';
+        return '/';
       }
       const segments = this.currentPresetFolderPath.map((folder) => folder.name);
-      return segments.length > 0 ? segments.join(' / ') : 'Root';
+      return segments.length > 0 ? segments.join(' / ') : '/';
     },
     activePresetFolderPathLabel(): string {
       const segments = getFolderPath(this.presetLibrary, this.activePresetFolderId).map((folder) => folder.name);
-      return segments.length > 0 ? segments.join(' / ') : 'Root';
+      return segments.length > 0 ? segments.join(' / ') : '/';
     },
     presetBrowserTreeRows(): PresetFolderTreeRow[] {
       const childrenByParent = new Map<string | null, PresetFolder[]>();
@@ -1396,7 +1395,7 @@ export default defineComponent({
     presetMoveDestinationOptions(): Array<{ title: string; value: string | null }> {
       const options: Array<{ title: string; value: string | null }> = [
         {
-          title: 'Root',
+          title: '/',
           value: null,
         },
       ];
@@ -2198,7 +2197,7 @@ export default defineComponent({
     },
     formatFolderPath(folderId: string | null): string {
       const segments = getFolderPath(this.presetLibrary, folderId).map((folder) => folder.name);
-      return segments.length > 0 ? segments.join(' / ') : 'Root';
+      return segments.length > 0 ? segments.join(' / ') : '/';
     },
     openPresetBrowser() {
       this.activePresetFolderId = this.currentPreset?.folderId ?? this.activePresetFolderId ?? null;
