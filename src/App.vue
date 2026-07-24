@@ -1039,6 +1039,18 @@
       </v-dialog>
     </v-main>
 
+    <v-footer class="donation-footer" app>
+      <a
+        class="donation-link"
+        href="https://paypal.me/ncg7777"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <v-icon size="14">mdi-heart-outline</v-icon>
+        <span>Support GateRunner</span>
+      </a>
+    </v-footer>
+
     <v-snackbar
       v-model="showPlaybackError"
       :timeout="5000"
@@ -3400,6 +3412,27 @@ export default defineComponent({
   z-index: 1;
   padding: 0 12px 16px;
   background: #000000;
+}
+
+.donation-footer {
+  min-height: 28px;
+  padding: 4px 12px;
+  justify-content: center;
+  background: #000000;
+}
+
+.donation-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(176, 226, 237, 0.58);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.donation-link:hover,
+.donation-link:focus-visible {
+  color: #80dfff;
 }
 
 .control-deck {
