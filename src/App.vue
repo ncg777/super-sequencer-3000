@@ -1046,8 +1046,7 @@
         target="_blank"
         rel="noopener noreferrer"
       >
-        <v-icon size="14">mdi-heart-outline</v-icon>
-        <span>Support GateRunner</span>
+        <span>❤️ Support GateRunner</span>
       </a>
     </v-footer>
 
@@ -3426,6 +3425,7 @@ export default defineComponent({
   align-items: center;
   gap: 5px;
   color: rgba(176, 226, 237, 0.58);
+  text-decoration: none;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
 }
