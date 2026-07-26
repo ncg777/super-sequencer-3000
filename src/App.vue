@@ -1038,7 +1038,7 @@
         </v-card>
       </v-dialog>
     </v-main>
-
+    <!--
     <v-footer class="donation-footer" app>
       <a
         class="donation-link"
@@ -1049,7 +1049,7 @@
         <span>❤️ Support GateRunner</span>
       </a>
     </v-footer>
-
+    -->
     <v-snackbar
       v-model="showPlaybackError"
       :timeout="5000"
