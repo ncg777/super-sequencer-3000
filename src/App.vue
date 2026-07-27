@@ -319,7 +319,7 @@
             <v-tab value="reverb" prepend-icon="mdi-weather-rainy">Global Reverb</v-tab>
           </v-tabs>
 
-          <v-window v-model="activeControlTab" class="control-tab-content">
+          <v-window v-model="activeControlTab" :touch="false" class="control-tab-content">
             <v-window-item value="sequence" class="control-tab-panel">
         <v-row>
           <v-col cols="12">
