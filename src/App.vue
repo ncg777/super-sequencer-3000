@@ -323,20 +323,6 @@
             <v-window-item value="sequence" class="control-tab-panel">
         <v-row>
           <v-col cols="12">
-            <v-select
-              v-model="trackWaveform"
-              label="Tonewheel Waveform"
-              :items="['sine', 'square', 'triangle', 'sawtooth']"
-              hide-details="auto"
-              density="comfortable"
-              variant="outlined"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row>
-          <v-col cols="12">
             <v-text-field
               :label="`Sequence (${selectedTrackSequenceLength})`"
               v-model="trackSequenceInput"
@@ -484,6 +470,19 @@
             </v-window-item>
 
             <v-window-item value="tonewheel" class="control-tab-panel">
+        <v-row>
+          <v-col cols="12">
+            <v-select
+              v-model="trackWaveform"
+              label="Waveform"
+              :items="waveformOptions"
+              hide-details="auto"
+              density="comfortable"
+              variant="outlined"
+              @update:modelValue="handleTrackDraftChange"
+            />
+          </v-col>
+        </v-row>
         <v-row class="compact-row">
           <v-col cols="12" md="6">
             <EditableSlider :label="'Attack (' + Number(trackAttack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="trackAttack" @update:modelValue="handleTrackDraftChange" />
@@ -975,7 +974,7 @@
               <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
               <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
               <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, filter, tanh drive, echo, and reverb send.</li>
-              <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
+              <li><strong>Waveform</strong>: Select classical spectra or resonant ambient models such as Helmholtz Resonator, Formant Resonance, Duct Resonance, Aeolian Turbulence, and Stochastic Bandpass.</li>
               <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
                 representation.</li>
               <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
@@ -1089,6 +1088,7 @@ import {
   DEFAULT_PRESET_TRACK_DATA,
   ECHO_DELAY_OPTIONS,
   TONEWHEEL_DRAWBAR_LABELS,
+  WAVEFORM_OPTIONS,
   arePresetDataEqual,
   buildUniqueFolderName,
   buildUniquePresetNameInFolder,
@@ -1245,6 +1245,7 @@ export default defineComponent({
       trackEchoEnabled: firstTrack.echoEnabled,
       trackEchoDelay: firstTrack.echoDelay,
       echoDelayOptions: ECHO_DELAY_OPTIONS,
+      waveformOptions: WAVEFORM_OPTIONS,
       trackEchoFeedback: firstTrack.echoFeedback,
       trackEchoWet: firstTrack.echoWet,
       trackEchoPingPong: firstTrack.echoPingPong,
@@ -2861,17 +2862,58 @@ export default defineComponent({
       this.updateTrackChainSettings(track, chain);
       return chain;
     },
-    getWaveformType(waveform: string): 'sine' | 'square' | 'triangle' | 'sawtooth' {
+    gaussian(harmonic: number, center: number, width: number): number {
+      const safeWidth = Math.max(0.001, width);
+      return Math.exp(-((harmonic - center) ** 2) / (2 * safeWidth * safeWidth));
+    },
+    pseudoNoise(harmonic: number): number {
+      const raw = Math.sin(harmonic * 12.9898 + 78.233) * 43758.5453123;
+      return ((raw - Math.floor(raw)) * 2) - 1;
+    },
+    getWaveformPartialAmplitude(waveform: string, harmonic: number): number {
+      const noisyTail = this.pseudoNoise(harmonic) / Math.sqrt(harmonic);
       if (waveform === 'triangle') {
-        return 'triangle';
+        if (harmonic % 2 === 0) {
+          return 0;
+        }
+        return (Math.floor(harmonic / 2) % 2 === 0 ? 1 : -1) / (harmonic * harmonic);
       }
       if (waveform === 'sawtooth') {
-        return 'sawtooth';
+        return -1 / harmonic;
       }
       if (waveform === 'square') {
-        return 'square';
+        return harmonic % 2 === 0 ? 0 : 1 / harmonic;
       }
-      return 'sine';
+      if (waveform === 'helmholtz') {
+        return (harmonic === 1 ? 1.35 : 0)
+          + (0.78 * this.gaussian(harmonic, 4, 1.15))
+          + (0.22 * noisyTail * this.gaussian(harmonic, 10, 3.4));
+      }
+      if (waveform === 'formant') {
+        return (0.45 * this.gaussian(harmonic, 1.5, 0.8))
+          + (1.05 * this.gaussian(harmonic, 4.5, 1.3))
+          + (0.82 * this.gaussian(harmonic, 9.5, 2))
+          + (0.12 * noisyTail * this.gaussian(harmonic, 15, 4));
+      }
+      if (waveform === 'duct') {
+        return (0.6 * this.gaussian(harmonic, 2.2, 0.7))
+          + (0.95 * this.gaussian(harmonic, 6.2, 1.4))
+          + (0.55 * this.gaussian(harmonic, 12.4, 2.6))
+          + (0.18 * noisyTail);
+      }
+      if (waveform === 'aeolian') {
+        return (harmonic === 1 ? 0.55 : 0)
+          + (0.38 * Math.abs(noisyTail))
+          + (0.65 * this.gaussian(harmonic, 7.5, 3.2))
+          + (0.28 * noisyTail * this.gaussian(harmonic, 18, 5.5));
+      }
+      if (waveform === 'stochastic-bandpass') {
+        return (0.16 * noisyTail)
+          + (1.15 * this.gaussian(harmonic, 5.5, 1.1))
+          + (0.95 * this.gaussian(harmonic, 11.5, 2))
+          + (0.4 * Math.sign(noisyTail || 1) * this.gaussian(harmonic, 18, 3.2));
+      }
+      return harmonic === 1 ? 1 : 0;
     },
     getOscillatorType(track: PresetTrackData): string {
       return track.unisonVoices > 1 ? 'fatcustom' : 'custom';
@@ -2880,27 +2922,13 @@ export default defineComponent({
       const partialIndices = [1, 3, 2, 4, 6, 8, 10, 12, 16];
       const maximumPartial = 64;
       const partials = Array.from({ length: maximumPartial }, () => 0);
-      const waveform = this.getWaveformType(track.waveform);
 
       const addWaveformHarmonics = (basePartial: number, amplitude: number) => {
         for (let harmonic = 1; basePartial * harmonic <= maximumPartial; harmonic += 1) {
-          if (waveform === 'sine' && harmonic > 1) {
+          const harmonicAmplitude = this.getWaveformPartialAmplitude(track.waveform, harmonic);
+          if (harmonicAmplitude === 0) {
             continue;
           }
-          if (waveform === 'square' && harmonic % 2 === 0) {
-            continue;
-          }
-          if (waveform === 'triangle' && harmonic % 2 === 0) {
-            continue;
-          }
-
-          const harmonicAmplitude = waveform === 'triangle'
-            ? (Math.floor(harmonic / 2) % 2 === 0 ? 1 : -1) / (harmonic * harmonic)
-            : waveform === 'sawtooth'
-              ? -1 / harmonic
-              : waveform === 'square'
-                ? 1 / harmonic
-                : 1;
           partials[basePartial * harmonic - 1] += amplitude * harmonicAmplitude;
         }
       };
