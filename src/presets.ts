@@ -250,7 +250,7 @@ const LEGACY_KEYS = {
   forte: 'ss3k_forte',
 } as const;
 
-const WAVEFORMS = new Set(WAVEFORM_OPTIONS.map((option) => option.value));
+const WAVEFORMS = new Set<string>(WAVEFORM_OPTIONS.map((option) => option.value));
 const FILTER_TYPES = new Set(['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']);
 const FILTER_ROLLOFFS = new Set([-12, -24, -48, -96]);
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
