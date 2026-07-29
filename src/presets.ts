@@ -61,6 +61,18 @@ export const ECHO_DELAY_OPTIONS = [
   '1/16T',
 ] as const;
 
+export const WAVEFORM_OPTIONS = [
+  { title: 'Sine', value: 'sine' },
+  { title: 'Square', value: 'square' },
+  { title: 'Triangle', value: 'triangle' },
+  { title: 'Sawtooth', value: 'sawtooth' },
+  { title: 'Helmholtz Resonator', value: 'helmholtz' },
+  { title: 'Formant Resonance', value: 'formant' },
+  { title: 'Duct Resonance', value: 'duct' },
+  { title: 'Aeolian Turbulence', value: 'aeolian' },
+  { title: 'Stochastic Bandpass', value: 'stochastic-bandpass' },
+] as const;
+
 export const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
 export const TONEWHEEL_DRAWBAR_LABELS = ["16'", "5 1/3'", "8'", "4'", "2 2/3'", "2'", "1 3/5'", "1 1/3'", "1'"];
 
@@ -238,7 +250,7 @@ const LEGACY_KEYS = {
   forte: 'ss3k_forte',
 } as const;
 
-const WAVEFORMS = new Set(['sine', 'square', 'triangle', 'sawtooth']);
+const WAVEFORMS = new Set(WAVEFORM_OPTIONS.map((option) => option.value));
 const FILTER_TYPES = new Set(['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']);
 const FILTER_ROLLOFFS = new Set([-12, -24, -48, -96]);
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
