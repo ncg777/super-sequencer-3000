@@ -73,7 +73,7 @@ export const WAVEFORM_OPTIONS = [
   { title: 'Stochastic Bandpass', value: 'stochastic-bandpass' },
 ] as const;
 
-export const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
+export const DEFAULT_TONEWHEEL_DRAWBARS = [0, 0, 0, 8, 0, 0, 0, 0, 0];
 export const TONEWHEEL_DRAWBAR_LABELS = ["16'", "5 1/3'", "8'", "4'", "2 2/3'", "2'", "1 3/5'", "1 1/3'", "1'"];
 
 export interface PresetReverbData {
