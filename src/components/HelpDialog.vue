@@ -29,7 +29,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
           <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, filter, tanh drive, echo, and reverb send.</li>
+          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, tanh drive, filter, echo, and reverb send.</li>
           <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
           <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>

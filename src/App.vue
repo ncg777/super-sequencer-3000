@@ -1059,8 +1059,8 @@ export default defineComponent({
       const reverbSend = markRaw(new Tone.Gain(0));
 
       tremolo.start();
-      synth.chain(filter, outputGain, vibrato, tremolo, echo, limiterGain, limiter);
-      limiter.connect(mixGain);
+      synth.chain(limiterGain, limiter, outputGain, vibrato, tremolo, echo, filter);
+      filter.connect(mixGain);
       mixGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
       mixGain.connect(reverbSend);

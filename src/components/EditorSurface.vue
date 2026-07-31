@@ -7,8 +7,8 @@
         <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
         <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Modulation</v-tab>
-        <v-tab value="filter" prepend-icon="mdi-filter-outline">Filter</v-tab>
         <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
+        <v-tab value="filter" prepend-icon="mdi-filter-outline">Filter</v-tab>
         <v-tab value="effects" prepend-icon="mdi-waveform">Effects</v-tab>
         <v-tab value="reverb" prepend-icon="mdi-weather-rainy">Global Reverb</v-tab>
       </v-tabs>
@@ -232,6 +232,10 @@
           </v-row>
         </v-window-item>
 
+        <v-window-item value="drive" class="control-tab-panel">
+          <EditableSlider :label="'Tanh Drive (' + Number(draftTrack.limiterGain).toFixed(1) + ' dB before tanh)'" :min="-48" :max="72" :step="0.1" v-model="draftTrack.limiterGain" @update:modelValue="handleTrackDraftChange" />
+        </v-window-item>
+
         <v-window-item value="filter" class="control-tab-panel">
           <v-row>
             <v-col cols="12" md="6">
@@ -260,10 +264,6 @@
               <v-select v-model="draftTrack.filterRolloff" label="Rolloff" :items="[-12, -24, -48, -96]" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
-        </v-window-item>
-
-        <v-window-item value="drive" class="control-tab-panel">
-          <EditableSlider :label="'Tanh Drive (' + Number(draftTrack.limiterGain).toFixed(1) + ' dB before tanh)'" :min="-48" :max="72" :step="0.1" v-model="draftTrack.limiterGain" @update:modelValue="handleTrackDraftChange" />
         </v-window-item>
 
         <v-window-item value="effects" class="control-tab-panel">
