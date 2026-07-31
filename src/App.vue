@@ -153,425 +153,29 @@
         </div>
 
         <div v-show="!controlDeckCollapsed" class="toolbar-panel track-strip-panel">
-          <div class="track-strip">
-              <div class="track-strip-heading" style="min-height:16px; height:16px;">
-                <v-icon size="16">mdi-timeline-clock-outline</v-icon>
-                <span>Tracks</span>
-              </div>
-              <v-btn
-                class="track-add-btn"
-                icon
-                size="x-small"
-                variant="flat"
-                color="secondary"
-                title="Add blank track"
-                style="min-width:0; min-height:0; width:20px; height:20px; padding:0;"
-                @click="addTrack"
-              >
-                <v-icon size="16">mdi-plus</v-icon>
-                </v-btn>
-          </div>
-
-          <div class="track-timeline" aria-label="Track lengths in beats">
-            <div
-              v-for="entry in trackTimingEntries"
-              :key="entry.track.id"
-              role="button"
-              tabindex="0"
-              class="track-timeline-row"
-              :class="{ selected: entry.track.id === selectedTrackId }"
-              @click="handleTrackSelection(entry.track.id)"
-              @keydown.enter.prevent="handleTrackSelection(entry.track.id)"
-              @keydown.space.prevent="handleTrackSelection(entry.track.id)"
-            >
-              <div class="track-timeline-meta">
-                <input
-                  class="track-name-input"
-                  :value="entry.track.name"
-                  :aria-label="`Track name for ${entry.track.name || 'unnamed track'}`"
-                  @click.stop
-                  @focus="handleTrackSelection(entry.track.id)"
-                  @input="handleTrackNameInput(entry.track.id, ($event.target as HTMLInputElement).value)"
-                  @blur="commitTrackName(entry.track.id)"
-                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-                />
-                <span>{{ formatBeats(entry.totalBeats) }} beats · {{ formatBars(entry.totalBars) }} bars</span>
-              </div>
-              <div class="track-timeline-bar">
-                <span
-                  v-if="entry.delayBeats > 0"
-                  class="track-timeline-segment delay"
-                  :style="{ flexGrow: entry.delayBeats }"
-                  :title="`${formatBeats(entry.delayBeats)} beat delay`"
-                ></span>
-                <span
-                  v-for="repeat in entry.repeatBlocks"
-                  :key="repeat"
-                  class="track-timeline-segment repeat"
-                  :style="{ flexGrow: entry.patternBeats }"
-                  :title="`Repeat ${repeat}: ${formatBeats(entry.patternBeats)} beats`"
-                ></span>
-                <span
-                  v-if="entry.padBeats > 0"
-                  class="track-timeline-segment pad"
-                  :style="{ flexGrow: entry.padBeats }"
-                  aria-hidden="true"
-                ></span>
-              </div>
-              <div class="track-timeline-controls">
-                <v-btn
-                  class="track-mix-btn"
-                  icon
-                  size="x-small"
-                  :variant="isTrackMuted(entry.track.id) ? 'tonal' : 'text'"
-                  :color="isTrackMuted(entry.track.id) ? 'warning' : undefined"
-                  :title="isTrackMuted(entry.track.id) ? `Unmute ${entry.track.name}` : `Mute ${entry.track.name}`"
-                  @click.stop="toggleTrackMuted(entry.track.id)"
-                >
-                  <v-icon size="18">mdi-volume-off</v-icon>
-                </v-btn>
-                <v-btn
-                  class="track-mix-btn"
-                  icon
-                  size="x-small"
-                  :variant="isTrackSoloed(entry.track.id) ? 'tonal' : 'text'"
-                  :color="isTrackSoloed(entry.track.id) ? 'primary' : undefined"
-                  :title="isTrackSoloed(entry.track.id) ? `Unsolo ${entry.track.name}` : `Solo ${entry.track.name}`"
-                  @click.stop="toggleTrackSoloed(entry.track.id)"
-                >
-                  <v-icon size="18">mdi-headphones</v-icon>
-                </v-btn>
-                <v-btn
-                  class="track-delete-btn"
-                  icon
-                  size="x-small"
-                  variant="text"
-                  color="error"
-                  :disabled="tracks.length <= 1"
-                  :title="tracks.length <= 1 ? 'Cannot delete the only track' : `Delete ${entry.track.name}`"
-                  @click.stop="removeTrack(entry.track.id)"
-                >
-                  <v-icon size="18">mdi-trash-can-outline</v-icon>
-                </v-btn>
-              </div>
-            </div>
-          </div>
+          <TrackStrip
+            :tracks="tracks"
+            :selected-track-id="selectedTrackId"
+            :track-mix-states="trackMixStates"
+            @add-track="addTrack"
+            @select-track="handleTrackSelection"
+            @track-name-input="handleTrackNameInput"
+            @commit-track-name="commitTrackName"
+            @toggle-muted="toggleTrackMuted"
+            @toggle-soloed="toggleTrackSoloed"
+            @remove-track="removeTrack"
+          />
         </div>
       </div>
 
       <div class="control-deck-spacer" :style="{ height: `${controlDeckHeight + 12}px` }"></div>
 
-      <v-responsive class="editor-surface align-center mx-auto pa-2 pb-8">
-        <div class="control-tabs-layout">
-          <v-tabs v-model="activeControlTab" :direction="$vuetify.display.xs ? 'horizontal' : 'vertical'" class="control-tabs" color="primary">
-            <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
-            <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
-            <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
-            <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
-            <v-tab value="modulation" prepend-icon="mdi-sine-wave">Modulation</v-tab>
-            <v-tab value="filter" prepend-icon="mdi-filter-outline">Filter</v-tab>
-            <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
-            <v-tab value="effects" prepend-icon="mdi-waveform">Effects</v-tab>
-            <v-tab value="reverb" prepend-icon="mdi-weather-rainy">Global Reverb</v-tab>
-          </v-tabs>
-
-          <v-window v-model="activeControlTab" :touch="false" class="control-tab-content">
-            <v-window-item value="sequence" class="control-tab-panel">
-        <v-row>
-          <v-col cols="12">
-            <v-text-field
-              :label="`Sequence (${selectedTrackSequenceLength})`"
-              v-model="trackSequenceInput"
-              placeholder="e.g. 0 1 2..."
-              hide-details="auto"
-              density="comfortable"
-              variant="outlined"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-            </v-window-item>
-
-            <v-window-item value="playback" class="control-tab-panel">
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Numerator (' + trackNumerator + ')'"
-              :min="1"
-              :step="1"
-              :max="16"
-              v-model="trackNumerator"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Denominator (' + trackDenominator + ')'"
-              :min="1"
-              :step="1"
-              :max="16"
-              v-model="trackDenominator"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Phase (' + Number(trackPhase).toFixed(2) + ')'"
-              :min="0"
-              :step="0.01"
-              :max="1"
-              v-model="trackPhase"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Octave shift (' + trackOctave + ')'"
-              :min="0"
-              :step="1"
-              :max="10"
-              v-model="trackOctave"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Note Length (' + trackLengthFactor + '%)'"
-              :min="1"
-              :max="400"
-              :step="1"
-              v-model="trackLengthFactor"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Gain (' + Number(trackGain).toFixed(1) + ' dB)'"
-              :min="-96"
-              :max="24"
-              :step="0.1"
-              v-model="trackGain"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Velocity Multiplier (' + Number(trackVelocityMultiplier).toFixed(2) + 'x)'"
-              :min="0"
-              :max="4"
-              :step="0.01"
-              v-model="trackVelocityMultiplier"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track MIDI Channel (' + trackMidiChannel + ')'"
-              :min="1"
-              :max="16"
-              :step="1"
-              v-model="trackMidiChannel"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Delay (' + trackDelay + ' bars)'"
-              :min="0"
-              :max="64"
-              :step="1"
-              v-model="trackDelay"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row class="compact-row">
-          <v-col cols="12">
-            <EditableSlider
-              :label="'Track Repeats (' + trackRepeats + ')'"
-              :min="1"
-              :max="64"
-              :step="1"
-              v-model="trackRepeats"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-            </v-window-item>
-
-            <v-window-item value="tonewheel" class="control-tab-panel">
-        <v-row>
-          <v-col cols="12">
-            <v-select
-              v-model="trackWaveform"
-              label="Waveform"
-              :items="waveformOptions"
-              hide-details="auto"
-              density="comfortable"
-              variant="outlined"
-              @update:modelValue="handleTrackDraftChange"
-            />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Attack (' + Number(trackAttack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="trackAttack" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Release (' + Number(trackRelease).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="trackRelease" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-        <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
-            <EditableSlider :label="label + ' Drawbar (' + trackTonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="trackTonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
-        </v-col>
-        </v-row>
-          </v-window-item>
-
-          <v-window-item value="unison" class="control-tab-panel">
-             <v-row class="compact-row">
-               <v-col cols="12" md="6">
-                 <EditableSlider :label="'Unison Voices (' + trackUnisonVoices + ')'" :min="1" :max="8" :step="1" v-model="trackUnisonVoices" @update:modelValue="handleTrackDraftChange" />
-               </v-col>
-               <v-col cols="12" md="6">
-                 <EditableSlider :label="'Unison Detune (' + Number(trackUnisonDetune).toFixed(0) + ' cents)'" :min="0" :max="100" :step="1" v-model="trackUnisonDetune" @update:modelValue="handleTrackDraftChange" />
-               </v-col>
-             </v-row>
-            </v-window-item>
-
-            <v-window-item value="modulation" class="control-tab-panel">
-        <v-row>
-          <v-col cols="12" md="6">
-            <v-switch v-model="trackTremoloEnabled" label="Tremolo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-switch v-model="trackVibratoEnabled" label="Vibrato" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Tremolo Rate (' + Number(trackTremoloFrequency).toFixed(2) + ' Hz)'" :min="0.01" :max="40" :step="0.01" v-model="trackTremoloFrequency" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Tremolo Depth (' + Number(trackTremoloDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackTremoloDepth" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Tremolo Spread (' + Number(trackTremoloSpread).toFixed(0) + '°)'" :min="0" :max="360" :step="1" v-model="trackTremoloSpread" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Vibrato Rate (' + Number(trackVibratoFrequency).toFixed(2) + ' Hz)'" :min="0.01" :max="40" :step="0.01" v-model="trackVibratoFrequency" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Vibrato Depth (' + Number(trackVibratoDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="trackVibratoDepth" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-            </v-window-item>
-
-            <v-window-item value="filter" class="control-tab-panel">
-        <v-row>
-          <v-col cols="12" md="6">
-            <v-switch v-model="trackFilterEnabled" label="Enable Filter" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-select v-model="trackFilterType" label="Filter Mode" :items="['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Cutoff/Base (' + Number(trackFilterFrequency).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="trackFilterFrequency" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Q (' + Number(trackFilterQ).toFixed(2) + ')'" :min="0.01" :max="30" :step="0.01" v-model="trackFilterQ" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Key Follow (' + Number(trackFilterKeyFollow).toFixed(0) + '%)'" :min="-200" :max="200" :step="1" v-model="trackFilterKeyFollow" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Filter Gain (' + Number(trackFilterGain).toFixed(1) + ' dB)'" :min="-48" :max="48" :step="0.1" v-model="trackFilterGain" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-select v-model="trackFilterRolloff" label="Rolloff" :items="[-12, -24, -48, -96]" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-            </v-window-item>
-
-            <v-window-item value="drive" class="control-tab-panel">
-              <EditableSlider :label="'Tanh Drive (' + Number(trackLimiterGain).toFixed(1) + ' dB before tanh)'" :min="-48" :max="72" :step="0.1" v-model="trackLimiterGain" @update:modelValue="handleTrackDraftChange" />
-            </v-window-item>
-
-            <v-window-item value="effects" class="control-tab-panel">
-        <v-row>
-          <v-col cols="12" md="6">
-            <v-switch v-model="trackEchoEnabled" label="Feedback Stereo Echo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-switch v-model="trackEchoPingPong" label="Ping-pong echo" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="4">
-            <v-select v-model="trackEchoDelay" label="Echo Delay" :items="echoDelayOptions" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Echo Feedback (' + Number(trackEchoFeedback).toFixed(2) + ')'" :min="0" :max="0.95" :step="0.01" v-model="trackEchoFeedback" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Echo Wet (' + Number(trackEchoWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="trackEchoWet" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="6">
-            <EditableSlider :label="'Track Reverb Send (' + Number(trackReverbWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="trackReverbWet" @update:modelValue="handleTrackDraftChange" />
-          </v-col>
-        </v-row>
-            </v-window-item>
-
-            <v-window-item value="reverb" class="control-tab-panel">
-              <ReverbControls
-                v-model:enabled="reverbEnabled"
-                v-model:decay="reverbDecay"
-                v-model:pre-delay="reverbPreDelay"
-                v-model:dry="reverbDry"
-                v-model:wet="reverbWet"
-                v-model:low-cut="reverbLowCut"
-                v-model:high-cut="reverbHighCut"
-                @change="handleReverbDraftChange"
-              />
-            </v-window-item>
-          </v-window>
-        </div>
-
-      </v-responsive>
+      <EditorSurface
+        :track="currentTrack"
+        :reverb="reverbSettings"
+        @track-change="handleTrackDraftChange"
+        @reverb-change="handleReverbDraftChange"
+      />
 
       <ExportProgressDialog
         :visible="isExporting"
@@ -615,18 +219,6 @@
 
       <HelpDialog v-model="showHelp" :app-version="appVersion" />
     </v-main>
-    <!--
-    <v-footer class="donation-footer" app>
-      <a
-        class="donation-link"
-        href="https://paypal.me/ncg7777"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <span>❤️ Support GateRunner</span>
-      </a>
-    </v-footer>
-    -->
     <v-snackbar
       v-model="showPlaybackError"
       :timeout="5000"
@@ -658,10 +250,11 @@ import pkg from '../package.json';
 const appVersion = pkg.version;
 import { defineComponent, markRaw } from 'vue';
 import EditableSlider from './components/EditableSlider.vue';
+import EditorSurface from './components/EditorSurface.vue';
 import ExportProgressDialog from './components/ExportProgressDialog.vue';
 import HelpDialog from './components/HelpDialog.vue';
 import PresetManager from './components/PresetManager.vue';
-import ReverbControls from './components/ReverbControls.vue';
+import TrackStrip from './components/TrackStrip.vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import { PCS12 } from 'ultra-mega-enumerator';
@@ -675,9 +268,6 @@ import { encodeWavFromChannels } from './audio/wav';
 import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
-  ECHO_DELAY_OPTIONS,
-  TONEWHEEL_DRAWBAR_LABELS,
-  WAVEFORM_OPTIONS,
   arePresetDataEqual,
   buildDraftFromUrl,
   clonePresetData,
@@ -691,6 +281,7 @@ import {
   type EchoDelayValue,
   type PresetData,
   type PresetLibrary,
+  type PresetReverbData,
   type PresetTrackData,
 } from './presets';
 
@@ -710,24 +301,9 @@ interface TrackAudioChain {
   mixGain: Tone.Gain;
 }
 
-interface TrackMixState {
+export interface TrackMixState {
   muted: boolean;
   soloed: boolean;
-}
-
-interface TrackTimingEntry {
-  track: PresetTrackData;
-  sequenceLength: number;
-  numerator: number;
-  denominator: number;
-  repeats: number;
-  delayBeats: number;
-  patternBeats: number;
-  activeBeats: number;
-  totalBeats: number;
-  totalBars: number;
-  padBeats: number;
-  repeatBlocks: number[];
 }
 
 function buildInitialState() {
@@ -752,60 +328,19 @@ export default defineComponent({
   name: 'App',
   components: {
     EditableSlider,
+    EditorSurface,
     ExportProgressDialog,
     HelpDialog,
     PresetManager,
-    ReverbControls,
+    TrackStrip,
   },
   data() {
-    const firstTrack = initialState.draft.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
     return {
       bpm: initialState.draft.bpm,
       forte: initialState.draft.forte,
       tracks: initialState.draft.tracks.map((track) => clonePresetTrackData(track)) as PresetTrackData[],
       trackMixStates: {} as Record<string, TrackMixState>,
       selectedTrackId: initialState.selectedTrackId as string | null,
-      trackNumerator: firstTrack.numerator,
-      trackDenominator: firstTrack.denominator,
-      trackPhase: firstTrack.phase,
-      trackWaveform: firstTrack.waveform,
-      trackSequenceInput: firstTrack.sequenceInput,
-      trackOctave: firstTrack.octave,
-      trackLengthFactor: firstTrack.lengthFactor,
-      trackMidiChannel: firstTrack.midiChannel,
-      trackGain: firstTrack.gain,
-      trackVelocityMultiplier: firstTrack.velocityMultiplier,
-      trackDelay: firstTrack.delay,
-      trackRepeats: firstTrack.repeats,
-      trackAttack: firstTrack.attack,
-      trackRelease: firstTrack.release,
-      trackUnisonVoices: firstTrack.unisonVoices,
-      trackUnisonDetune: firstTrack.unisonDetune,
-      trackTonewheelDrawbars: firstTrack.tonewheelDrawbars.slice(),
-      tonewheelDrawbarLabels: TONEWHEEL_DRAWBAR_LABELS,
-      trackTremoloEnabled: firstTrack.tremoloEnabled,
-      trackTremoloFrequency: firstTrack.tremoloFrequency,
-      trackTremoloDepth: firstTrack.tremoloDepth,
-      trackTremoloSpread: firstTrack.tremoloSpread,
-      trackVibratoEnabled: firstTrack.vibratoEnabled,
-      trackVibratoFrequency: firstTrack.vibratoFrequency,
-      trackVibratoDepth: firstTrack.vibratoDepth,
-      trackFilterEnabled: firstTrack.filterEnabled,
-      trackFilterType: firstTrack.filterType,
-      trackFilterFrequency: firstTrack.filterFrequency,
-      trackFilterRolloff: firstTrack.filterRolloff,
-      trackFilterQ: firstTrack.filterQ,
-      trackFilterGain: firstTrack.filterGain,
-      trackFilterKeyFollow: firstTrack.filterKeyFollow,
-      trackLimiterGain: firstTrack.limiterGain,
-      trackEchoEnabled: firstTrack.echoEnabled,
-      trackEchoDelay: firstTrack.echoDelay,
-      echoDelayOptions: ECHO_DELAY_OPTIONS,
-      waveformOptions: WAVEFORM_OPTIONS,
-      trackEchoFeedback: firstTrack.echoFeedback,
-      trackEchoWet: firstTrack.echoWet,
-      trackEchoPingPong: firstTrack.echoPingPong,
-      trackReverbWet: firstTrack.reverbWet,
       reverbEnabled: initialState.draft.reverb.enabled,
       reverbDecay: initialState.draft.reverb.decay,
       reverbPreDelay: initialState.draft.reverb.preDelay,
@@ -855,15 +390,22 @@ export default defineComponent({
       controlDeckCollapsed: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
       rebuildTrackLoopsTimer: null as number | null,
-      activeControlTab: 'sequence',
     };
   },
   computed: {
     currentTrack(): PresetTrackData | null {
       return this.tracks.find((track) => track.id === this.selectedTrackId) ?? this.tracks[0] ?? null;
     },
-    selectedTrackSequenceLength(): number {
-      return this.parseSequence(this.trackSequenceInput).length;
+    reverbSettings() {
+      return {
+        enabled: this.reverbEnabled,
+        decay: this.reverbDecay,
+        preDelay: this.reverbPreDelay,
+        dry: this.reverbDry,
+        wet: this.reverbWet,
+        lowCut: this.reverbLowCut,
+        highCut: this.reverbHighCut,
+      };
     },
     noteRange(): { min: number, max: number } {
       const allNotes = this.allTrackActualNotes.flatMap((entry) => entry.notes.flat());
@@ -896,38 +438,6 @@ export default defineComponent({
         track,
         notes: this.computeActualNotes(track),
       }));
-    },
-    trackTimingEntries(): TrackTimingEntry[] {
-      const entries = this.tracks.map((track) => {
-        const sequenceLength = this.parseSequence(track.sequenceInput).length;
-        const patternBeats = sequenceLength / Math.max(1, track.denominator);
-        const delayBeats = track.delay * track.numerator;
-        const activeBeats = patternBeats * track.repeats;
-        const totalBeats = delayBeats + activeBeats;
-        const totalBars = track.numerator > 0 ? totalBeats / track.numerator : 0;
-        return {
-          track,
-          sequenceLength,
-          numerator: track.numerator,
-          denominator: track.denominator,
-          repeats: track.repeats,
-          delayBeats,
-          patternBeats,
-          activeBeats,
-          totalBeats,
-          totalBars,
-          padBeats: 0,
-          repeatBlocks: Array.from({ length: track.repeats }, (_, index) => index + 1),
-        };
-      });
-      const maxBeats = Math.max(1, ...entries.map((entry) => entry.totalBeats));
-      return entries.map((entry) => ({
-        ...entry,
-        padBeats: Math.max(0, maxBeats - entry.totalBeats),
-      }));
-    },
-    selectedTrackTiming(): TrackTimingEntry | null {
-      return this.trackTimingEntries.find((entry) => entry.track.id === this.selectedTrackId) ?? this.trackTimingEntries[0] ?? null;
     },
   },
   methods: {
@@ -984,109 +494,12 @@ export default defineComponent({
         });
       });
     },
-    syncTrackEditorFromCurrent() {
-      const track = this.currentTrack;
-      if (!track) {
-        return;
-      }
-
-      this.trackNumerator = track.numerator;
-      this.trackDenominator = track.denominator;
-      this.trackPhase = track.phase;
-      this.trackWaveform = track.waveform;
-      this.trackSequenceInput = track.sequenceInput;
-      this.trackOctave = track.octave;
-      this.trackLengthFactor = track.lengthFactor;
-      this.trackMidiChannel = track.midiChannel;
-      this.trackGain = track.gain;
-      this.trackVelocityMultiplier = track.velocityMultiplier;
-      this.trackDelay = track.delay;
-      this.trackRepeats = track.repeats;
-      this.trackAttack = track.attack;
-      this.trackRelease = track.release;
-      this.trackUnisonVoices = track.unisonVoices;
-      this.trackUnisonDetune = track.unisonDetune;
-      this.trackTonewheelDrawbars = track.tonewheelDrawbars.slice();
-      this.trackTremoloEnabled = track.tremoloEnabled;
-      this.trackTremoloFrequency = track.tremoloFrequency;
-      this.trackTremoloDepth = track.tremoloDepth;
-      this.trackTremoloSpread = track.tremoloSpread;
-      this.trackVibratoEnabled = track.vibratoEnabled;
-      this.trackVibratoFrequency = track.vibratoFrequency;
-      this.trackVibratoDepth = track.vibratoDepth;
-      this.trackFilterEnabled = track.filterEnabled;
-      this.trackFilterType = track.filterType;
-      this.trackFilterFrequency = track.filterFrequency;
-      this.trackFilterRolloff = track.filterRolloff;
-      this.trackFilterQ = track.filterQ;
-      this.trackFilterGain = track.filterGain;
-      this.trackFilterKeyFollow = track.filterKeyFollow;
-      this.trackLimiterGain = track.limiterGain;
-      this.trackEchoEnabled = track.echoEnabled;
-      this.trackEchoDelay = track.echoDelay;
-      this.trackEchoFeedback = track.echoFeedback;
-      this.trackEchoWet = track.echoWet;
-      this.trackEchoPingPong = track.echoPingPong;
-      this.trackReverbWet = track.reverbWet;
-    },
-    applyTrackEditorToCurrent() {
-      const currentTrack = this.currentTrack;
-      if (!currentTrack) {
-        return;
-      }
-
-      const normalizedTrack = normalizePresetTrackData({
-        id: currentTrack.id,
-        name: currentTrack.name,
-        numerator: this.trackNumerator,
-        denominator: this.trackDenominator,
-        phase: this.trackPhase,
-        waveform: this.trackWaveform,
-        sequenceInput: this.trackSequenceInput,
-        octave: this.trackOctave,
-        lengthFactor: this.trackLengthFactor,
-        midiChannel: this.trackMidiChannel,
-        gain: this.trackGain,
-        velocityMultiplier: this.trackVelocityMultiplier,
-        delay: this.trackDelay,
-        repeats: this.trackRepeats,
-        attack: this.trackAttack,
-        release: this.trackRelease,
-        unisonVoices: this.trackUnisonVoices,
-        unisonDetune: this.trackUnisonDetune,
-        tonewheelDrawbars: this.trackTonewheelDrawbars,
-        tremoloEnabled: this.trackTremoloEnabled,
-        tremoloFrequency: this.trackTremoloFrequency,
-        tremoloDepth: this.trackTremoloDepth,
-        tremoloSpread: this.trackTremoloSpread,
-        vibratoEnabled: this.trackVibratoEnabled,
-        vibratoFrequency: this.trackVibratoFrequency,
-        vibratoDepth: this.trackVibratoDepth,
-        filterEnabled: this.trackFilterEnabled,
-        filterType: this.trackFilterType,
-        filterFrequency: this.trackFilterFrequency,
-        filterRolloff: this.trackFilterRolloff,
-        filterQ: this.trackFilterQ,
-        filterGain: this.trackFilterGain,
-        filterKeyFollow: this.trackFilterKeyFollow,
-        limiterGain: this.trackLimiterGain,
-        echoEnabled: this.trackEchoEnabled,
-        echoDelay: this.trackEchoDelay,
-        echoFeedback: this.trackEchoFeedback,
-        echoWet: this.trackEchoWet,
-        echoPingPong: this.trackEchoPingPong,
-        reverbWet: this.trackReverbWet,
-      });
-
-      this.tracks = this.tracks.map((track) => track.id === normalizedTrack.id ? normalizedTrack : track);
-    },
     handleTrackSelection(nextTrackId: string | null) {
       if (!nextTrackId) {
         return;
       }
 
       this.selectedTrackId = nextTrackId;
-      this.syncTrackEditorFromCurrent();
     },
     buildUniqueTrackName(baseName: string, excludedTrackId?: string): string {
       const existingNames = new Set(
@@ -1130,7 +543,6 @@ export default defineComponent({
         [nextTrack.id]: { muted: false, soloed: false },
       };
       this.selectedTrackId = nextTrack.id;
-      this.syncTrackEditorFromCurrent();
       this.handleDraftChange();
     },
     handleTrackNameInput(trackId: string, nextName: string) {
@@ -1172,7 +584,6 @@ export default defineComponent({
       if (this.selectedTrackId === trackId) {
         this.selectedTrackId = nextTracks[Math.max(0, removedIndex - 1)]?.id ?? nextTracks[0]?.id ?? null;
       }
-      this.syncTrackEditorFromCurrent();
       this.handleDraftChange();
     },
     getTrackMixState(trackId: string): TrackMixState {
@@ -1288,21 +699,22 @@ export default defineComponent({
       resolver?.(value && value.length > 0 ? value : null);
       this.inputDialogValue = '';
     },
-    handleTrackDraftChange() {
+    handleTrackDraftChange(nextTrack: PresetTrackData) {
       const previousTrack = this.currentTrack ? clonePresetTrackData(this.currentTrack) : null;
-      this.applyTrackEditorToCurrent();
-      const nextTrack = this.currentTrack;
+      const normalizedTrack = normalizePresetTrackData(nextTrack);
+      this.tracks = this.tracks.map((track) => track.id === normalizedTrack.id ? normalizedTrack : track);
+      const updatedTrack = this.currentTrack;
       this.refreshDirtyState();
 
-      if (!nextTrack) {
+      if (!updatedTrack) {
         return;
       }
 
-      if (this.isRunning && previousTrack && this.didTrackTimingChange(previousTrack, nextTrack)) {
+      if (this.isRunning && previousTrack && this.didTrackTimingChange(previousTrack, updatedTrack)) {
         this.scheduleTrackLoopRebuild();
       }
 
-      this.updateSynths(nextTrack.id, false);
+      this.updateSynths(updatedTrack.id, false);
     },
     getTrackStepDuration(trackNotes: number[][], index: number): number {
       if (trackNotes.length === 0) {
@@ -1331,12 +743,6 @@ export default defineComponent({
     },
     clampNormalRange(value: number): number {
       return Math.max(0, Math.min(1, value));
-    },
-    formatBeats(value: number): string {
-      return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, '');
-    },
-    formatBars(value: number): string {
-      return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, '');
     },
     didTrackTimingChange(previous: PresetTrackData, next: PresetTrackData): boolean {
       return previous.numerator !== next.numerator
@@ -1520,7 +926,6 @@ export default defineComponent({
       this.tracks = normalized.tracks.map((track) => clonePresetTrackData(track));
       this.trackMixStates = {};
       this.selectedTrackId = preferredTrackId;
-      this.syncTrackEditorFromCurrent();
       this.applyRealtimeSettings();
     },
     applyRealtimeSettings(options: { rebuildLoops?: boolean; createMissingChains?: boolean } = {}) {
@@ -1548,7 +953,14 @@ export default defineComponent({
       this.applyRealtimeSettings();
       this.refreshDirtyState();
     },
-    handleReverbDraftChange() {
+    handleReverbDraftChange(nextReverb: PresetReverbData) {
+      this.reverbEnabled = nextReverb.enabled;
+      this.reverbDecay = nextReverb.decay;
+      this.reverbPreDelay = nextReverb.preDelay;
+      this.reverbDry = nextReverb.dry;
+      this.reverbWet = nextReverb.wet;
+      this.reverbLowCut = nextReverb.lowCut;
+      this.reverbHighCut = nextReverb.highCut;
       this.updateReverbChain();
       for (const track of this.tracks) {
         const chain = this.trackSynths[track.id];
@@ -2172,7 +1584,6 @@ export default defineComponent({
       const arr = Array.from(PCS12.getChords()).map(c => c.toString());
       arr.sort(PCS12.ReverseForteStringComparator);
       this.allChords=arr;
-      this.syncTrackEditorFromCurrent();
       this.applyRealtimeSettings();
   },
   beforeUnmount() {
@@ -2414,228 +1825,9 @@ export default defineComponent({
   min-width: 0;
 }
 
-.track-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0;
-  align-items: center;
-  padding: 0;
-}
-
-.track-strip-heading {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: rgba(236, 248, 255, 0.9);
-  font-weight: 700;
-  font-size: 0.78rem;
-  line-height: 1;
-  min-height: 16px;
-  height: 16px;
-}
-
-.track-add-btn {
-  box-shadow: 0 0 16px rgba(255, 79, 163, 0.18);
-  height: 20px !important;
-  width: 20px !important;
-  min-height: 20px !important;
-  min-width: 20px !important;
-  padding: 0 !important;
-  margin: 0;
-}
-
-.track-add-btn .v-btn__content {
-  height: 20px !important;
-  width: 20px !important;
-  min-height: 20px !important;
-  min-width: 20px !important;
-  line-height: 20px !important;
-  padding: 0 !important;
-}
-
-.track-timeline {
-  margin-top: 6px;
-  display: grid;
-  gap: 3px;
-}
-
-.track-timeline-row {
-  width: 100%;
-  min-height: 30px;
-  display: grid;
-  grid-template-columns: minmax(132px, 0.34fr) minmax(160px, 1fr) auto;
-  gap: 6px;
-  align-items: center;
-  padding: 1px 6px;
-  border: 1px solid rgba(124, 208, 228, 0.24);
-  border-radius: 0;
-  color: #e9f9ff;
-  background: linear-gradient(90deg, rgba(3, 11, 16, 0.52), rgba(16, 22, 46, 0.4));
-  cursor: pointer;
-  text-align: left;
-}
-
-.track-timeline-row.selected {
-  border-color: rgba(0, 255, 209, 0.76);
-  background:
-    linear-gradient(90deg, rgba(0, 255, 209, 0.16), rgba(255, 79, 163, 0.12)),
-    rgba(8, 18, 28, 0.72);
-  box-shadow: inset 0 0 18px rgba(0, 255, 209, 0.1), 0 0 14px rgba(0, 255, 209, 0.12);
-}
-
-.track-timeline-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.track-timeline-meta {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.track-timeline-meta span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track-name-input {
-  width: 100%;
-  min-width: 0;
-  color: #f9fdff;
-  font: inherit;
-  font-weight: 800;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 0;
-  padding: 1px 5px;
-  outline: none;
-}
-
-.track-name-input:hover,
-.track-name-input:focus {
-  border-color: rgba(0, 255, 209, 0.42);
-  background: rgba(0, 255, 209, 0.08);
-  box-shadow: 0 0 12px rgba(0, 255, 209, 0.12);
-}
-
-.track-timeline-meta span {
-  color: rgba(220, 247, 255, 0.74);
-  font-size: 0.76rem;
-}
-
-.track-timeline-bar {
-  min-width: 0;
-  height: 14px;
-  display: flex;
-  gap: 3px;
-  padding: 2px;
-  border-radius: 0;
-  background: rgba(0, 0, 0, 0.28);
-}
-
-.track-timeline-segment {
-  min-width: 5px;
-  border-radius: 0;
-}
-
-.track-timeline-segment.delay {
-  background: repeating-linear-gradient(
-    135deg,
-    rgba(150, 171, 183, 0.58),
-    rgba(150, 171, 183, 0.58) 4px,
-    rgba(94, 112, 124, 0.38) 4px,
-    rgba(94, 112, 124, 0.38) 8px
-  );
-}
-
-.track-timeline-segment.repeat {
-  background: linear-gradient(90deg, rgba(0, 255, 209, 0.94), rgba(255, 79, 163, 0.82), rgba(244, 216, 76, 0.86));
-}
-
-.track-delete-btn {
-  opacity: 0.76;
-}
-
-.track-delete-btn:hover,
-.track-delete-btn:focus-visible {
-  opacity: 1;
-}
-
-.track-timeline-segment.pad {
-  min-width: 0;
-  background: rgba(124, 208, 228, 0.1);
-}
-
-.selected-track-duration-card {
-  margin: 6px 0 6px;
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px;
-  border: 1px solid rgba(124, 208, 228, 0.28);
-  border-radius: 0;
-  color: rgba(232, 248, 255, 0.86);
-  background: rgba(3, 11, 16, 0.42);
-  font-size: 0.9rem;
-}
-
-.selected-track-duration-card > div:first-child {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  color: #f4fbff;
-}
-
-.duration-label {
-  color: rgba(220, 247, 255, 0.74);
-}
-
 .control-deck-spacer {
   width: 100%;
   pointer-events: none;
-}
-
-.editor-surface {
-  width: min(1120px, calc(100vw - 20px));
-  background: #000000;
-  border: 1px solid rgba(122, 206, 226, 0.24);
-  border-radius: 0;
-  box-shadow: 0 0 28px rgba(0, 255, 209, 0.08), 0 24px 40px rgba(0, 0, 0, 0.32);
-}
-
-.control-tabs-layout {
-  display: grid;
-  grid-template-columns: 188px minmax(0, 1fr);
-  min-height: 470px;
-  border: 1px solid rgba(127, 211, 231, 0.26);
-  background: #000000;
-}
-
-.control-tabs {
-  border-right: 1px solid rgba(127, 211, 231, 0.26);
-  background: rgba(3, 11, 16, 0.62);
-}
-
-.control-tabs :deep(.v-tab) {
-  justify-content: flex-start;
-  min-height: 44px;
-  padding-inline: 14px;
-  color: rgba(220, 247, 255, 0.76);
-}
-
-.control-tabs :deep(.v-tab--selected) {
-  color: #f4fbff;
-  background: rgba(0, 255, 209, 0.1);
-}
-
-.control-tab-content {
-  min-width: 0;
-}
-
-.control-tab-panel {
-  padding: 12px 14px 6px;
 }
 
 :deep(.v-btn),
@@ -2647,16 +1839,6 @@ export default defineComponent({
 :deep(.v-progress-linear),
 :deep(.v-snackbar__wrapper) {
   border-radius: 0 !important;
-}
-
-.control-tab-panel :deep(.v-row) {
-  margin-top: 0;
-  margin-bottom: 7px;
-}
-
-.control-tab-panel :deep(.v-col) {
-  padding-top: 2px;
-  padding-bottom: 2px;
 }
 
 :deep(.v-label),
@@ -2687,18 +1869,10 @@ export default defineComponent({
   background: #000000;
 }
 
-.compact-row {
-  margin-top: -4px;
-}
-
 @media (max-width: 960px) {
   .control-deck {
     width: calc(100vw - 16px);
     top: 8px;
-  }
-
-  .editor-surface {
-    width: calc(100vw - 16px);
   }
 
   .dependent-settings-row {
@@ -2716,10 +1890,6 @@ export default defineComponent({
     width: calc(100vw - 10px);
     top: 6px;
     gap: 6px;
-  }
-
-  .editor-surface {
-    width: calc(100vw - 10px);
   }
 
   .toolbar-panel {
@@ -2740,93 +1910,5 @@ export default defineComponent({
     gap: 8px;
   }
 
-  .track-strip {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .control-tabs-layout {
-    grid-template-columns: minmax(0, 1fr);
-    min-height: 0;
-  }
-
-  .control-tabs {
-    border-right: none;
-    border-bottom: 1px solid rgba(127, 211, 231, 0.26);
-  }
-
-  .control-tabs :deep(.v-slide-group__container) {
-    overflow-x: auto;
-  }
-
-  .control-tabs :deep(.v-slide-group__content) {
-    flex-wrap: nowrap;
-  }
-
-  .control-tabs :deep(.v-tab) {
-    flex: 0 0 auto;
-    min-height: 40px;
-    padding-inline: 10px;
-  }
-
-  .control-tab-panel {
-    padding: 10px 12px 5px;
-  }
-
-  .track-timeline-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "meta controls"
-      "bar bar";
-    gap: 2px;
-    min-height: 40px;
-    padding: 1px 6px;
-  }
-
-  .track-timeline-meta {
-    grid-area: meta;
-    gap: 2px;
-  }
-
-  .track-timeline-bar {
-    grid-area: bar;
-    height: 10px;
-    padding: 1px;
-  }
-
-  .track-delete-btn {
-    grid-area: delete;
-  }
-
-  .track-timeline-controls {
-    grid-area: controls;
-  }
-
-  .selected-track-duration-card {
-    margin-left: 0;
-    margin-right: 0;
-  }
-
-  .compact-row {
-    margin-left: -12px;
-    margin-right: -12px;
-    padding-left: 12px;
-    padding-right: 12px;
-    touch-action: pan-y;
-  }
-
-  .compact-row :deep(.v-col) {
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  .compact-row :deep(.v-slider) {
-    margin-left: 8px;
-    margin-right: 8px;
-  }
-
-  .editor-surface {
-    border-radius: 0;
-    padding: 12px !important;
-  }
 }
 </style>
