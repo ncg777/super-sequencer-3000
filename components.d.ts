@@ -8,5 +8,8 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     EditableSlider: typeof import('./src/components/EditableSlider.vue')['default']
+    ExportProgressDialog: typeof import('./src/components/ExportProgressDialog.vue')['default']
+    HelpDialog: typeof import('./src/components/HelpDialog.vue')['default']
+    ReverbControls: typeof import('./src/components/ReverbControls.vue')['default']
   }
 }

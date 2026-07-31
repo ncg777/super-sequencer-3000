@@ -602,63 +602,28 @@
             </v-window-item>
 
             <v-window-item value="reverb" class="control-tab-panel">
-        <v-row>
-          <v-col cols="12">
-            <v-switch v-model="reverbEnabled" label="Enable High Quality Global Reverb" hide-details density="compact" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Reverb Decay (' + Number(reverbDecay).toFixed(2) + 's)'" :min="0.1" :max="30" :step="0.1" v-model="reverbDecay" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Pre-delay (' + Number(reverbPreDelay).toFixed(2) + 's)'" :min="0" :max="1" :step="0.01" v-model="reverbPreDelay" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Dry Level (' + Number(reverbDry).toFixed(1) + ' dB)'" :min="-96" :max="12" :step="0.1" v-model="reverbDry" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-        </v-row>
-        <v-row class="compact-row">
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Reverb Wet Return (' + Number(reverbWet).toFixed(1) + ' dB)'" :min="-96" :max="12" :step="0.1" v-model="reverbWet" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Reverb Low Cut (' + Number(reverbLowCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbLowCut" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <EditableSlider :label="'Reverb High Cut (' + Number(reverbHighCut).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="reverbHighCut" @update:modelValue="handleReverbDraftChange" />
-          </v-col>
-        </v-row>
+              <ReverbControls
+                v-model:enabled="reverbEnabled"
+                v-model:decay="reverbDecay"
+                v-model:pre-delay="reverbPreDelay"
+                v-model:dry="reverbDry"
+                v-model:wet="reverbWet"
+                v-model:low-cut="reverbLowCut"
+                v-model:high-cut="reverbHighCut"
+                @change="handleReverbDraftChange"
+              />
             </v-window-item>
           </v-window>
         </div>
 
       </v-responsive>
 
-      <v-dialog v-model="isExporting" persistent max-width="420">
-        <v-card class="export-dialog-card">
-          <v-card-text class="text-center py-6 px-4">
-            <v-icon size="48" color="primary" class="mb-4">mdi-{{ exportFormat === 'wav' ? 'waveform' : 'music-note' }}</v-icon>
-            <div class="text-h6 mb-2">Exporting {{ exportFormatLabel }}</div>
-            <div class="text-body-2 text-medium-emphasis mb-5">{{ exportStatus }}</div>
-            <v-progress-linear
-              v-if="exportProgress >= 0"
-              :model-value="exportProgress"
-              color="primary"
-              height="12"
-              rounded
-              striped
-            />
-            <v-progress-linear
-              v-else
-              indeterminate
-              color="primary"
-              height="12"
-              rounded
-            />
-          </v-card-text>
-        </v-card>
-      </v-dialog>
+      <ExportProgressDialog
+        :visible="isExporting"
+        :format="exportFormat"
+        :progress="exportProgress"
+        :status="exportStatus"
+      />
 
       <v-dialog v-model="showRenamePresetDialog" max-width="460px">
         <v-card class="rename-dialog-card">
@@ -953,90 +918,7 @@
         </v-card>
       </v-dialog>
 
-      <v-dialog v-model="showHelp" max-width="800px">
-        <v-card class="pa-4 bg-black">
-          <v-card-title class="pa-4">
-            <span class="text-h5 font-weight-bold">GateRunner <small style="font-size:0.6em; color:#888; margin-left:1em;">v{{ appVersion }}</small></span>
-            <v-spacer></v-spacer>
-            <v-btn icon @click="showHelp = false" class="close-btn">
-              <v-icon>mdi-close</v-icon>
-            </v-btn>
-          </v-card-title>
-          <v-divider></v-divider>
-          <v-card-text class="pa-4">
-            <h4 class="mb-2">How the Sequencer Works</h4>
-            <p>The sequencer allows you to customize the following parameters:</p>
-            <p>GateRunner now stores your work as named presets. Changes affect the current draft immediately for playback and URL sharing, but the preset itself is only updated when you use <strong>Save</strong> or <strong>Save As</strong>. You can also export a single preset or the full preset library to JSON and import them back later.</p>
-            <ul>
-              <li><strong>Preset</strong>: Pick a named preset, create a new one, save your current draft, or delete presets you no longer need.</li>
-              <li><strong>Preset Browser</strong>: Open the preset browser to organize presets into nested folders, search by name/path, and move or delete folders and presets.</li>
-              <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see
-                <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
-              <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
-              <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-              <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, filter, tanh drive, echo, and reverb send.</li>
-              <li><strong>Waveform</strong>: Select from sine, square, triangle, or sawtooth waveforms per track.</li>
-              <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary
-                representation.</li>
-              <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
-              <li><strong>Track Gain</strong>: Sets each track's audio level in dB. Use the velocity multiplier to control MIDI note velocity independently.</li>
-              <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
-              <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
-              <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
-              <li><strong>Track Length View</strong>: The track strip shows each track's delay, repeats, and total duration in beats/bars with compact selectable blocks.</li>
-              <li><strong>Tanh Drive</strong>: Applies the selected dB gain before a tanh waveshaper, so high values amplify and distort while the final track signal remains softly bounded.</li>
-              <li><strong>Instrument/Modulation/Filter</strong>: Shape each track with attack/release, unison voices, tremolo, vibrato, and a key-following multimode filter.</li>
-              <li><strong>Effects</strong>: Add optional per-track feedback echo and send each track into the global high-quality reverb.</li>
-              <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
-              <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft, including an automatic rest trail for releases and effects.</li>
-            </ul>
-
-            <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
-            <p>This application uses a binary-based encoding system to determine which notes are played from numerical
-              values. Here's how it works:</p>
-
-            <ol>
-              <li><strong>Binary Representation of Numbers:</strong>
-                <ul>
-                  <li>Each number's absolute value is converted into binary, with bit 0 at position 0, bit 1 at
-                    position 1, and so on. For example:</li>
-                  <ul>
-                    <li>The number <code>5</code> becomes <code>101</code>.</li>
-                    <li>The number <code>10</code> becomes <code>0101</code>.</li>
-                  </ul>
-                  <li>Negative numbers are supported and in this case the note indices are computed as you would
-                    expect.</li>
-                </ul>
-              </li>
-              <li><strong>Pitch Class Assignment:</strong>
-                <ul>
-                  <li>Each binary digit corresponds to a position in the selected pitch class set, with the octave shift, going up and down octavewise
-                    to the minimal and maximal midi pitch. For example, to give a general idea without considering the octave, for 3-11B.00 you would get:
-                    <ul>
-                      <li>Position 0 = C</li>
-                      <li>Position 1 = E</li>
-                      <li>Position 2 = G</li>
-                      <li>Position 3 = C</li>
-                      <li>...</li>
-                    </ul>
-                  </li>
-                </ul>
-              </li>
-              <li><strong>Chords:</strong>
-                <ul>
-                  <li>If multiple <code>1</code>s are present, the corresponding notes form a chord.</li>
-                  <li>Example: The number <code>7</code> (<code>111</code>) maps to C, E, and G.</li>
-                </ul>
-              </li>
-            </ol>
-          </v-card-text>
-          <v-divider></v-divider>
-          <v-card-actions class="pa-4">
-            <v-spacer></v-spacer>
-            <v-btn color="primary" @click="showHelp = false">Close</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+      <HelpDialog v-model="showHelp" :app-version="appVersion" />
     </v-main>
     <!--
     <v-footer class="donation-footer" app>
@@ -1081,9 +963,19 @@ import pkg from '../package.json';
 const appVersion = pkg.version;
 import { defineComponent, markRaw } from 'vue';
 import EditableSlider from './components/EditableSlider.vue';
+import ExportProgressDialog from './components/ExportProgressDialog.vue';
+import HelpDialog from './components/HelpDialog.vue';
+import ReverbControls from './components/ReverbControls.vue';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import { PCS12 } from 'ultra-mega-enumerator';
+import {
+  createReverbAudioChain,
+  disposeReverbAudioChain,
+  updateReverbAudioChain,
+  type ReverbAudioChain,
+} from './audio/reverb';
+import { encodeWavFromChannels } from './audio/wav';
 import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
@@ -1150,12 +1042,6 @@ interface TrackMixState {
   soloed: boolean;
 }
 
-interface ReverbAudioChain {
-  lowCut: Tone.Filter;
-  highCut: Tone.Filter;
-  reverb: Tone.Reverb;
-}
-
 interface TrackTimingEntry {
   track: PresetTrackData;
   sequenceLength: number;
@@ -1200,6 +1086,9 @@ export default defineComponent({
   name: 'App',
   components: {
     EditableSlider,
+    ExportProgressDialog,
+    HelpDialog,
+    ReverbControls,
   },
   data() {
     const firstTrack = initialState.draft.tracks[0] ?? DEFAULT_PRESET_TRACK_DATA;
@@ -1464,9 +1353,6 @@ export default defineComponent({
     },
     canSubmitCreatePreset(): boolean {
       return this.createPresetInput.trim().length > 0;
-    },
-    exportFormatLabel(): string {
-      return this.exportFormat === 'wav' ? 'WAV mix' : this.exportFormat === 'midi' ? 'MIDI file' : '';
     },
     selectedTrackSequenceLength(): number {
       return this.parseSequence(this.trackSequenceInput).length;
@@ -1986,59 +1872,6 @@ export default defineComponent({
         this.updateControlDeckHeight();
       });
     },
-    encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
-      const numChannels = channels.length;
-      const frameCount = channels[0]?.length ?? 0;
-      const format = 1;
-      const bitDepth = 16;
-      const bytesPerSample = bitDepth / 8;
-      const blockAlign = numChannels * bytesPerSample;
-      const dataLength = frameCount * blockAlign;
-      const wavBuffer = new ArrayBuffer(44 + dataLength);
-      const view = new DataView(wavBuffer);
-
-      let offset = 0;
-      const writeString = (value: string) => {
-        for (let i = 0; i < value.length; i += 1) {
-          view.setUint8(offset, value.charCodeAt(i));
-          offset += 1;
-        }
-      };
-
-      writeString('RIFF');
-      view.setUint32(offset, 36 + dataLength, true);
-      offset += 4;
-      writeString('WAVE');
-      writeString('fmt ');
-      view.setUint32(offset, 16, true);
-      offset += 4;
-      view.setUint16(offset, format, true);
-      offset += 2;
-      view.setUint16(offset, numChannels, true);
-      offset += 2;
-      view.setUint32(offset, sampleRate, true);
-      offset += 4;
-      view.setUint32(offset, sampleRate * blockAlign, true);
-      offset += 4;
-      view.setUint16(offset, blockAlign, true);
-      offset += 2;
-      view.setUint16(offset, bitDepth, true);
-      offset += 2;
-      writeString('data');
-      view.setUint32(offset, dataLength, true);
-      offset += 4;
-
-      for (let i = 0; i < frameCount; i += 1) {
-        for (let channel = 0; channel < numChannels; channel += 1) {
-          const sample = Math.max(-1, Math.min(1, channels[channel][i]));
-          const intSample = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
-          view.setInt16(offset, intSample, true);
-          offset += 2;
-        }
-      }
-
-      return new Uint8Array(wavBuffer);
-    },
     getRenderDurationSeconds(): number {
       const echoTrail = Math.max(
         0,
@@ -2076,14 +1909,7 @@ export default defineComponent({
       const rendered = await Tone.Offline(() => {
         this.reverbChain = null;
         this.trackSynths = {};
-        const offlineReverb = this.getOrCreateReverbChain();
-        offlineReverb.lowCut.set({ frequency: this.midiToFrequency(this.reverbLowCut) });
-        offlineReverb.highCut.set({ frequency: this.midiToFrequency(this.reverbHighCut) });
-        offlineReverb.reverb.set({
-          decay: this.reverbDecay,
-          preDelay: this.reverbPreDelay,
-          wet: this.reverbEnabled ? 1 : 0,
-        });
+        this.getOrCreateReverbChain();
 
         for (const entry of allTrackNotes) {
           if (entry.notes.length === 0) {
@@ -2149,7 +1975,7 @@ export default defineComponent({
         channels.push(audioBuffer.getChannelData(channel));
       }
 
-      return this.encodeWavFromChannels(channels, audioBuffer.sampleRate);
+      return encodeWavFromChannels(channels, audioBuffer.sampleRate);
     },
     getDraftData(): PresetData {
       return normalizePresetData({
@@ -2807,16 +2633,12 @@ export default defineComponent({
         return this.reverbChain as ReverbAudioChain;
       }
 
-      const lowCut = markRaw(new Tone.Filter({ type: 'highpass', frequency: this.midiToFrequency(this.reverbLowCut), rolloff: -12 })) as Tone.Filter;
-      const highCut = markRaw(new Tone.Filter({ type: 'lowpass', frequency: this.midiToFrequency(this.reverbHighCut), rolloff: -12 })) as Tone.Filter;
-      const reverb = markRaw(new Tone.Reverb({
+      this.reverbChain = createReverbAudioChain({
         decay: this.reverbDecay,
         preDelay: this.reverbPreDelay,
-        wet: this.reverbEnabled ? 1 : 0,
-      }).toDestination()) as Tone.Reverb;
-
-      lowCut.chain(highCut, reverb);
-      this.reverbChain = { lowCut, highCut, reverb };
+        lowCutFrequency: this.midiToFrequency(this.reverbLowCut),
+        highCutFrequency: this.midiToFrequency(this.reverbHighCut),
+      });
       return this.reverbChain as ReverbAudioChain;
     },
     getTrackEchoMaxDelay(track: PresetTrackData): number {
@@ -2952,12 +2774,11 @@ export default defineComponent({
     },
     updateReverbChain() {
       const chain = this.getOrCreateReverbChain();
-      chain.lowCut.set({ frequency: this.midiToFrequency(this.reverbLowCut) });
-      chain.highCut.set({ frequency: this.midiToFrequency(this.reverbHighCut) });
-      chain.reverb.set({
+      updateReverbAudioChain(chain, {
         decay: this.reverbDecay,
         preDelay: this.reverbPreDelay,
-        wet: this.reverbEnabled ? 1 : 0,
+        lowCutFrequency: this.midiToFrequency(this.reverbLowCut),
+        highCutFrequency: this.midiToFrequency(this.reverbHighCut),
       });
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
@@ -3356,9 +3177,7 @@ export default defineComponent({
     }
     this.trackSynths = {};
     if (this.reverbChain) {
-      this.reverbChain.lowCut.dispose();
-      this.reverbChain.highCut.dispose();
-      this.reverbChain.reverb.dispose();
+      disposeReverbAudioChain(this.reverbChain as ReverbAudioChain);
       this.reverbChain = null;
     }
   },
@@ -4112,20 +3931,9 @@ export default defineComponent({
   letter-spacing: 0.015em;
 }
 
-.export-dialog-card {
-  border: 1px solid rgba(132, 209, 228, 0.32);
-  background: #000000;
-}
-
 .rename-dialog-card {
   border: 1px solid rgba(132, 209, 228, 0.32);
   background: #000000;
-}
-
-.close-btn {
-  position: absolute;
-  top: 16px;
-  right: 16px;
 }
 
 .compact-row {
