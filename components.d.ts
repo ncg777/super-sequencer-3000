@@ -10,6 +10,7 @@ declare module 'vue' {
     EditableSlider: typeof import('./src/components/EditableSlider.vue')['default']
     ExportProgressDialog: typeof import('./src/components/ExportProgressDialog.vue')['default']
     HelpDialog: typeof import('./src/components/HelpDialog.vue')['default']
+    PresetManager: typeof import('./src/components/PresetManager.vue')['default']
     ReverbControls: typeof import('./src/components/ReverbControls.vue')['default']
   }
 }
