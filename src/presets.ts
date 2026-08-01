@@ -32,6 +32,11 @@ export interface PresetTrackData {
   filterQ: number;
   filterGain: number;
   filterKeyFollow: number;
+  filterEnvelopeAttack: number;
+  filterEnvelopeDecay: number;
+  filterEnvelopeSustain: number;
+  filterEnvelopeRelease: number;
+  filterEnvelopeAmount: number;
   limiterGain: number;
   echoEnabled: boolean;
   echoDelay: EchoDelayValue;
@@ -212,6 +217,11 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   filterQ: 1,
   filterGain: 0,
   filterKeyFollow: 0,
+  filterEnvelopeAttack: 0,
+  filterEnvelopeDecay: 0,
+  filterEnvelopeSustain: 1,
+  filterEnvelopeRelease: 0,
+  filterEnvelopeAmount: 0,
   limiterGain: 0,
   echoEnabled: false,
   echoDelay: '1/4',
@@ -420,6 +430,11 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     filterQ: track.filterQ,
     filterGain: track.filterGain,
     filterKeyFollow: track.filterKeyFollow,
+    filterEnvelopeAttack: track.filterEnvelopeAttack,
+    filterEnvelopeDecay: track.filterEnvelopeDecay,
+    filterEnvelopeSustain: track.filterEnvelopeSustain,
+    filterEnvelopeRelease: track.filterEnvelopeRelease,
+    filterEnvelopeAmount: track.filterEnvelopeAmount,
     limiterGain: track.limiterGain,
     echoEnabled: track.echoEnabled,
     echoDelay: track.echoDelay,
@@ -467,6 +482,11 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     filterQ: clamp(parseNumber(raw.filterQ, DEFAULT_PRESET_TRACK_DATA.filterQ), 0.0001, 30),
     filterGain: clamp(parseNumber(raw.filterGain, DEFAULT_PRESET_TRACK_DATA.filterGain), -48, 48),
     filterKeyFollow: clamp(parseNumber(raw.filterKeyFollow, DEFAULT_PRESET_TRACK_DATA.filterKeyFollow), -200, 200),
+    filterEnvelopeAttack: clamp(parseNumber(raw.filterEnvelopeAttack, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeAttack), 0, 10),
+    filterEnvelopeDecay: clamp(parseNumber(raw.filterEnvelopeDecay, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeDecay), 0, 10),
+    filterEnvelopeSustain: clamp(parseNumber(raw.filterEnvelopeSustain, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeSustain), 0, 1),
+    filterEnvelopeRelease: clamp(parseNumber(raw.filterEnvelopeRelease, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeRelease), 0, 20),
+    filterEnvelopeAmount: clamp(parseNumber(raw.filterEnvelopeAmount, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeAmount), -127, 127),
     limiterGain: clamp(parseNumber(raw.limiterGain, DEFAULT_PRESET_TRACK_DATA.limiterGain), -48, 72),
     echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
     echoDelay: normalizeEchoDelay(raw.echoDelay),
@@ -577,6 +597,11 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.filterQ !== rightTrack.filterQ
       || leftTrack.filterGain !== rightTrack.filterGain
       || leftTrack.filterKeyFollow !== rightTrack.filterKeyFollow
+      || leftTrack.filterEnvelopeAttack !== rightTrack.filterEnvelopeAttack
+      || leftTrack.filterEnvelopeDecay !== rightTrack.filterEnvelopeDecay
+      || leftTrack.filterEnvelopeSustain !== rightTrack.filterEnvelopeSustain
+      || leftTrack.filterEnvelopeRelease !== rightTrack.filterEnvelopeRelease
+      || leftTrack.filterEnvelopeAmount !== rightTrack.filterEnvelopeAmount
       || leftTrack.limiterGain !== rightTrack.limiterGain
       || leftTrack.echoEnabled !== rightTrack.echoEnabled
       || leftTrack.echoDelay !== rightTrack.echoDelay

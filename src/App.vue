@@ -858,7 +858,7 @@ export default defineComponent({
               const durSteps = this.getTrackStepDuration(entry.notes, i);
               const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
               const velocity = this.getTrackVelocity(notes, entry.track.velocityMultiplier);
-              chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(entry.track, notes), eventTime);
+              this.scheduleFilterEnvelope(entry.track, notes, eventTime, duration, chain.filter);
 
               chain.synth.triggerAttackRelease(
                 this.getTrackPlaybackFrequencies(entry.track, notes),
@@ -1165,14 +1165,88 @@ export default defineComponent({
     getTrackPlaybackFrequencies(track: PresetTrackData, notes: number[]): number[] {
       return notes.map((note) => Tone.Frequency(note - 12, 'midi').toFrequency());
     },
-    getTrackFilterFrequency(track: PresetTrackData, notes: number[] = []): number {
+    getTrackFilterMidi(track: PresetTrackData, notes: number[] = []): number {
       if (!track.filterEnabled || notes.length === 0 || track.filterKeyFollow === 0) {
-        return this.midiToFrequency(track.filterFrequency);
+        return track.filterFrequency;
       }
 
       const averageMidi = notes.reduce((sum, note) => sum + note, 0) / notes.length;
-      const followed = track.filterFrequency + (averageMidi - 69) * track.filterKeyFollow / 100;
-      return this.midiToFrequency(Math.max(0, Math.min(127, followed)));
+      return Math.max(0, Math.min(127, track.filterFrequency + (averageMidi - 69) * track.filterKeyFollow / 100));
+    },
+    getTrackFilterFrequency(track: PresetTrackData, notes: number[] = []): number {
+      return this.midiToFrequency(this.getTrackFilterMidi(track, notes));
+    },
+    getFilterEnvelopePreReleaseLevel(track: PresetTrackData, elapsed: number): number {
+      if (elapsed < track.filterEnvelopeAttack && track.filterEnvelopeAttack > 0) {
+        return elapsed / track.filterEnvelopeAttack;
+      }
+
+      const decayElapsed = elapsed - track.filterEnvelopeAttack;
+      if (decayElapsed < track.filterEnvelopeDecay && track.filterEnvelopeDecay > 0) {
+        return 1 - ((decayElapsed / track.filterEnvelopeDecay) * (1 - track.filterEnvelopeSustain));
+      }
+
+      return track.filterEnvelopeSustain;
+    },
+    scheduleFilterEnvelope(
+      track: PresetTrackData,
+      notes: number[],
+      when: Tone.Unit.Seconds,
+      noteDuration: number,
+      filter: Tone.Filter,
+    ) {
+      const startTime = Tone.Time(when).toSeconds();
+      const baseMidi = this.getTrackFilterMidi(track, notes);
+      const baseFrequency = this.midiToFrequency(baseMidi);
+      filter.frequency.cancelScheduledValues(startTime);
+      filter.frequency.setValueAtTime(baseFrequency, startTime);
+
+      if (!track.filterEnabled || track.filterEnvelopeAmount === 0) {
+        return;
+      }
+
+      const gateDuration = Math.max(0, noteDuration);
+      const attack = track.filterEnvelopeAttack;
+      const decay = track.filterEnvelopeDecay;
+      const release = track.filterEnvelopeRelease;
+      const gateTime = startTime + gateDuration;
+      const attackEnd = startTime + attack;
+      const decayEnd = attackEnd + decay;
+      const cutoffForLevel = (level: number): number => this.midiToFrequency(
+        Math.max(0, Math.min(127, baseMidi + track.filterEnvelopeAmount * level)),
+      );
+      const peakFrequency = cutoffForLevel(1);
+      const sustainFrequency = cutoffForLevel(track.filterEnvelopeSustain);
+      const gateLevel = this.getFilterEnvelopePreReleaseLevel(track, gateDuration);
+
+      if (gateDuration <= attack) {
+        if (gateDuration > 0 && attack > 0) {
+          filter.frequency.linearRampToValueAtTime(cutoffForLevel(gateDuration / attack), gateTime);
+        }
+      } else {
+        if (attack > 0) {
+          filter.frequency.linearRampToValueAtTime(peakFrequency, attackEnd);
+        } else {
+          filter.frequency.setValueAtTime(peakFrequency, startTime);
+        }
+
+        if (gateDuration <= attack + decay) {
+          if (decay > 0) {
+            filter.frequency.linearRampToValueAtTime(cutoffForLevel(gateLevel), gateTime);
+          }
+        } else if (decay > 0) {
+          filter.frequency.linearRampToValueAtTime(sustainFrequency, decayEnd);
+        } else {
+          filter.frequency.setValueAtTime(sustainFrequency, attackEnd);
+        }
+      }
+
+      filter.frequency.setValueAtTime(cutoffForLevel(gateLevel), gateTime);
+      if (release > 0) {
+        filter.frequency.linearRampToValueAtTime(baseFrequency, gateTime + release);
+      } else {
+        filter.frequency.setValueAtTime(baseFrequency, gateTime);
+      }
     },
     getEchoDelaySeconds(delay: EchoDelayValue): number {
       const match = delay.match(/^1\/(\d+)([DT])?$/);
@@ -1496,7 +1570,7 @@ export default defineComponent({
         }
       } else {
         const chain = this.getOrCreateTrackChain(track);
-        chain.filter.frequency.setValueAtTime(this.getTrackFilterFrequency(track, arr), when);
+        this.scheduleFilterEnvelope(track, arr, when, noteDuration, chain.filter);
         chain.synth.triggerAttackRelease(
           this.getTrackPlaybackFrequencies(track, arr),
           noteDuration.toString() + 's',

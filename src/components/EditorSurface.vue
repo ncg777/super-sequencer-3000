@@ -264,6 +264,25 @@
               <v-select v-model="draftTrack.filterRolloff" label="Rolloff" :items="[-12, -24, -48, -96]" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Filter Env Amount (' + Number(draftTrack.filterEnvelopeAmount).toFixed(1) + ' MIDI)'" :min="-127" :max="127" :step="0.1" v-model="draftTrack.filterEnvelopeAmount" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Filter Env Attack (' + Number(draftTrack.filterEnvelopeAttack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.filterEnvelopeAttack" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Filter Env Decay (' + Number(draftTrack.filterEnvelopeDecay).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.filterEnvelopeDecay" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Filter Env Sustain (' + Number(draftTrack.filterEnvelopeSustain).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.filterEnvelopeSustain" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Filter Env Release (' + Number(draftTrack.filterEnvelopeRelease).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="draftTrack.filterEnvelopeRelease" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
         </v-window-item>
 
         <v-window-item value="effects" class="control-tab-panel">

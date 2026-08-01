@@ -46,6 +46,11 @@ export interface GenerateTrackOptions {
   filterQ?: number;
   filterGain?: number;
   filterKeyFollow?: number;
+  filterEnvelopeAttack?: number;
+  filterEnvelopeDecay?: number;
+  filterEnvelopeSustain?: number;
+  filterEnvelopeRelease?: number;
+  filterEnvelopeAmount?: number;
   echoEnabled?: boolean;
   echoDelay?: EchoDelayValue | number;
   echoFeedback?: number;
@@ -249,6 +254,11 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     filterQ: 1,
     filterGain: 0,
     filterKeyFollow: 0,
+    filterEnvelopeAttack: 0,
+    filterEnvelopeDecay: 0,
+    filterEnvelopeSustain: 1,
+    filterEnvelopeRelease: 0,
+    filterEnvelopeAmount: 0,
     echoEnabled: false,
     echoDelay: '1/4',
     echoFeedback: 0.25,
@@ -292,6 +302,11 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     filterQ: clamp(track.filterQ ?? fallbackTrack.filterQ, 0.0001, 30),
     filterGain: clamp(track.filterGain ?? fallbackTrack.filterGain, -48, 48),
     filterKeyFollow: clamp(track.filterKeyFollow ?? fallbackTrack.filterKeyFollow, -200, 200),
+    filterEnvelopeAttack: clamp(track.filterEnvelopeAttack ?? fallbackTrack.filterEnvelopeAttack, 0, 10),
+    filterEnvelopeDecay: clamp(track.filterEnvelopeDecay ?? fallbackTrack.filterEnvelopeDecay, 0, 10),
+    filterEnvelopeSustain: clamp(track.filterEnvelopeSustain ?? fallbackTrack.filterEnvelopeSustain, 0, 1),
+    filterEnvelopeRelease: clamp(track.filterEnvelopeRelease ?? fallbackTrack.filterEnvelopeRelease, 0, 20),
+    filterEnvelopeAmount: clamp(track.filterEnvelopeAmount ?? fallbackTrack.filterEnvelopeAmount, -127, 127),
     echoEnabled: Boolean(track.echoEnabled ?? fallbackTrack.echoEnabled),
     echoDelay: normalizeEchoDelay(track.echoDelay, fallbackTrack.echoDelay),
     echoFeedback: clamp(track.echoFeedback ?? fallbackTrack.echoFeedback, 0, 0.95),
@@ -406,14 +421,54 @@ function getRenderTrailSeconds(prepared: PreparedRenderData): number {
   return Math.max(2, releaseTrail, echoTrail, reverbTrail);
 }
 
-function getFilterFrequency(track: NormalizedTrack, midiNotes: number[]): number {
-  const baseFrequency = 440 * Math.pow(2, (track.filterFrequency - 69) / 12);
+function getFilterMidi(track: NormalizedTrack, midiNotes: number[]): number {
   if (!track.filterEnabled || midiNotes.length === 0 || track.filterKeyFollow === 0) {
-    return baseFrequency;
+    return track.filterFrequency;
   }
+
   const averageMidi = midiNotes.reduce((sum, note) => sum + note, 0) / midiNotes.length;
-  const followedMidi = clamp(track.filterFrequency + (averageMidi - 69) * track.filterKeyFollow / 100, 0, 127);
-  return 440 * Math.pow(2, (followedMidi - 69) / 12);
+  return clamp(track.filterFrequency + (averageMidi - 69) * track.filterKeyFollow / 100, 0, 127);
+}
+
+function getFilterEnvelopePreReleaseLevel(track: NormalizedTrack, elapsed: number): number {
+  if (elapsed < track.filterEnvelopeAttack && track.filterEnvelopeAttack > 0) {
+    return elapsed / track.filterEnvelopeAttack;
+  }
+
+  const decayElapsed = elapsed - track.filterEnvelopeAttack;
+  if (decayElapsed < track.filterEnvelopeDecay && track.filterEnvelopeDecay > 0) {
+    return 1 - ((decayElapsed / track.filterEnvelopeDecay) * (1 - track.filterEnvelopeSustain));
+  }
+
+  return track.filterEnvelopeSustain;
+}
+
+function getFilterEnvelopeLevel(track: NormalizedTrack, elapsed: number, noteDuration: number): number {
+  if (!track.filterEnabled || track.filterEnvelopeAmount === 0) {
+    return 0;
+  }
+
+  const gateDuration = Math.max(0, noteDuration);
+  const safeElapsed = Math.max(0, elapsed);
+  const preReleaseLevel = getFilterEnvelopePreReleaseLevel(track, Math.min(safeElapsed, gateDuration));
+  if (safeElapsed <= gateDuration) {
+    return preReleaseLevel;
+  }
+
+  if (track.filterEnvelopeRelease <= 0) {
+    return 0;
+  }
+
+  return preReleaseLevel * Math.max(0, 1 - ((safeElapsed - gateDuration) / track.filterEnvelopeRelease));
+}
+
+function getFilterFrequency(track: NormalizedTrack, midiNotes: number[], envelopeLevel = 0): number {
+  const cutoffMidi = clamp(
+    getFilterMidi(track, midiNotes) + track.filterEnvelopeAmount * envelopeLevel,
+    0,
+    127,
+  );
+  return 440 * Math.pow(2, (cutoffMidi - 69) / 12);
 }
 
 function dbToGain(db: number): number {
@@ -663,7 +718,6 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
         const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
         const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier);
         const noteAmplitude = velocity * 0.12 * dbToGain(entry.track.gain);
-        const filterCutoff = getFilterFrequency(entry.track, notes);
 
         const startFrame = Math.max(0, Math.floor(start * sampleRate));
         const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));
@@ -700,6 +754,8 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               const vibrato = entry.track.vibratoEnabled
                 ? Math.pow(2, Math.sin(2 * Math.PI * entry.track.vibratoFrequency * t) * entry.track.vibratoDepth / 12)
                 : 1;
+              const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
+              const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel);
               const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, entry.track.tonewheelDrawbars);
               const sample = applySimpleFilter(
                 oscillatorSample * noteAmplitude * env * tremolo / Math.sqrt(voiceCount),
