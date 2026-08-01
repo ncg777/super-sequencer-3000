@@ -301,6 +301,8 @@ interface TrackAudioChain {
   mixGain: Tone.Gain;
 }
 
+const ENVELOPE_SMOOTHING_SECONDS = 0.005;
+
 export interface TrackMixState {
   muted: boolean;
   soloed: boolean;
@@ -1176,18 +1178,6 @@ export default defineComponent({
     getTrackFilterFrequency(track: PresetTrackData, notes: number[] = []): number {
       return this.midiToFrequency(this.getTrackFilterMidi(track, notes));
     },
-    getFilterEnvelopePreReleaseLevel(track: PresetTrackData, elapsed: number): number {
-      if (elapsed < track.filterEnvelopeAttack && track.filterEnvelopeAttack > 0) {
-        return elapsed / track.filterEnvelopeAttack;
-      }
-
-      const decayElapsed = elapsed - track.filterEnvelopeAttack;
-      if (decayElapsed < track.filterEnvelopeDecay && track.filterEnvelopeDecay > 0) {
-        return 1 - ((decayElapsed / track.filterEnvelopeDecay) * (1 - track.filterEnvelopeSustain));
-      }
-
-      return track.filterEnvelopeSustain;
-    },
     scheduleFilterEnvelope(
       track: PresetTrackData,
       notes: number[],
@@ -1198,17 +1188,17 @@ export default defineComponent({
       const startTime = Tone.Time(when).toSeconds();
       const baseMidi = this.getTrackFilterMidi(track, notes);
       const baseFrequency = this.midiToFrequency(baseMidi);
-      filter.frequency.cancelScheduledValues(startTime);
-      filter.frequency.setValueAtTime(baseFrequency, startTime);
+      filter.frequency.cancelAndHoldAtTime(startTime);
 
       if (!track.filterEnabled || track.filterEnvelopeAmount === 0) {
+        filter.frequency.linearRampToValueAtTime(baseFrequency, startTime + ENVELOPE_SMOOTHING_SECONDS);
         return;
       }
 
       const gateDuration = Math.max(0, noteDuration);
-      const attack = track.filterEnvelopeAttack;
-      const decay = track.filterEnvelopeDecay;
-      const release = track.filterEnvelopeRelease;
+      const attack = Math.max(track.filterEnvelopeAttack, ENVELOPE_SMOOTHING_SECONDS);
+      const decay = Math.max(track.filterEnvelopeDecay, ENVELOPE_SMOOTHING_SECONDS);
+      const release = Math.max(track.filterEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS);
       const gateTime = startTime + gateDuration;
       const attackEnd = startTime + attack;
       const decayEnd = attackEnd + decay;
@@ -1217,36 +1207,11 @@ export default defineComponent({
       );
       const peakFrequency = cutoffForLevel(1);
       const sustainFrequency = cutoffForLevel(track.filterEnvelopeSustain);
-      const gateLevel = this.getFilterEnvelopePreReleaseLevel(track, gateDuration);
 
-      if (gateDuration <= attack) {
-        if (gateDuration > 0 && attack > 0) {
-          filter.frequency.linearRampToValueAtTime(cutoffForLevel(gateDuration / attack), gateTime);
-        }
-      } else {
-        if (attack > 0) {
-          filter.frequency.linearRampToValueAtTime(peakFrequency, attackEnd);
-        } else {
-          filter.frequency.setValueAtTime(peakFrequency, startTime);
-        }
-
-        if (gateDuration <= attack + decay) {
-          if (decay > 0) {
-            filter.frequency.linearRampToValueAtTime(cutoffForLevel(gateLevel), gateTime);
-          }
-        } else if (decay > 0) {
-          filter.frequency.linearRampToValueAtTime(sustainFrequency, decayEnd);
-        } else {
-          filter.frequency.setValueAtTime(sustainFrequency, attackEnd);
-        }
-      }
-
-      filter.frequency.setValueAtTime(cutoffForLevel(gateLevel), gateTime);
-      if (release > 0) {
-        filter.frequency.linearRampToValueAtTime(baseFrequency, gateTime + release);
-      } else {
-        filter.frequency.setValueAtTime(baseFrequency, gateTime);
-      }
+      filter.frequency.linearRampToValueAtTime(peakFrequency, attackEnd);
+      filter.frequency.linearRampToValueAtTime(sustainFrequency, decayEnd);
+      filter.frequency.cancelAndHoldAtTime(gateTime);
+      filter.frequency.linearRampToValueAtTime(baseFrequency, gateTime + release);
     },
     getEchoDelaySeconds(delay: EchoDelayValue): number {
       const match = delay.match(/^1\/(\d+)([DT])?$/);
@@ -1294,11 +1259,12 @@ export default defineComponent({
       chain.synth.set({
         envelope: {
           attackCurve: 'exponential',
-          attack: track.attack.toString() + 's',
-          decay: 0,
+          attack: Math.max(track.attack, ENVELOPE_SMOOTHING_SECONDS),
+          decay: Math.max(track.decay, ENVELOPE_SMOOTHING_SECONDS),
+          decayCurve: 'exponential',
           releaseCurve: 'exponential',
-          release: track.release.toString() + 's',
-          sustain: 1.0,
+          release: Math.max(track.release, ENVELOPE_SMOOTHING_SECONDS),
+          sustain: track.sustain,
         },
         oscillator: oscillatorOptions,
       });

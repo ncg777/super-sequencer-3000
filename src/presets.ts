@@ -14,6 +14,8 @@ export interface PresetTrackData {
   delay: number;
   repeats: number;
   attack: number;
+  decay: number;
+  sustain: number;
   release: number;
   unisonVoices: number;
   unisonDetune: number;
@@ -199,6 +201,8 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   delay: 0,
   repeats: 1,
   attack: 0.01,
+  decay: 0,
+  sustain: 1,
   release: 0.12,
   unisonVoices: 1,
   unisonDetune: 12,
@@ -412,6 +416,8 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     delay: track.delay,
     repeats: track.repeats,
     attack: track.attack,
+    decay: track.decay,
+    sustain: track.sustain,
     release: track.release,
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
@@ -464,6 +470,8 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     delay: clamp(parseInteger(raw.delay?.toString(), DEFAULT_PRESET_TRACK_DATA.delay), 0, 64),
     repeats: clamp(parseInteger(raw.repeats?.toString(), DEFAULT_PRESET_TRACK_DATA.repeats), 1, 64),
     attack: clamp(parseNumber(raw.attack, DEFAULT_PRESET_TRACK_DATA.attack), 0, 10),
+    decay: clamp(parseNumber(raw.decay, DEFAULT_PRESET_TRACK_DATA.decay), 0, 10),
+    sustain: clamp(parseNumber(raw.sustain, DEFAULT_PRESET_TRACK_DATA.sustain), 0, 1),
     release: clamp(parseNumber(raw.release, DEFAULT_PRESET_TRACK_DATA.release), 0, 20),
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
@@ -579,6 +587,8 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.delay !== rightTrack.delay
       || leftTrack.repeats !== rightTrack.repeats
       || leftTrack.attack !== rightTrack.attack
+      || leftTrack.decay !== rightTrack.decay
+      || leftTrack.sustain !== rightTrack.sustain
       || leftTrack.release !== rightTrack.release
       || leftTrack.unisonVoices !== rightTrack.unisonVoices
       || leftTrack.unisonDetune !== rightTrack.unisonDetune

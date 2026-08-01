@@ -5,6 +5,7 @@
         <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
         <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
         <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
+        <v-tab value="envelope" prepend-icon="mdi-chart-bell-curve-cumulative">Envelope</v-tab>
         <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Modulation</v-tab>
         <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
@@ -177,16 +178,27 @@
             </v-col>
           </v-row>
           <v-row class="compact-row">
+            <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
+              <EditableSlider :label="label + ' Drawbar (' + draftTrack.tonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="draftTrack.tonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+        </v-window-item>
+
+        <v-window-item value="envelope" class="control-tab-panel">
+          <v-row class="compact-row">
             <v-col cols="12" md="6">
               <EditableSlider :label="'Attack (' + Number(draftTrack.attack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.attack" @update:modelValue="handleTrackDraftChange" />
             </v-col>
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Release (' + Number(draftTrack.release).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="draftTrack.release" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Decay (' + Number(draftTrack.decay).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.decay" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
           <v-row class="compact-row">
-            <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
-              <EditableSlider :label="label + ' Drawbar (' + draftTrack.tonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="draftTrack.tonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Sustain (' + Number(draftTrack.sustain).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.sustain" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Release (' + Number(draftTrack.release).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="draftTrack.release" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
         </v-window-item>
