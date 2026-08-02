@@ -400,12 +400,23 @@ function sampleOscillator(phase: number, waveform: string): number {
   }
 }
 
-function sampleTonewheel(phase: number, waveform: string, drawbars: number[]): number {
-  const amplitudes = drawbars.map((drawbar) => drawbar / 8);
-  const normalizer = Math.max(1, Math.sqrt(amplitudes.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
-  return amplitudes.reduce((sample, amplitude, index) => (
-    sample + amplitude * sampleOscillator((phase * TONEWHEEL_RATIOS[index]) % 1, waveform) / normalizer
-  ), 0);
+function prepareTonewheel(drawbars: number[]): Array<{ amplitude: number; ratio: number }> {
+  const activeDrawbars = drawbars
+    .map((drawbar, index) => ({ amplitude: drawbar / 8, ratio: TONEWHEEL_RATIOS[index] }))
+    .filter(({ amplitude }) => amplitude !== 0);
+  const normalizer = Math.max(
+    1,
+    Math.sqrt(activeDrawbars.reduce((sum, { amplitude }) => sum + amplitude * amplitude, 0)),
+  );
+  return activeDrawbars.map(({ amplitude, ratio }) => ({ amplitude: amplitude / normalizer, ratio }));
+}
+
+function sampleTonewheel(phase: number, waveform: string, tonewheel: Array<{ amplitude: number; ratio: number }>): number {
+  let sample = 0;
+  for (const { amplitude, ratio } of tonewheel) {
+    sample += amplitude * sampleOscillator((phase * ratio) % 1, waveform);
+  }
+  return sample;
 }
 
 function getRenderTrailSeconds(prepared: PreparedRenderData): number {
@@ -514,11 +525,12 @@ function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: Norma
   }
 
   const delayFrames = Math.max(1, Math.round(delaySeconds * sampleRate));
+  const wetGain = dbToGain(track.echoWet);
   for (let frame = delayFrames; frame < left.length; frame += 1) {
     const echoLeft = (track.echoPingPong ? right[frame - delayFrames] : left[frame - delayFrames]) * track.echoFeedback;
     const echoRight = (track.echoPingPong ? left[frame - delayFrames] : right[frame - delayFrames]) * track.echoFeedback;
-    left[frame] += echoLeft * dbToGain(track.echoWet);
-    right[frame] += echoRight * dbToGain(track.echoWet);
+    left[frame] += echoLeft * wetGain;
+    right[frame] += echoRight * wetGain;
   }
 }
 
@@ -529,24 +541,29 @@ function applyReverbSend(left: Float32Array, right: Float32Array, sendLeft: Floa
 
   const preDelayFrames = Math.round(reverb.preDelay * sampleRate);
   const decayFrames = Math.max(1, Math.round(reverb.decay * sampleRate));
-  const taps = [0.029, 0.037, 0.041, 0.053, 0.071, 0.089, 0.113, 0.137];
+  const taps = [0.029, 0.037, 0.041, 0.053, 0.071, 0.089, 0.113, 0.137].map((delay, index) => {
+    const frames = preDelayFrames + Math.round(delay * sampleRate);
+    return {
+      frames,
+      gain: Math.exp(-frames / decayFrames),
+      pan: index % 2 === 0 ? 0.65 : 0.35,
+    };
+  });
+  const wetGain = dbToGain(reverb.wet);
   for (let frame = 0; frame < left.length; frame += 1) {
     let wetLeft = 0;
     let wetRight = 0;
-    for (let tapIndex = 0; tapIndex < taps.length; tapIndex += 1) {
-      const tapFrames = preDelayFrames + Math.round(taps[tapIndex] * sampleRate);
-      const sourceFrame = frame - tapFrames;
+    for (const tap of taps) {
+      const sourceFrame = frame - tap.frames;
       if (sourceFrame < 0) {
         continue;
       }
 
-      const envelope = Math.exp(-tapFrames / decayFrames);
-      const pan = tapIndex % 2 === 0 ? 0.65 : 0.35;
-      wetLeft += (sendLeft[sourceFrame] * pan + sendRight[sourceFrame] * (1 - pan)) * envelope;
-      wetRight += (sendRight[sourceFrame] * pan + sendLeft[sourceFrame] * (1 - pan)) * envelope;
+      wetLeft += (sendLeft[sourceFrame] * tap.pan + sendRight[sourceFrame] * (1 - tap.pan)) * tap.gain;
+      wetRight += (sendRight[sourceFrame] * tap.pan + sendLeft[sourceFrame] * (1 - tap.pan)) * tap.gain;
     }
-    left[frame] += wetLeft * dbToGain(reverb.wet);
-    right[frame] += wetRight * dbToGain(reverb.wet);
+    left[frame] += wetLeft * wetGain;
+    right[frame] += wetRight * wetGain;
   }
 }
 
@@ -700,6 +717,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     const delaySeconds = getTrackDelaySeconds(prepared.bpm, entry.track);
     const trackLeft = new Float32Array(frameCount);
     const trackRight = new Float32Array(frameCount);
+    const tonewheel = prepareTonewheel(entry.track.tonewheelDrawbars);
 
     for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
       const loopStart = delaySeconds + repeat * trackPeriod;
@@ -730,6 +748,9 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             const frequency = 440 * Math.pow(2, (midiNote - 69 + detuneOffset / 100) / 12);
             const phaseIncrement = frequency / sampleRate;
             const voicePan = voiceCount === 1 ? 0.5 : voice / (voiceCount - 1);
+            const voiceGain = noteAmplitude / Math.sqrt(voiceCount);
+            const leftPan = Math.cos(voicePan * Math.PI / 2);
+            const rightPan = Math.sin(voicePan * Math.PI / 2);
             const filterState = { low: 0, high: 0, band: 0 };
             let phase = 0;
 
@@ -756,16 +777,16 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
                 : 1;
               const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
               const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel);
-              const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, entry.track.tonewheelDrawbars);
+              const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, tonewheel);
               const sample = applySimpleFilter(
-                oscillatorSample * noteAmplitude * env * tremolo / Math.sqrt(voiceCount),
+                oscillatorSample * voiceGain * env * tremolo,
                 filterState,
                 entry.track,
                 filterCutoff,
                 sampleRate,
               );
-              trackLeft[frame] += sample * Math.cos(voicePan * Math.PI / 2);
-              trackRight[frame] += sample * Math.sin(voicePan * Math.PI / 2);
+              trackLeft[frame] += sample * leftPan;
+              trackRight[frame] += sample * rightPan;
 
               phase += phaseIncrement * vibrato;
               if (phase >= 1) {
@@ -793,11 +814,6 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
   if (reverbLeft && reverbRight) {
     applyReverbSend(left, right, reverbLeft, reverbRight, prepared.reverb, sampleRate);
-  }
-
-  for (let i = 0; i < frameCount; i += 1) {
-    left[i] = clamp(left[i], -1, 1);
-    right[i] = clamp(right[i], -1, 1);
   }
 
   return encodeWavFromChannels([left, right], sampleRate);

@@ -873,7 +873,7 @@ export default defineComponent({
         }
         this.reverbChain = liveReverbChain;
         this.trackSynths = liveTrackSynths;
-      }, renderDuration);
+      }, renderDuration, 2, 44100);
 
       if (renderProgressTimer !== null) {
         window.clearInterval(renderProgressTimer);
@@ -1248,6 +1248,32 @@ export default defineComponent({
         highCutFrequency: this.midiToFrequency(this.reverbHighCut),
       });
     },
+    routeTrackAudioChain(track: PresetTrackData, chain: TrackAudioChain) {
+      chain.synth.disconnect();
+      chain.limiterGain.disconnect();
+      chain.limiter.disconnect();
+      chain.outputGain.disconnect();
+      chain.vibrato.disconnect();
+      chain.tremolo.disconnect();
+      chain.echo.disconnect();
+      chain.filter.disconnect();
+
+      const signalChain: Tone.ToneAudioNode[] = [chain.synth, chain.limiterGain, chain.limiter, chain.outputGain];
+      if (track.vibratoEnabled) {
+        signalChain.push(chain.vibrato);
+      }
+      if (track.tremoloEnabled) {
+        signalChain.push(chain.tremolo);
+      }
+      if (track.echoEnabled) {
+        signalChain.push(chain.echo);
+      }
+      if (track.filterEnabled) {
+        signalChain.push(chain.filter);
+      }
+      signalChain.push(chain.mixGain);
+      Tone.connectSeries(...signalChain);
+    },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
       const oscillatorOptions = {
         type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
@@ -1298,6 +1324,7 @@ export default defineComponent({
       chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
+      this.routeTrackAudioChain(track, chain);
     },
     updateSynths(trackId?: string, createMissingChains = true) {
       const activeTrackIds = new Set(this.tracks.map((track) => track.id));
@@ -1599,9 +1626,7 @@ export default defineComponent({
       try {
         const data = await this.renderMixWav();
         this.setWavExportProgress(98, 'Finalizing download...');
-        const wavBuffer = new ArrayBuffer(data.byteLength);
-        new Uint8Array(wavBuffer).set(data);
-        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const blob = new Blob([data.buffer as ArrayBuffer], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
 
         const a = document.createElement('a');
