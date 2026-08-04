@@ -738,7 +738,7 @@ export default defineComponent({
       return Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * velocityMultiplier);
     },
     midiToFrequency(midi: number): number {
-      return Tone.Frequency(midi, 'midi').toFrequency();
+      return 440 * Math.pow(2, (midi - 69) / 12);
     },
     dbToGain(db: number): number {
       return Math.pow(10, db / 20);
@@ -798,6 +798,38 @@ export default defineComponent({
       const reverbTrail = hasReverbSend ? this.reverbPreDelay + this.reverbDecay : 0;
       return this.getLoopDurationSecondsFromTrackLengths() + Math.max(2, releaseTrail, echoTrail, reverbTrail);
     },
+    trackOfflineRenderProgress(
+      offlineContext: Tone.OfflineContext,
+      renderDuration: number,
+      onProgress: (ratio: number) => void,
+    ) {
+      const rawContext = offlineContext.rawContext as unknown as OfflineAudioContext;
+      if (typeof rawContext?.suspend !== 'function' || typeof rawContext?.resume !== 'function') {
+        return;
+      }
+
+      // OfflineAudioContext only accepts suspend times aligned to 128-sample
+      // render quanta, so quantize each checkpoint before scheduling it.
+      const sampleRate = offlineContext.sampleRate;
+      const quantum = 128 / sampleRate;
+      const steps = 40;
+      const totalQuanta = Math.floor(renderDuration / quantum);
+
+      for (let step = 1; step < steps; step += 1) {
+        const quantumIndex = Math.floor((totalQuanta * step) / steps);
+        if (quantumIndex <= 0 || quantumIndex >= totalQuanta) {
+          continue;
+        }
+
+        const ratio = step / steps;
+        rawContext.suspend(quantumIndex * quantum).then(() => {
+          onProgress(ratio);
+          return rawContext.resume();
+        }).catch(() => {
+          // Ignore checkpoints the browser refuses to schedule.
+        });
+      }
+    },
     async renderMixWav(): Promise<Uint8Array> {
       this.setWavExportProgress(8, 'Preparing render...');
       await this.$nextTick();
@@ -807,30 +839,36 @@ export default defineComponent({
       const allTrackNotes = this.allTrackActualNotes;
       this.setWavExportProgress(22, 'Scheduling tracks...');
 
-      let renderProgressTimer: number | null = null;
-      this.exportProgress = -1;
-      this.exportStatus = 'Rendering audio...';
+      const SCHEDULE_PROGRESS_START = 22;
+      const RENDER_PROGRESS_START = 35;
+      const RENDER_PROGRESS_END = 82;
+      const ENCODE_PROGRESS_START = 85;
+      const ENCODE_PROGRESS_END = 99;
 
-      renderProgressTimer = window.setInterval(() => {
-        if (this.exportProgress < 0) {
-          return;
-        }
-        if (this.exportProgress < 85) {
-          this.exportProgress += 1;
-        }
-      }, 120);
+      const schedulableTracks = allTrackNotes.filter((entry) => entry.notes.length > 0);
+      let scheduledTracks = 0;
 
       const liveReverbChain = this.reverbChain;
       const liveTrackSynths = this.trackSynths;
-      const rendered = await Tone.Offline(() => {
+      const rendered = await Tone.Offline((offlineContext) => {
+        this.trackOfflineRenderProgress(offlineContext, renderDuration, (ratio) => {
+          this.setWavExportProgress(
+            RENDER_PROGRESS_START + (RENDER_PROGRESS_END - RENDER_PROGRESS_START) * ratio,
+            'Rendering audio...',
+          );
+        });
+
         this.reverbChain = null;
         this.trackSynths = {};
         this.getOrCreateReverbChain();
 
-        for (const entry of allTrackNotes) {
-          if (entry.notes.length === 0) {
-            continue;
-          }
+        for (const entry of schedulableTracks) {
+          scheduledTracks += 1;
+          this.setWavExportProgress(
+            SCHEDULE_PROGRESS_START
+              + (RENDER_PROGRESS_START - SCHEDULE_PROGRESS_START) * (scheduledTracks / schedulableTracks.length),
+            'Scheduling tracks...',
+          );
 
           const trackQuant = this.getTrackQuant(entry.track);
           const trackPeriod = entry.notes.length * trackQuant;
@@ -875,11 +913,7 @@ export default defineComponent({
         this.trackSynths = liveTrackSynths;
       }, renderDuration, 2, 44100);
 
-      if (renderProgressTimer !== null) {
-        window.clearInterval(renderProgressTimer);
-      }
-
-      this.setWavExportProgress(90, 'Encoding WAV...');
+      this.setWavExportProgress(ENCODE_PROGRESS_START, 'Encoding WAV...');
       await this.$nextTick();
 
       const audioBuffer = (rendered as { get?: () => AudioBuffer }).get
@@ -891,7 +925,17 @@ export default defineComponent({
         channels.push(audioBuffer.getChannelData(channel));
       }
 
-      return encodeWavFromChannels(channels, audioBuffer.sampleRate);
+      let lastReportedProgress = ENCODE_PROGRESS_START;
+      return encodeWavFromChannels(channels, audioBuffer.sampleRate, {
+        onProgress: (ratio) => {
+          const progress = ENCODE_PROGRESS_START + (ENCODE_PROGRESS_END - ENCODE_PROGRESS_START) * ratio;
+          if (progress - lastReportedProgress < 1) {
+            return;
+          }
+          lastReportedProgress = progress;
+          this.setWavExportProgress(progress, 'Encoding WAV...');
+        },
+      });
     },
     getDraftData(): PresetData {
       return normalizePresetData({
@@ -1165,7 +1209,7 @@ export default defineComponent({
       return partials.map((amplitude) => amplitude / normalizer);
     },
     getTrackPlaybackFrequencies(track: PresetTrackData, notes: number[]): number[] {
-      return notes.map((note) => Tone.Frequency(note - 12, 'midi').toFrequency());
+      return notes.map((note) => this.midiToFrequency(note - 12));
     },
     getTrackFilterMidi(track: PresetTrackData, notes: number[] = []): number {
       if (!track.filterEnabled || notes.length === 0 || track.filterKeyFollow === 0) {
@@ -1185,7 +1229,7 @@ export default defineComponent({
       noteDuration: number,
       filter: Tone.Filter,
     ) {
-      const startTime = Tone.Time(when).toSeconds();
+      const startTime = typeof when === 'number' ? when : Tone.Time(when).toSeconds();
       const baseMidi = this.getTrackFilterMidi(track, notes);
       const baseFrequency = this.midiToFrequency(baseMidi);
       filter.frequency.cancelAndHoldAtTime(startTime);
