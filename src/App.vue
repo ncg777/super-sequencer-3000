@@ -285,9 +285,19 @@ import {
   type PresetTrackData,
 } from './presets';
 
+interface ChoirFormantPath {
+  filter: Tone.Filter;
+  gain: Tone.Gain;
+}
+
 interface TrackAudioChain {
   synth: Tone.PolySynth;
+  noiseSynth: Tone.NoiseSynth;
   filter: Tone.Filter;
+  choirInput: Tone.Gain;
+  choirFormants: ChoirFormantPath[];
+  choirOutput: Tone.Gain;
+  sourceBus: Tone.Gain;
   limiterGain: Tone.Gain;
   limiter: Tone.WaveShaper;
   tremolo: Tone.Tremolo;
@@ -302,6 +312,33 @@ interface TrackAudioChain {
 }
 
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
+const CHOIR_FORMANT_FILTER_COUNT = 5;
+
+interface FormantBand {
+  frequency: number;
+  bandwidth: number;
+  gainDb: number;
+}
+
+const CHOIR_FORMANT_BANDS: Record<'choir-ah' | 'choir-oh', readonly FormantBand[]> = {
+  'choir-ah': [
+    { frequency: 730, bandwidth: 90, gainDb: 0 },
+    { frequency: 1090, bandwidth: 110, gainDb: -4 },
+    { frequency: 2440, bandwidth: 140, gainDb: -8 },
+    { frequency: 3400, bandwidth: 220, gainDb: -14 },
+    { frequency: 4500, bandwidth: 280, gainDb: -20 },
+  ],
+  'choir-oh': [
+    { frequency: 450, bandwidth: 70, gainDb: 0 },
+    { frequency: 800, bandwidth: 90, gainDb: -5 },
+    { frequency: 2830, bandwidth: 130, gainDb: -12 },
+    { frequency: 3500, bandwidth: 200, gainDb: -18 },
+    { frequency: 4500, bandwidth: 260, gainDb: -24 },
+  ],
+};
+
+type NoiseWaveform = 'pink-noise' | 'brown-noise';
+type ChoirWaveform = keyof typeof CHOIR_FORMANT_BANDS;
 
 export interface TrackMixState {
   muted: boolean;
@@ -899,13 +936,7 @@ export default defineComponent({
               const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
               const velocity = this.getTrackVelocity(notes, entry.track.velocityMultiplier);
               this.scheduleFilterEnvelope(entry.track, notes, eventTime, duration, chain.filter);
-
-              chain.synth.triggerAttackRelease(
-                this.getTrackPlaybackFrequencies(entry.track, notes),
-                duration,
-                eventTime,
-                velocity,
-              );
+              this.triggerTrackVoice(entry.track, chain, notes, duration, eventTime, velocity);
             }
           }
         }
@@ -1093,7 +1124,32 @@ export default defineComponent({
     },
     createTrackAudioChain(echoPingPong = true, maxDelay = 1): TrackAudioChain {
       const synth = markRaw(new Tone.PolySynth(Tone.Synth));
+      const noiseSynth = markRaw(new Tone.NoiseSynth({
+        noise: { type: 'pink' },
+        envelope: {
+          attack: ENVELOPE_SMOOTHING_SECONDS,
+          decay: ENVELOPE_SMOOTHING_SECONDS,
+          sustain: 1,
+          release: ENVELOPE_SMOOTHING_SECONDS,
+        },
+      }));
       const filter = markRaw(new Tone.Filter());
+      const choirInput = markRaw(new Tone.Gain(1));
+      const choirOutput = markRaw(new Tone.Gain(1));
+      const choirFormants = Array.from({ length: CHOIR_FORMANT_FILTER_COUNT }, () => {
+        const formantFilter = markRaw(new Tone.Filter({
+          type: 'bandpass',
+          frequency: 1000,
+          Q: 8,
+          rolloff: -12,
+        }));
+        const formantGain = markRaw(new Tone.Gain(0));
+        choirInput.connect(formantFilter);
+        formantFilter.connect(formantGain);
+        formantGain.connect(choirOutput);
+        return { filter: formantFilter, gain: formantGain } satisfies ChoirFormantPath;
+      });
+      const sourceBus = markRaw(new Tone.Gain(1));
       const limiterGain = markRaw(new Tone.Gain(1));
       const limiter = markRaw(new Tone.WaveShaper((value) => Math.tanh(value)));
       const vibrato = markRaw(new Tone.Vibrato());
@@ -1105,13 +1161,32 @@ export default defineComponent({
       const reverbSend = markRaw(new Tone.Gain(0));
 
       tremolo.start();
-      synth.chain(limiterGain, limiter, outputGain, vibrato, tremolo, echo, filter);
+      sourceBus.chain(limiterGain, limiter, outputGain, vibrato, tremolo, echo, filter);
       filter.connect(mixGain);
       mixGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
       mixGain.connect(reverbSend);
 
-      return { synth, filter, limiterGain, limiter, tremolo, vibrato, echo, echoPingPong, maxDelay, dryGain, reverbSend, outputGain, mixGain };
+      return {
+        synth,
+        noiseSynth,
+        filter,
+        choirInput,
+        choirFormants,
+        choirOutput,
+        sourceBus,
+        limiterGain,
+        limiter,
+        tremolo,
+        vibrato,
+        echo,
+        echoPingPong,
+        maxDelay,
+        dryGain,
+        reverbSend,
+        outputGain,
+        mixGain,
+      };
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
       const maxDelay = this.getTrackEchoMaxDelay(track);
@@ -1138,6 +1213,38 @@ export default defineComponent({
       const raw = Math.sin(harmonic * 12.9898 + 78.233) * 43758.5453123;
       return ((raw - Math.floor(raw)) * 2) - 1;
     },
+    isChoirWaveform(waveform: string): waveform is ChoirWaveform {
+      return waveform === 'choir-ah' || waveform === 'choir-oh';
+    },
+    isNoiseWaveform(waveform: string): waveform is NoiseWaveform {
+      return waveform === 'pink-noise' || waveform === 'brown-noise';
+    },
+    getNoiseType(waveform: string): 'pink' | 'brown' {
+      return waveform === 'brown-noise' ? 'brown' : 'pink';
+    },
+    getChoirFormantBands(waveform: string): readonly FormantBand[] {
+      return this.isChoirWaveform(waveform) ? CHOIR_FORMANT_BANDS[waveform] : [];
+    },
+    updateChoirFormantBank(waveform: string, choirFormants: ChoirFormantPath[]) {
+      const bands = this.getChoirFormantBands(waveform);
+
+      choirFormants.forEach((path, index) => {
+        const band = bands[index];
+        if (!band) {
+          path.gain.gain.value = 0;
+          return;
+        }
+
+        const safeBandwidth = Math.max(20, band.bandwidth);
+        path.filter.set({
+          type: 'bandpass',
+          frequency: band.frequency,
+          Q: Math.max(0.5, band.frequency / safeBandwidth),
+          rolloff: -12,
+        });
+        path.gain.gain.value = this.dbToGain(band.gainDb);
+      });
+    },
     getWaveformPartialAmplitude(waveform: string, harmonic: number): number {
       const noisyTail = this.pseudoNoise(harmonic) / Math.sqrt(harmonic);
       if (waveform === 'triangle') {
@@ -1151,6 +1258,10 @@ export default defineComponent({
       }
       if (waveform === 'square') {
         return harmonic % 2 === 0 ? 0 : 1 / harmonic;
+      }
+      // Choir uses parallel fixed-frequency formants; keep a bright saw-like excitation here.
+      if (this.isChoirWaveform(waveform)) {
+        return (-1 / harmonic) + (0.035 * noisyTail);
       }
       if (waveform === 'helmholtz') {
         return (harmonic === 1 ? 1.35 : 0)
@@ -1187,6 +1298,11 @@ export default defineComponent({
       return track.unisonVoices > 1 ? 'fatcustom' : 'custom';
     },
     getTonewheelPartials(track: PresetTrackData): number[] {
+      // Noise waveforms never use the additive oscillator path.
+      if (this.isNoiseWaveform(track.waveform)) {
+        return [1];
+      }
+
       const partialIndices = [1, 3, 2, 4, 6, 8, 10, 12, 16];
       const maximumPartial = 64;
       const partials = Array.from({ length: maximumPartial }, () => 0);
@@ -1207,6 +1323,22 @@ export default defineComponent({
 
       const normalizer = Math.max(1, Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
       return partials.map((amplitude) => amplitude / normalizer);
+    },
+    triggerTrackVoice(
+      track: PresetTrackData,
+      chain: TrackAudioChain,
+      notes: number[],
+      duration: Tone.Unit.Time,
+      when: Tone.Unit.Time,
+      velocity: number,
+    ) {
+      if (this.isNoiseWaveform(track.waveform)) {
+        chain.noiseSynth.triggerAttackRelease(duration, when, velocity);
+        return;
+      }
+
+      const frequencies = this.getTrackPlaybackFrequencies(track, notes);
+      chain.synth.triggerAttackRelease(frequencies, duration, when, velocity);
     },
     getTrackPlaybackFrequencies(track: PresetTrackData, notes: number[]): number[] {
       return notes.map((note) => this.midiToFrequency(note - 12));
@@ -1272,7 +1404,15 @@ export default defineComponent({
     },
     disposeTrackChain(chain: TrackAudioChain) {
       chain.synth.dispose();
+      chain.noiseSynth.dispose();
       chain.filter.dispose();
+      chain.choirFormants.forEach((path) => {
+        path.filter.dispose();
+        path.gain.dispose();
+      });
+      chain.choirInput.dispose();
+      chain.choirOutput.dispose();
+      chain.sourceBus.dispose();
       chain.limiterGain.dispose();
       chain.limiter.dispose();
       chain.tremolo.dispose();
@@ -1294,6 +1434,14 @@ export default defineComponent({
     },
     routeTrackAudioChain(track: PresetTrackData, chain: TrackAudioChain) {
       chain.synth.disconnect();
+      chain.noiseSynth.disconnect();
+      chain.choirInput.disconnect();
+      chain.choirOutput.disconnect();
+      chain.choirFormants.forEach((path) => {
+        path.filter.disconnect();
+        path.gain.disconnect();
+      });
+      chain.sourceBus.disconnect();
       chain.limiterGain.disconnect();
       chain.limiter.disconnect();
       chain.outputGain.disconnect();
@@ -1302,8 +1450,24 @@ export default defineComponent({
       chain.echo.disconnect();
       chain.filter.disconnect();
 
-      const signalChain: Tone.ToneAudioNode[] = [chain.synth, chain.limiterGain, chain.limiter, chain.outputGain];
-      if (track.vibratoEnabled) {
+      // Rebuild the parallel choir bank graph first so choir mode can fan out cleanly.
+      chain.choirFormants.forEach((path) => {
+        chain.choirInput.connect(path.filter);
+        path.filter.connect(path.gain);
+        path.gain.connect(chain.choirOutput);
+      });
+
+      if (this.isNoiseWaveform(track.waveform)) {
+        chain.noiseSynth.connect(chain.sourceBus);
+      } else if (this.isChoirWaveform(track.waveform)) {
+        chain.synth.connect(chain.choirInput);
+        chain.choirOutput.connect(chain.sourceBus);
+      } else {
+        chain.synth.connect(chain.sourceBus);
+      }
+
+      const signalChain: Tone.ToneAudioNode[] = [chain.sourceBus, chain.limiterGain, chain.limiter, chain.outputGain];
+      if (track.vibratoEnabled && !this.isNoiseWaveform(track.waveform)) {
         signalChain.push(chain.vibrato);
       }
       if (track.tremoloEnabled) {
@@ -1319,6 +1483,15 @@ export default defineComponent({
       Tone.connectSeries(...signalChain);
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
+      const envelope = {
+        attackCurve: 'exponential' as const,
+        attack: Math.max(track.attack, ENVELOPE_SMOOTHING_SECONDS),
+        decay: Math.max(track.decay, ENVELOPE_SMOOTHING_SECONDS),
+        decayCurve: 'exponential' as const,
+        releaseCurve: 'exponential' as const,
+        release: Math.max(track.release, ENVELOPE_SMOOTHING_SECONDS),
+        sustain: track.sustain,
+      };
       const oscillatorOptions = {
         type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
         count: track.unisonVoices,
@@ -1327,17 +1500,18 @@ export default defineComponent({
       } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
 
       chain.synth.set({
-        envelope: {
-          attackCurve: 'exponential',
-          attack: Math.max(track.attack, ENVELOPE_SMOOTHING_SECONDS),
-          decay: Math.max(track.decay, ENVELOPE_SMOOTHING_SECONDS),
-          decayCurve: 'exponential',
-          releaseCurve: 'exponential',
-          release: Math.max(track.release, ENVELOPE_SMOOTHING_SECONDS),
-          sustain: track.sustain,
-        },
+        envelope,
         oscillator: oscillatorOptions,
       });
+
+      chain.noiseSynth.set({
+        envelope,
+        noise: {
+          type: this.getNoiseType(track.waveform),
+        },
+      });
+
+      this.updateChoirFormantBank(track.waveform, chain.choirFormants);
 
       chain.filter.set({
         type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',
@@ -1356,7 +1530,7 @@ export default defineComponent({
       chain.vibrato.set({
         frequency: track.vibratoFrequency,
         depth: this.clampNormalRange(track.vibratoDepth),
-        wet: track.vibratoEnabled ? 1 : 0,
+        wet: track.vibratoEnabled && !this.isNoiseWaveform(track.waveform) ? 1 : 0,
       });
       chain.echo.set({
         delayTime: this.getEchoDelaySeconds(track.echoDelay),
@@ -1368,6 +1542,7 @@ export default defineComponent({
       chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
+      chain.noiseSynth.context.lookAhead = 0.05;
       this.routeTrackAudioChain(track, chain);
     },
     updateSynths(trackId?: string, createMissingChains = true) {
@@ -1608,9 +1783,11 @@ export default defineComponent({
       } else {
         const chain = this.getOrCreateTrackChain(track);
         this.scheduleFilterEnvelope(track, arr, when, noteDuration, chain.filter);
-        chain.synth.triggerAttackRelease(
-          this.getTrackPlaybackFrequencies(track, arr),
-          noteDuration.toString() + 's',
+        this.triggerTrackVoice(
+          track,
+          chain,
+          arr,
+          `${noteDuration}s`,
           when,
           vel,
         );
