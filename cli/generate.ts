@@ -100,6 +100,8 @@ export interface GenerateReverbOptions {
 export interface GenerateOptions {
   /** Tempo in beats per minute (1-499). Default: 90 */
   bpm?: number;
+  /** Concert pitch frequency of A4 in Hz (380-500). Default: 440 */
+  a4?: number;
   /** Legacy single-track numerator (1-16). Used when tracks is omitted. */
   numerator?: number;
   /** Legacy single-track denominator (1-16). Used when tracks is omitted. */
@@ -140,6 +142,7 @@ interface TrackRenderData {
 
 interface PreparedRenderData {
   bpm: number;
+  a4: number;
   tracks: TrackRenderData[];
   reverb: NormalizedReverb;
 }
@@ -339,6 +342,7 @@ async function prepareRenderData(options: GenerateOptions): Promise<PreparedRend
   await ensurePcs12Initialized();
 
   const bpm = options.bpm ?? 90;
+  const a4 = clamp(options.a4 ?? 440, 380, 500);
   const forte = options.forte ?? '5-35.05';
   const tracks = normalizeTracks(options);
 
@@ -381,6 +385,7 @@ async function prepareRenderData(options: GenerateOptions): Promise<PreparedRend
 
   return {
     bpm,
+    a4,
     tracks: trackData,
     reverb: normalizeReverb(options),
   };
@@ -473,13 +478,17 @@ function getFilterEnvelopeLevel(track: NormalizedTrack, elapsed: number, noteDur
   return preReleaseLevel * Math.max(0, 1 - ((safeElapsed - gateDuration) / track.filterEnvelopeRelease));
 }
 
-function getFilterFrequency(track: NormalizedTrack, midiNotes: number[], envelopeLevel = 0): number {
+function midiToFrequency(midi: number, a4 = 440): number {
+  return a4 * Math.pow(2, (midi - 69) / 12);
+}
+
+function getFilterFrequency(track: NormalizedTrack, midiNotes: number[], envelopeLevel = 0, a4 = 440): number {
   const cutoffMidi = clamp(
     getFilterMidi(track, midiNotes) + track.filterEnvelopeAmount * envelopeLevel,
     0,
     127,
   );
-  return 440 * Math.pow(2, (cutoffMidi - 69) / 12);
+  return midiToFrequency(cutoffMidi, a4);
 }
 
 function dbToGain(db: number): number {
@@ -745,7 +754,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
           for (let voice = 0; voice < voiceCount; voice += 1) {
             const detuneOffset = voiceCount === 1 ? 0 : ((voice / (voiceCount - 1)) - 0.5) * entry.track.unisonDetune;
-            const frequency = 440 * Math.pow(2, (midiNote - 69 + detuneOffset / 100) / 12);
+            const frequency = midiToFrequency(midiNote + detuneOffset / 100, prepared.a4);
             const phaseIncrement = frequency / sampleRate;
             const voicePan = voiceCount === 1 ? 0.5 : voice / (voiceCount - 1);
             const voiceGain = noteAmplitude / Math.sqrt(voiceCount);
@@ -776,7 +785,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
                 ? Math.pow(2, Math.sin(2 * Math.PI * entry.track.vibratoFrequency * t) * entry.track.vibratoDepth / 12)
                 : 1;
               const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
-              const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel);
+              const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel, prepared.a4);
               const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, tonewheel);
               const sample = applySimpleFilter(
                 oscillatorSample * voiceGain * env * tremolo,

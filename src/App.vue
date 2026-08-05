@@ -149,6 +149,16 @@
                 @update:modelValue="handleDraftChange"
               />
             </div>
+            <div class="a4-control">
+              <EditableSlider
+                :label="'A4 (' + Number(a4).toFixed(1) + ' Hz)'"
+                :min="380"
+                :step="0.1"
+                :max="500"
+                v-model="a4"
+                @update:modelValue="handleDraftChange"
+              />
+            </div>
           </div>
         </div>
 
@@ -376,6 +386,7 @@ export default defineComponent({
   data() {
     return {
       bpm: initialState.draft.bpm,
+      a4: initialState.draft.a4,
       forte: initialState.draft.forte,
       tracks: initialState.draft.tracks.map((track) => clonePresetTrackData(track)) as PresetTrackData[],
       trackMixStates: {} as Record<string, TrackMixState>,
@@ -775,7 +786,7 @@ export default defineComponent({
       return Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * velocityMultiplier);
     },
     midiToFrequency(midi: number): number {
-      return 440 * Math.pow(2, (midi - 69) / 12);
+      return this.a4 * Math.pow(2, (midi - 69) / 12);
     },
     dbToGain(db: number): number {
       return Math.pow(10, db / 20);
@@ -971,6 +982,7 @@ export default defineComponent({
     getDraftData(): PresetData {
       return normalizePresetData({
         bpm: this.bpm,
+        a4: this.a4,
         forte: this.forte,
         tracks: this.tracks.map((track) => clonePresetTrackData(track)),
         reverb: {
@@ -987,6 +999,7 @@ export default defineComponent({
     applyDraftData(data: PresetData) {
       const normalized = clonePresetData(normalizePresetData(data));
       this.bpm = normalized.bpm;
+      this.a4 = normalized.a4;
       this.forte = normalized.forte;
       this.reverbEnabled = normalized.reverb.enabled;
       this.reverbDecay = normalized.reverb.decay;
@@ -2102,12 +2115,13 @@ export default defineComponent({
 .dependent-settings-row {
   margin-top: 8px;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   align-items: center;
 }
 
-.tempo-control {
+.tempo-control,
+.a4-control {
   min-width: 0;
 }
 
@@ -2162,7 +2176,7 @@ export default defineComponent({
   }
 
   .dependent-settings-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
 }

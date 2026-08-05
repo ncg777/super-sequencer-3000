@@ -40,6 +40,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description: 'Shared tempo in beats per minute (1-499). Default: 90.',
             },
+            a4: {
+              type: 'number',
+              description: 'Concert pitch A4 frequency in Hz (380-500). Default: 440.',
+            },
             numerator: {
               type: 'number',
               description: 'Legacy single-track numerator (1-16). Used when tracks is omitted. Default: 4.',
@@ -139,6 +143,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const data = await generateMidi({
       bpm: optNum('bpm'),
+      a4: optNum('a4'),
       numerator: optNum('numerator'),
       denominator: optNum('denominator'),
       forte: optStr('forte'),

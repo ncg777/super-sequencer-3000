@@ -39,6 +39,7 @@ program
   .requiredOption('-o, --output <file>', 'Output MIDI file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
+  .option('--a4 <number>', 'Concert pitch A4 frequency in Hz (380-500)', '440')
   .option('--numerator <number>', 'Legacy single-track numerator (1-16)', '4')
   .option('--denominator <number>', 'Legacy single-track denominator (1-16)', '5')
   .option('--forte <string>', 'Forte number (pitch-class set identifier)', '5-35.05')
@@ -56,6 +57,7 @@ program
     try {
       const generatorInput = {
         bpm: parseInt(options.bpm),
+        a4: parseFloat(options.a4),
         numerator: parseInt(options.numerator),
         denominator: parseInt(options.denominator),
         forte: options.forte,

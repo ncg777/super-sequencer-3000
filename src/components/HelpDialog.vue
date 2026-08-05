@@ -28,6 +28,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Preset Browser</strong>: Open the preset browser to organize presets into nested folders, search by name/path, and move or delete folders and presets.</li>
           <li><strong>Forte number</strong>: The pitch-class set to use as Forte number with transposition (see <a target="_blank" href="https://en.wikipedia.org/wiki/List_of_set_classes">Forte numbers</a>).</li>
           <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
+          <li><strong>A4</strong>: Master concert pitch in Hz for all tracks (default 440; some prefer 432).</li>
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
           <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, tanh drive, filter, echo, and reverb send.</li>
           <li><strong>Waveform</strong>: Select from classic oscillator waves, choir vowels, colored noise, and other resonant spectra per track.</li>

@@ -99,6 +99,8 @@ export interface PresetReverbData {
 
 export interface PresetData {
   bpm: number;
+  /** Concert pitch frequency of A4 in Hz (default 440). */
+  a4: number;
   forte: string;
   tracks: PresetTrackData[];
   reverb: PresetReverbData;
@@ -241,6 +243,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
 
 export const DEFAULT_PRESET_DATA: PresetData = {
   bpm: 90,
+  a4: 440,
   forte: '5-35.05',
   tracks: [DEFAULT_PRESET_TRACK_DATA],
   reverb: {
@@ -529,6 +532,7 @@ function normalizeLegacyTrack(value: LegacyTrackFields): PresetTrackData {
 export function clonePresetData(data: PresetData): PresetData {
   return {
     bpm: data.bpm,
+    a4: data.a4,
     forte: data.forte,
     tracks: data.tracks.map((track) => clonePresetTrackData(track)),
     reverb: clonePresetReverbData(data.reverb),
@@ -553,6 +557,7 @@ export function normalizePresetData(value: unknown): PresetData {
 
   return {
     bpm: clamp(parseInteger(raw.bpm?.toString(), DEFAULT_PRESET_DATA.bpm), 1, 499),
+    a4: clamp(parseNumber(raw.a4, DEFAULT_PRESET_DATA.a4), 380, 500),
     forte: typeof raw.forte === 'string' && raw.forte.trim().length > 0 ? raw.forte : DEFAULT_PRESET_DATA.forte,
     tracks: tracks.length > 0 ? tracks : [normalizeLegacyTrack(raw)],
     reverb: normalizePresetReverbData(raw.reverb),
@@ -561,6 +566,7 @@ export function normalizePresetData(value: unknown): PresetData {
 
 export function arePresetDataEqual(left: PresetData, right: PresetData): boolean {
   if (left.bpm !== right.bpm
+    || left.a4 !== right.a4
     || left.forte !== right.forte
     || left.tracks.length !== right.tracks.length
     || left.reverb.enabled !== right.reverb.enabled
@@ -1042,6 +1048,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 
   return normalizePresetData({
     bpm: params.get('bpm') ?? baseData.bpm,
+    a4: params.get('a4') ?? baseData.a4,
     forte: params.get('forte') ?? baseData.forte,
     tracks: [
       {
@@ -1064,7 +1071,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 export function hasUrlPresetOverrides(search: string): boolean {
   const params = new URLSearchParams(search);
 
-  return ['bpm', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats']
+  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats']
     .some((key) => params.has(key));
 }
 
