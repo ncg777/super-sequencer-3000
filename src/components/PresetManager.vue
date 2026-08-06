@@ -755,7 +755,7 @@ export default defineComponent({
 
       const folderId = this.activePresetFolderId;
       const preset = {
-        ...createNamedPreset(this.buildUniquePresetName(this.createPresetInput, folderId), this.draftData),
+        ...createNamedPreset(this.buildUniquePresetName(this.createPresetInput, folderId), DEFAULT_PRESET_DATA),
         folderId,
       };
       this.persistPresetLibrary({
