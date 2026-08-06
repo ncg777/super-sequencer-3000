@@ -1489,7 +1489,7 @@ export default defineComponent({
       }
     },
     /**
-     * Control-rate skew LFO: rebuild oscillator partials as the effective inflection point moves.
+     * Control-rate skew LFO: rebuild oscillator partials as the effective warp amount moves.
      * Works for live Transport and Tone.Offline when the transport is started.
      */
     setupSkewLfoAutomation(track: PresetTrackData, chain: TrackAudioChain) {
