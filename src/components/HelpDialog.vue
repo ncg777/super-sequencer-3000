@@ -30,7 +30,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
           <li><strong>A4</strong>: Master concert pitch in Hz for all tracks (default 440; some prefer 432).</li>
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, tanh drive, filter, echo, and reverb send.</li>
+          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
           <li><strong>Waveform</strong>: Select from classic oscillator waves, choir vowels, colored noise, and other resonant spectra per track.</li>
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
           <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
@@ -42,6 +42,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Tanh Drive</strong>: Applies the selected dB gain before a tanh waveshaper, so high values amplify and distort while the final track signal remains softly bounded.</li>
           <li><strong>Instrument/Modulation/Filter</strong>: Shape each track with attack/release, unison voices, tremolo, vibrato, and a key-following multimode filter.</li>
           <li><strong>Effects</strong>: Add optional per-track feedback echo and send each track into the global pink-noise convolution reverb.</li>
+          <li><strong>Chorus/Flanger/Phaser</strong>: Tempo-synced modulation effects whose LFO completes one cycle per selected note division (e.g. 4/1 sweeps over four whole notes, 1/8T warbles per eighth triplet), so they follow the BPM automatically.</li>
           <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
           <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft, including an automatic rest trail for releases and effects.</li>
         </ul>

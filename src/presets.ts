@@ -45,10 +45,31 @@ export interface PresetTrackData {
   echoFeedback: number;
   echoWet: number;
   echoPingPong: boolean;
+  chorusEnabled: boolean;
+  chorusRate: ModulationRateValue;
+  chorusDelay: number;
+  chorusDepth: number;
+  chorusSpread: number;
+  chorusFeedback: number;
+  chorusWet: number;
+  flangerEnabled: boolean;
+  flangerRate: ModulationRateValue;
+  flangerDelay: number;
+  flangerDepth: number;
+  flangerFeedback: number;
+  flangerWet: number;
+  phaserEnabled: boolean;
+  phaserRate: ModulationRateValue;
+  phaserOctaves: number;
+  phaserStages: number;
+  phaserBaseFrequency: number;
+  phaserQ: number;
+  phaserWet: number;
   reverbWet: number;
 }
 
 export type EchoDelayValue = typeof ECHO_DELAY_OPTIONS[number];
+export type ModulationRateValue = typeof MODULATION_RATE_OPTIONS[number];
 
 export const ECHO_DELAY_OPTIONS = [
   '1/1',
@@ -67,6 +88,32 @@ export const ECHO_DELAY_OPTIONS = [
   '1/16D',
   '1/16T',
 ] as const;
+
+/** Note-division cycle lengths for tempo-synced LFOs, from very slow sweeps to fast warble. */
+export const MODULATION_RATE_OPTIONS = [
+  '16/1',
+  '8/1',
+  '4/1',
+  '2/1',
+  '1/1',
+  '1/1D',
+  '1/1T',
+  '1/2',
+  '1/2D',
+  '1/2T',
+  '1/4',
+  '1/4D',
+  '1/4T',
+  '1/8',
+  '1/8D',
+  '1/8T',
+  '1/16',
+  '1/16D',
+  '1/16T',
+  '1/32',
+] as const;
+
+export const PHASER_STAGE_OPTIONS = [2, 4, 6, 8, 10, 12] as const;
 
 export const WAVEFORM_OPTIONS = [
   { title: 'Sine', value: 'sine' },
@@ -238,6 +285,26 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   echoFeedback: 0.25,
   echoWet: -12,
   echoPingPong: true,
+  chorusEnabled: false,
+  chorusRate: '1/1',
+  chorusDelay: 3.5,
+  chorusDepth: 0.5,
+  chorusSpread: 180,
+  chorusFeedback: 0,
+  chorusWet: -6,
+  flangerEnabled: false,
+  flangerRate: '2/1',
+  flangerDelay: 4,
+  flangerDepth: 0.6,
+  flangerFeedback: 0.5,
+  flangerWet: -6,
+  phaserEnabled: false,
+  phaserRate: '2/1',
+  phaserOctaves: 3,
+  phaserStages: 10,
+  phaserBaseFrequency: 65,
+  phaserQ: 10,
+  phaserWet: 0,
   reverbWet: -14,
 };
 
@@ -275,6 +342,8 @@ const WAVEFORMS = new Set<string>(WAVEFORM_OPTIONS.map((option) => option.value)
 const FILTER_TYPES = new Set(['lowpass', 'highpass', 'bandpass', 'lowshelf', 'highshelf', 'notch', 'allpass', 'peaking']);
 const FILTER_ROLLOFFS = new Set([-12, -24, -48, -96]);
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
+const MODULATION_RATE_VALUES = new Set<string>(MODULATION_RATE_OPTIONS);
+const PHASER_STAGES = new Set<number>(PHASER_STAGE_OPTIONS);
 
 type LegacyTrackFields = {
   numerator?: number;
@@ -366,6 +435,15 @@ function normalizeEchoDelay(value: unknown): EchoDelayValue {
   return typeof value === 'string' && ECHO_DELAY_VALUES.has(value) ? value as EchoDelayValue : DEFAULT_PRESET_TRACK_DATA.echoDelay;
 }
 
+function normalizeModulationRate(value: unknown, fallback: ModulationRateValue): ModulationRateValue {
+  return typeof value === 'string' && MODULATION_RATE_VALUES.has(value) ? value as ModulationRateValue : fallback;
+}
+
+function normalizePhaserStages(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  return PHASER_STAGES.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.phaserStages;
+}
+
 export function clonePresetReverbData(reverb: PresetReverbData): PresetReverbData {
   return {
     enabled: reverb.enabled,
@@ -454,6 +532,26 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     echoFeedback: track.echoFeedback,
     echoWet: track.echoWet,
     echoPingPong: track.echoPingPong,
+    chorusEnabled: track.chorusEnabled,
+    chorusRate: track.chorusRate,
+    chorusDelay: track.chorusDelay,
+    chorusDepth: track.chorusDepth,
+    chorusSpread: track.chorusSpread,
+    chorusFeedback: track.chorusFeedback,
+    chorusWet: track.chorusWet,
+    flangerEnabled: track.flangerEnabled,
+    flangerRate: track.flangerRate,
+    flangerDelay: track.flangerDelay,
+    flangerDepth: track.flangerDepth,
+    flangerFeedback: track.flangerFeedback,
+    flangerWet: track.flangerWet,
+    phaserEnabled: track.phaserEnabled,
+    phaserRate: track.phaserRate,
+    phaserOctaves: track.phaserOctaves,
+    phaserStages: track.phaserStages,
+    phaserBaseFrequency: track.phaserBaseFrequency,
+    phaserQ: track.phaserQ,
+    phaserWet: track.phaserWet,
     reverbWet: track.reverbWet,
   };
 }
@@ -508,6 +606,26 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     echoFeedback: clamp(parseNumber(raw.echoFeedback, DEFAULT_PRESET_TRACK_DATA.echoFeedback), 0, 0.95),
     echoWet: clamp(parseNumber(raw.echoWet, DEFAULT_PRESET_TRACK_DATA.echoWet), -96, 0),
     echoPingPong: Boolean(raw.echoPingPong ?? DEFAULT_PRESET_TRACK_DATA.echoPingPong),
+    chorusEnabled: Boolean(raw.chorusEnabled ?? DEFAULT_PRESET_TRACK_DATA.chorusEnabled),
+    chorusRate: normalizeModulationRate(raw.chorusRate, DEFAULT_PRESET_TRACK_DATA.chorusRate),
+    chorusDelay: clamp(parseNumber(raw.chorusDelay, DEFAULT_PRESET_TRACK_DATA.chorusDelay), 0.5, 20),
+    chorusDepth: clamp(parseNumber(raw.chorusDepth, DEFAULT_PRESET_TRACK_DATA.chorusDepth), 0, 1),
+    chorusSpread: clamp(parseNumber(raw.chorusSpread, DEFAULT_PRESET_TRACK_DATA.chorusSpread), 0, 180),
+    chorusFeedback: clamp(parseNumber(raw.chorusFeedback, DEFAULT_PRESET_TRACK_DATA.chorusFeedback), 0, 0.95),
+    chorusWet: clamp(parseNumber(raw.chorusWet, DEFAULT_PRESET_TRACK_DATA.chorusWet), -96, 0),
+    flangerEnabled: Boolean(raw.flangerEnabled ?? DEFAULT_PRESET_TRACK_DATA.flangerEnabled),
+    flangerRate: normalizeModulationRate(raw.flangerRate, DEFAULT_PRESET_TRACK_DATA.flangerRate),
+    flangerDelay: clamp(parseNumber(raw.flangerDelay, DEFAULT_PRESET_TRACK_DATA.flangerDelay), 0.1, 20),
+    flangerDepth: clamp(parseNumber(raw.flangerDepth, DEFAULT_PRESET_TRACK_DATA.flangerDepth), 0, 1),
+    flangerFeedback: clamp(parseNumber(raw.flangerFeedback, DEFAULT_PRESET_TRACK_DATA.flangerFeedback), 0, 0.95),
+    flangerWet: clamp(parseNumber(raw.flangerWet, DEFAULT_PRESET_TRACK_DATA.flangerWet), -96, 0),
+    phaserEnabled: Boolean(raw.phaserEnabled ?? DEFAULT_PRESET_TRACK_DATA.phaserEnabled),
+    phaserRate: normalizeModulationRate(raw.phaserRate, DEFAULT_PRESET_TRACK_DATA.phaserRate),
+    phaserOctaves: clamp(parseNumber(raw.phaserOctaves, DEFAULT_PRESET_TRACK_DATA.phaserOctaves), 0.1, 8),
+    phaserStages: normalizePhaserStages(raw.phaserStages),
+    phaserBaseFrequency: clamp(parseNumber(raw.phaserBaseFrequency, DEFAULT_PRESET_TRACK_DATA.phaserBaseFrequency), 0, 127),
+    phaserQ: clamp(parseNumber(raw.phaserQ, DEFAULT_PRESET_TRACK_DATA.phaserQ), 0.01, 30),
+    phaserWet: clamp(parseNumber(raw.phaserWet, DEFAULT_PRESET_TRACK_DATA.phaserWet), -96, 0),
     reverbWet: clamp(parseNumber(raw.reverbWet, DEFAULT_PRESET_TRACK_DATA.reverbWet), -96, 0),
   };
 }
@@ -628,6 +746,26 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.echoFeedback !== rightTrack.echoFeedback
       || leftTrack.echoWet !== rightTrack.echoWet
       || leftTrack.echoPingPong !== rightTrack.echoPingPong
+      || leftTrack.chorusEnabled !== rightTrack.chorusEnabled
+      || leftTrack.chorusRate !== rightTrack.chorusRate
+      || leftTrack.chorusDelay !== rightTrack.chorusDelay
+      || leftTrack.chorusDepth !== rightTrack.chorusDepth
+      || leftTrack.chorusSpread !== rightTrack.chorusSpread
+      || leftTrack.chorusFeedback !== rightTrack.chorusFeedback
+      || leftTrack.chorusWet !== rightTrack.chorusWet
+      || leftTrack.flangerEnabled !== rightTrack.flangerEnabled
+      || leftTrack.flangerRate !== rightTrack.flangerRate
+      || leftTrack.flangerDelay !== rightTrack.flangerDelay
+      || leftTrack.flangerDepth !== rightTrack.flangerDepth
+      || leftTrack.flangerFeedback !== rightTrack.flangerFeedback
+      || leftTrack.flangerWet !== rightTrack.flangerWet
+      || leftTrack.phaserEnabled !== rightTrack.phaserEnabled
+      || leftTrack.phaserRate !== rightTrack.phaserRate
+      || leftTrack.phaserOctaves !== rightTrack.phaserOctaves
+      || leftTrack.phaserStages !== rightTrack.phaserStages
+      || leftTrack.phaserBaseFrequency !== rightTrack.phaserBaseFrequency
+      || leftTrack.phaserQ !== rightTrack.phaserQ
+      || leftTrack.phaserWet !== rightTrack.phaserWet
       || leftTrack.reverbWet !== rightTrack.reverbWet) {
       return false;
     }

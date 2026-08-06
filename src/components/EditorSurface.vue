@@ -7,10 +7,13 @@
         <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
         <v-tab value="envelope" prepend-icon="mdi-chart-bell-curve-cumulative">Envelope</v-tab>
         <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
-        <v-tab value="modulation" prepend-icon="mdi-sine-wave">Modulation</v-tab>
+        <v-tab value="modulation" prepend-icon="mdi-sine-wave">Tremolo/Vibrato</v-tab>
         <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
+        <v-tab value="chorus" prepend-icon="mdi-blur">Chorus</v-tab>
+        <v-tab value="flanger" prepend-icon="mdi-waves">Flanger</v-tab>
+        <v-tab value="phaser" prepend-icon="mdi-vector-curve">Phaser</v-tab>
         <v-tab value="filter" prepend-icon="mdi-filter-outline">Filter</v-tab>
-        <v-tab value="effects" prepend-icon="mdi-waveform">Effects</v-tab>
+        <v-tab value="effects" prepend-icon="mdi-waveform">Echo &amp; Sends</v-tab>
         <v-tab value="reverb" prepend-icon="mdi-weather-rainy">Global Reverb</v-tab>
       </v-tabs>
 
@@ -248,6 +251,125 @@
           <EditableSlider :label="'Tanh Drive (' + Number(draftTrack.limiterGain).toFixed(1) + ' dB before tanh)'" :min="-48" :max="72" :step="0.1" v-model="draftTrack.limiterGain" @update:modelValue="handleTrackDraftChange" />
         </v-window-item>
 
+        <v-window-item value="chorus" class="control-tab-panel">
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.chorusEnabled" label="Enable Chorus" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="draftTrack.chorusRate"
+                :label="'Chorus Rate ' + formatModulationRate(draftTrack.chorusRate)"
+                :items="modulationRateOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Chorus Delay (' + Number(draftTrack.chorusDelay).toFixed(2) + ' ms)'" :min="0.5" :max="20" :step="0.05" v-model="draftTrack.chorusDelay" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Chorus Depth (' + Number(draftTrack.chorusDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.chorusDepth" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Chorus Spread (' + Number(draftTrack.chorusSpread).toFixed(0) + '°)'" :min="0" :max="180" :step="1" v-model="draftTrack.chorusSpread" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Chorus Feedback (' + Number(draftTrack.chorusFeedback).toFixed(2) + ')'" :min="0" :max="0.95" :step="0.01" v-model="draftTrack.chorusFeedback" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Chorus Wet (' + Number(draftTrack.chorusWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="draftTrack.chorusWet" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+        </v-window-item>
+
+        <v-window-item value="flanger" class="control-tab-panel">
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.flangerEnabled" label="Enable Flanger" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="draftTrack.flangerRate"
+                :label="'Flanger Rate ' + formatModulationRate(draftTrack.flangerRate)"
+                :items="modulationRateOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Flanger Delay (' + Number(draftTrack.flangerDelay).toFixed(2) + ' ms)'" :min="0.1" :max="20" :step="0.05" v-model="draftTrack.flangerDelay" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Flanger Depth (' + Number(draftTrack.flangerDepth).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.flangerDepth" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Flanger Feedback (' + Number(draftTrack.flangerFeedback).toFixed(2) + ')'" :min="0" :max="0.95" :step="0.01" v-model="draftTrack.flangerFeedback" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Flanger Wet (' + Number(draftTrack.flangerWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="draftTrack.flangerWet" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+        </v-window-item>
+
+        <v-window-item value="phaser" class="control-tab-panel">
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.phaserEnabled" label="Enable Phaser" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="draftTrack.phaserRate"
+                :label="'Phaser Rate ' + formatModulationRate(draftTrack.phaserRate)"
+                :items="modulationRateOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="4">
+              <v-select
+                v-model="draftTrack.phaserStages"
+                label="Phaser Stages"
+                :items="phaserStageOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Phaser Base (' + Number(draftTrack.phaserBaseFrequency).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="draftTrack.phaserBaseFrequency" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Phaser Sweep (' + Number(draftTrack.phaserOctaves).toFixed(2) + ' octaves)'" :min="0.1" :max="8" :step="0.01" v-model="draftTrack.phaserOctaves" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Phaser Q (' + Number(draftTrack.phaserQ).toFixed(2) + ')'" :min="0.01" :max="30" :step="0.01" v-model="draftTrack.phaserQ" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Phaser Wet (' + Number(draftTrack.phaserWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="draftTrack.phaserWet" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+        </v-window-item>
+
         <v-window-item value="filter" class="control-tab-panel">
           <v-row>
             <v-col cols="12" md="6">
@@ -349,8 +471,11 @@ import {
   clonePresetTrackData,
   DEFAULT_PRESET_TRACK_DATA,
   ECHO_DELAY_OPTIONS,
+  MODULATION_RATE_OPTIONS,
+  PHASER_STAGE_OPTIONS,
   TONEWHEEL_DRAWBAR_LABELS,
   WAVEFORM_OPTIONS,
+  type ModulationRateValue,
   type PresetReverbData,
   type PresetTrackData,
 } from '../presets';
@@ -370,6 +495,10 @@ export default defineComponent({
       type: Object as PropType<PresetReverbData>,
       required: true,
     },
+    bpm: {
+      type: Number,
+      required: true,
+    },
   },
   emits: ['track-change', 'reverb-change'],
   data() {
@@ -378,6 +507,8 @@ export default defineComponent({
       draftReverb: { ...this.reverb },
       tonewheelDrawbarLabels: TONEWHEEL_DRAWBAR_LABELS,
       echoDelayOptions: ECHO_DELAY_OPTIONS,
+      modulationRateOptions: MODULATION_RATE_OPTIONS,
+      phaserStageOptions: [...PHASER_STAGE_OPTIONS] as number[],
       waveformOptions: WAVEFORM_OPTIONS,
       activeControlTab: 'sequence',
     };
@@ -406,6 +537,17 @@ export default defineComponent({
     },
   },
   methods: {
+    /** Shows the tempo-synced LFO cycle length translated into Hz at the current tempo. */
+    formatModulationRate(rate: ModulationRateValue): string {
+      const match = rate.match(/^(\d+)\/(\d+)([DT])?$/);
+      if (!match) {
+        return '';
+      }
+
+      const modifierRatio = match[3] === 'D' ? 1.5 : match[3] === 'T' ? 2 / 3 : 1;
+      const cycleSeconds = (240 / this.bpm) * (Number(match[1]) / Number(match[2])) * modifierRatio;
+      return `(${(1 / cycleSeconds).toFixed(3)} Hz)`;
+    },
     parseSequence(sequenceInput: string): number[] {
       return sequenceInput
         .trim()

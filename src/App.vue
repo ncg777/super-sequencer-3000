@@ -183,6 +183,7 @@
       <EditorSurface
         :track="currentTrack"
         :reverb="reverbSettings"
+        :bpm="bpm"
         @track-change="handleTrackDraftChange"
         @reverb-change="handleReverbDraftChange"
       />
@@ -289,6 +290,7 @@ import {
   normalizePresetTrackData,
   sanitizeTrackName,
   type EchoDelayValue,
+  type ModulationRateValue,
   type PresetData,
   type PresetLibrary,
   type PresetReverbData,
@@ -312,6 +314,11 @@ interface TrackAudioChain {
   limiter: Tone.WaveShaper;
   tremolo: Tone.Tremolo;
   vibrato: Tone.Vibrato;
+  chorus: Tone.Chorus;
+  flanger: Tone.FeedbackDelay;
+  flangerLfo: Tone.LFO;
+  phaser: Tone.Phaser;
+  phaserStages: number;
   echo: Tone.FeedbackDelay | Tone.PingPongDelay;
   echoPingPong: boolean;
   maxDelay: number;
@@ -323,6 +330,8 @@ interface TrackAudioChain {
 
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
 const CHOIR_FORMANT_FILTER_COUNT = 5;
+/** Upper bound for the flanger delay line; the sweep never exceeds twice the 20 ms maximum base delay. */
+const FLANGER_MAX_DELAY_SECONDS = 0.05;
 
 interface FormantBand {
   frequency: number;
@@ -926,7 +935,11 @@ export default defineComponent({
 
           const delaySeconds = this.getTrackDelaySeconds(entry.track);
 
-          const chain = this.createTrackAudioChain(entry.track.echoPingPong, this.getTrackEchoMaxDelay(entry.track));
+          const chain = this.createTrackAudioChain({
+            echoPingPong: entry.track.echoPingPong,
+            maxDelay: this.getTrackEchoMaxDelay(entry.track),
+            phaserStages: entry.track.phaserStages,
+          });
           this.trackSynths[`offline-${entry.track.id}`] = chain;
           this.updateTrackChainSettings(entry.track, chain);
 
@@ -1135,7 +1148,10 @@ export default defineComponent({
     getTrackEchoMaxDelay(track: PresetTrackData): number {
       return Math.max(1, this.getEchoDelaySeconds(track.echoDelay));
     },
-    createTrackAudioChain(echoPingPong = true, maxDelay = 1): TrackAudioChain {
+    createTrackAudioChain(options: { echoPingPong?: boolean; maxDelay?: number; phaserStages?: number } = {}): TrackAudioChain {
+      const echoPingPong = options.echoPingPong ?? true;
+      const maxDelay = options.maxDelay ?? 1;
+      const phaserStages = options.phaserStages ?? DEFAULT_PRESET_TRACK_DATA.phaserStages;
       const synth = markRaw(new Tone.PolySynth(Tone.Synth));
       const noiseSynth = markRaw(new Tone.NoiseSynth({
         noise: { type: 'pink' },
@@ -1167,6 +1183,14 @@ export default defineComponent({
       const limiter = markRaw(new Tone.WaveShaper((value) => Math.tanh(value)));
       const vibrato = markRaw(new Tone.Vibrato());
       const tremolo = markRaw(new Tone.Tremolo());
+      const chorus = markRaw(new Tone.Chorus());
+      const flanger = markRaw(new Tone.FeedbackDelay({
+        maxDelay: FLANGER_MAX_DELAY_SECONDS,
+        delayTime: DEFAULT_PRESET_TRACK_DATA.flangerDelay / 1000,
+        feedback: 0,
+      }));
+      const flangerLfo = markRaw(new Tone.LFO());
+      const phaser = markRaw(new Tone.Phaser({ stages: phaserStages }));
       const echo = markRaw(echoPingPong ? new Tone.PingPongDelay({ maxDelay }) : new Tone.FeedbackDelay({ maxDelay }));
       const outputGain = markRaw(new Tone.Gain(1));
       const mixGain = markRaw(new Tone.Gain(1));
@@ -1174,7 +1198,11 @@ export default defineComponent({
       const reverbSend = markRaw(new Tone.Gain(0));
 
       tremolo.start();
-      sourceBus.chain(limiterGain, limiter, outputGain, vibrato, tremolo, echo, filter);
+      chorus.start();
+      // The LFO drives the delay line directly, so its output range is the absolute sweep in seconds.
+      flangerLfo.connect(flanger.delayTime);
+      flangerLfo.start();
+      sourceBus.chain(limiterGain, limiter, outputGain, vibrato, tremolo, chorus, flanger, phaser, echo, filter);
       filter.connect(mixGain);
       mixGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
@@ -1192,6 +1220,11 @@ export default defineComponent({
         limiter,
         tremolo,
         vibrato,
+        chorus,
+        flanger,
+        flangerLfo,
+        phaser,
+        phaserStages,
         echo,
         echoPingPong,
         maxDelay,
@@ -1205,7 +1238,7 @@ export default defineComponent({
       const maxDelay = this.getTrackEchoMaxDelay(track);
       const existing = this.trackSynths[track.id];
       if (existing) {
-        if (existing.echoPingPong !== track.echoPingPong || existing.maxDelay < maxDelay) {
+        if (existing.echoPingPong !== track.echoPingPong || existing.maxDelay < maxDelay || existing.phaserStages !== track.phaserStages) {
           this.disposeTrackChain(existing);
           delete this.trackSynths[track.id];
         } else {
@@ -1213,7 +1246,7 @@ export default defineComponent({
         }
       }
 
-      const chain = this.createTrackAudioChain(track.echoPingPong, maxDelay);
+      const chain = this.createTrackAudioChain({ echoPingPong: track.echoPingPong, maxDelay, phaserStages: track.phaserStages });
       this.trackSynths[track.id] = chain;
       this.updateTrackChainSettings(track, chain);
       return chain;
@@ -1415,6 +1448,23 @@ export default defineComponent({
       const modifierRatio = modifier === 'D' ? 1.5 : modifier === 'T' ? 2 / 3 : 1;
       return (wholeNoteSeconds / denominator) * modifierRatio;
     },
+    getModulationRateSeconds(rate: ModulationRateValue): number {
+      const match = rate.match(/^(\d+)\/(\d+)([DT])?$/);
+      if (!match) {
+        return 60 / this.bpm;
+      }
+
+      const numerator = Number.parseInt(match[1], 10);
+      const denominator = Number.parseInt(match[2], 10);
+      const modifier = match[3];
+      const wholeNoteSeconds = (60 / this.bpm) * 4;
+      const modifierRatio = modifier === 'D' ? 1.5 : modifier === 'T' ? 2 / 3 : 1;
+      return (wholeNoteSeconds * numerator / denominator) * modifierRatio;
+    },
+    /** Tempo-synced LFO rate: one full modulation cycle per selected note division. */
+    getModulationRateHz(rate: ModulationRateValue): number {
+      return 1 / Math.max(0.001, this.getModulationRateSeconds(rate));
+    },
     disposeTrackChain(chain: TrackAudioChain) {
       chain.synth.dispose();
       chain.noiseSynth.dispose();
@@ -1430,6 +1480,10 @@ export default defineComponent({
       chain.limiter.dispose();
       chain.tremolo.dispose();
       chain.vibrato.dispose();
+      chain.flangerLfo.dispose();
+      chain.chorus.dispose();
+      chain.flanger.dispose();
+      chain.phaser.dispose();
       chain.echo.dispose();
       chain.dryGain.dispose();
       chain.reverbSend.dispose();
@@ -1460,6 +1514,9 @@ export default defineComponent({
       chain.outputGain.disconnect();
       chain.vibrato.disconnect();
       chain.tremolo.disconnect();
+      chain.chorus.disconnect();
+      chain.flanger.disconnect();
+      chain.phaser.disconnect();
       chain.echo.disconnect();
       chain.filter.disconnect();
 
@@ -1485,6 +1542,15 @@ export default defineComponent({
       }
       if (track.tremoloEnabled) {
         signalChain.push(chain.tremolo);
+      }
+      if (track.chorusEnabled) {
+        signalChain.push(chain.chorus);
+      }
+      if (track.flangerEnabled) {
+        signalChain.push(chain.flanger);
+      }
+      if (track.phaserEnabled) {
+        signalChain.push(chain.phaser);
       }
       if (track.echoEnabled) {
         signalChain.push(chain.echo);
@@ -1549,6 +1615,32 @@ export default defineComponent({
         delayTime: this.getEchoDelaySeconds(track.echoDelay),
         feedback: this.clampNormalRange(track.echoFeedback),
         wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
+      });
+      chain.chorus.set({
+        frequency: this.getModulationRateHz(track.chorusRate),
+        delayTime: track.chorusDelay,
+        depth: this.clampNormalRange(track.chorusDepth),
+        spread: track.chorusSpread,
+        feedback: this.clampNormalRange(track.chorusFeedback),
+        wet: track.chorusEnabled ? this.dbToWetMix(track.chorusWet) : 0,
+      });
+      const flangerDelaySeconds = track.flangerDelay / 1000;
+      const flangerSweepSeconds = flangerDelaySeconds * this.clampNormalRange(track.flangerDepth);
+      chain.flangerLfo.set({
+        frequency: this.getModulationRateHz(track.flangerRate),
+        min: Math.max(0.00005, flangerDelaySeconds - flangerSweepSeconds),
+        max: Math.min(FLANGER_MAX_DELAY_SECONDS, flangerDelaySeconds + flangerSweepSeconds),
+      });
+      chain.flanger.set({
+        feedback: this.clampNormalRange(track.flangerFeedback),
+        wet: track.flangerEnabled ? this.dbToWetMix(track.flangerWet) : 0,
+      });
+      chain.phaser.set({
+        frequency: this.getModulationRateHz(track.phaserRate),
+        octaves: track.phaserOctaves,
+        baseFrequency: this.midiToFrequency(track.phaserBaseFrequency),
+        Q: track.phaserQ,
+        wet: track.phaserEnabled ? this.dbToWetMix(track.phaserWet) : 0,
       });
       chain.outputGain.gain.value = this.dbToGain(track.gain);
       this.applyTrackMixState(track, chain);
