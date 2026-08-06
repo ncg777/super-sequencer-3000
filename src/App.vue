@@ -1408,26 +1408,34 @@ export default defineComponent({
       }
       return sample;
     },
-    wavetableToPartials(table: Float32Array, maximumPartial = 64): number[] {
+    /**
+     * Project a wavetable onto Tone's sine-partial basis (a partial is the amplitude of
+     * sin(2*pi*n*t)), i.e. the Fourier sine coefficients of the table. Taking the true signed
+     * coefficient instead of a magnitude with a heuristic sign keeps every partial a continuous
+     * function of the wavetable, which is what stops a modulated skew from flipping partial
+     * polarity (and therefore clicking) mid-note.
+     * The result is rescaled to `targetNorm` so the perceived level stays constant while the
+     * warp moves energy between harmonics.
+     */
+    wavetableToPartials(table: Float32Array, maximumPartial = 64, targetNorm?: number): number[] {
       const size = table.length;
       const partials = Array.from({ length: maximumPartial }, () => 0);
       for (let harmonic = 1; harmonic <= maximumPartial; harmonic += 1) {
-        let real = 0;
         let imag = 0;
         for (let n = 0; n < size; n += 1) {
-          const angle = (2 * Math.PI * harmonic * n) / size;
-          const value = table[n];
-          real += value * Math.cos(angle);
-          imag += value * Math.sin(angle);
+          imag += table[n] * Math.sin((2 * Math.PI * harmonic * n) / size);
         }
-        const magnitude = Math.hypot(real, imag) * (2 / size);
-        partials[harmonic - 1] = (real >= 0 ? 1 : -1) * magnitude;
+        partials[harmonic - 1] = imag * (2 / size);
       }
-      const normalizer = Math.max(
-        1e-12,
-        Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)),
-      );
-      return partials.map((amplitude) => amplitude / normalizer);
+      if (targetNorm === undefined) {
+        return partials;
+      }
+      const norm = Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0));
+      if (norm < 1e-12) {
+        return partials;
+      }
+      const gain = targetNorm / norm;
+      return partials.map((amplitude) => amplitude * gain);
     },
     /**
      * Tonewheel partials with optional phase-distortion warp applied in the time domain.
@@ -1444,7 +1452,8 @@ export default defineComponent({
         const phase = index / PHASE_DISTORTION_WAVETABLE_SIZE;
         table[index] = this.evaluatePartialsAtPhase(linearPartials, warpPhase(phase, skew));
       }
-      return this.wavetableToPartials(table, linearPartials.length);
+      const linearNorm = Math.sqrt(linearPartials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0));
+      return this.wavetableToPartials(table, linearPartials.length, linearNorm);
     },
     getSkewLfoFrequencyHz(track: PresetTrackData): number {
       return getLfoFrequencyHz({
