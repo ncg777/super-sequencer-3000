@@ -7,8 +7,10 @@ const props = withDefaults(defineProps<{
   min: number;
   max: number;
   step?: number;
+  disabled?: boolean;
 }>(), {
   step: 1,
+  disabled: false,
 });
 
 const emit = defineEmits<{
@@ -38,6 +40,9 @@ function normalizeValue(value: number): number {
 }
 
 function beginManualEdit(): void {
+  if (props.disabled) {
+    return;
+  }
   manualValue.value = String(props.modelValue);
   isEditing.value = true;
 
@@ -72,11 +77,12 @@ function updateFromSlider(nextValue: unknown): void {
 </script>
 
 <template>
-  <div class="editable-slider">
+  <div class="editable-slider" :class="{ 'editable-slider--disabled': disabled }">
     <div class="editable-slider__header">
       <button
         type="button"
         class="editable-slider__label"
+        :disabled="disabled"
         @click="beginManualEdit"
         @touchstart.prevent="beginManualEdit"
       >
@@ -94,6 +100,7 @@ function updateFromSlider(nextValue: unknown): void {
         :min="min"
         :max="max"
         :step="step"
+        :disabled="disabled"
         @keydown.enter.prevent="commitManualEdit"
         @keydown.esc.prevent="cancelManualEdit"
         @blur="commitManualEdit"
@@ -105,6 +112,7 @@ function updateFromSlider(nextValue: unknown): void {
       :min="min"
       :max="max"
       :step="step"
+      :disabled="disabled"
       hide-details
       @update:modelValue="updateFromSlider"
     />
@@ -112,6 +120,11 @@ function updateFromSlider(nextValue: unknown): void {
 </template>
 
 <style scoped>
+.editable-slider--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .editable-slider__header {
   display: flex;
   align-items: center;

@@ -277,6 +277,14 @@ import {
 } from './audio/reverb';
 import { encodeWavFromChannels } from './audio/wav';
 import {
+  createSkewLfoState,
+  getLfoFrequencyHz,
+  sampleLfoAtTime,
+  type LfoWaveform,
+  type SkewLfoState,
+} from './audio/lfo';
+import { effectiveSkew, warpPhase } from './audio/phaseDistortion';
+import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
   arePresetDataEqual,
@@ -326,12 +334,21 @@ interface TrackAudioChain {
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
   mixGain: Tone.Gain;
+  /** Disposes control-rate skew LFO automation for this chain. */
+  disposeSkewLfo?: () => void;
+  skewLfoState: SkewLfoState;
+  /** Last skew baked into oscillator partials (skip tiny LFO steps). */
+  lastAppliedSkew: number;
 }
 
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
 const CHOIR_FORMANT_FILTER_COUNT = 5;
 /** Upper bound for the flanger delay line; the sweep never exceeds twice the 20 ms maximum base delay. */
 const FLANGER_MAX_DELAY_SECONDS = 0.05;
+/** Control-rate refresh for skew LFO → wavetable partials (live + offline). */
+const SKEW_LFO_UPDATE_INTERVAL_SECONDS = 1 / 30;
+const PHASE_DISTORTION_WAVETABLE_SIZE = 1024;
+const SKEW_LFO_PARTIAL_EPSILON = 0.004;
 
 interface FormantBand {
   frequency: number;
@@ -919,6 +936,11 @@ export default defineComponent({
         this.trackSynths = {};
         this.getOrCreateReverbChain();
 
+        // Drive control-rate skew LFO automation during the offline render clock.
+        const offlineTransport = Tone.getTransport();
+        offlineTransport.stop();
+        offlineTransport.seconds = 0;
+
         for (const entry of schedulableTracks) {
           scheduledTracks += 1;
           this.setWavExportProgress(
@@ -964,6 +986,8 @@ export default defineComponent({
             }
           }
         }
+
+        offlineTransport.start(0);
         this.reverbChain = liveReverbChain;
         this.trackSynths = liveTrackSynths;
       }, renderDuration, 2, 44100);
@@ -1232,6 +1256,8 @@ export default defineComponent({
         reverbSend,
         outputGain,
         mixGain,
+        skewLfoState: createSkewLfoState(),
+        lastAppliedSkew: Number.NaN,
       };
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
@@ -1343,7 +1369,8 @@ export default defineComponent({
     getOscillatorType(track: PresetTrackData): string {
       return track.unisonVoices > 1 ? 'fatcustom' : 'custom';
     },
-    getTonewheelPartials(track: PresetTrackData): number[] {
+    /** Linear (unwarped) tonewheel spectrum used as the PD source shape. */
+    getLinearTonewheelPartials(track: PresetTrackData): number[] {
       // Noise waveforms never use the additive oscillator path.
       if (this.isNoiseWaveform(track.waveform)) {
         return [1];
@@ -1369,6 +1396,117 @@ export default defineComponent({
 
       const normalizer = Math.max(1, Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
       return partials.map((amplitude) => amplitude / normalizer);
+    },
+    evaluatePartialsAtPhase(partials: number[], phase: number): number {
+      let sample = 0;
+      for (let index = 0; index < partials.length; index += 1) {
+        const amplitude = partials[index];
+        if (amplitude === 0) {
+          continue;
+        }
+        sample += amplitude * Math.sin(2 * Math.PI * (index + 1) * phase);
+      }
+      return sample;
+    },
+    wavetableToPartials(table: Float32Array, maximumPartial = 64): number[] {
+      const size = table.length;
+      const partials = Array.from({ length: maximumPartial }, () => 0);
+      for (let harmonic = 1; harmonic <= maximumPartial; harmonic += 1) {
+        let real = 0;
+        let imag = 0;
+        for (let n = 0; n < size; n += 1) {
+          const angle = (2 * Math.PI * harmonic * n) / size;
+          const value = table[n];
+          real += value * Math.cos(angle);
+          imag += value * Math.sin(angle);
+        }
+        const magnitude = Math.hypot(real, imag) * (2 / size);
+        partials[harmonic - 1] = (real >= 0 ? 1 : -1) * magnitude;
+      }
+      const normalizer = Math.max(
+        1e-12,
+        Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)),
+      );
+      return partials.map((amplitude) => amplitude / normalizer);
+    },
+    /**
+     * Tonewheel partials with optional phase-distortion warp applied in the time domain.
+     * skew = 0.5 keeps the analytical linear spectrum for exact compatibility.
+     */
+    getTonewheelPartials(track: PresetTrackData, skew: number = track.skew): number[] {
+      const linearPartials = this.getLinearTonewheelPartials(track);
+      if (this.isNoiseWaveform(track.waveform) || Math.abs(skew - 0.5) < 1e-6) {
+        return linearPartials;
+      }
+
+      const table = new Float32Array(PHASE_DISTORTION_WAVETABLE_SIZE);
+      for (let index = 0; index < PHASE_DISTORTION_WAVETABLE_SIZE; index += 1) {
+        const phase = index / PHASE_DISTORTION_WAVETABLE_SIZE;
+        table[index] = this.evaluatePartialsAtPhase(linearPartials, warpPhase(phase, skew));
+      }
+      return this.wavetableToPartials(table, linearPartials.length);
+    },
+    getSkewLfoFrequencyHz(track: PresetTrackData): number {
+      return getLfoFrequencyHz({
+        sync: track.skewLfoSync,
+        rateHz: track.skewLfoRateHz,
+        syncRate: track.skewLfoRate,
+        bpm: this.bpm,
+      });
+    },
+    getEffectiveTrackSkew(track: PresetTrackData, chain: TrackAudioChain, timeSeconds = 0): number {
+      if (!track.skewLfoEnabled || track.skewLfoAmount === 0) {
+        return track.skew;
+      }
+      const lfoSample = sampleLfoAtTime(
+        chain.skewLfoState,
+        timeSeconds,
+        this.getSkewLfoFrequencyHz(track),
+        track.skewLfoWaveform as LfoWaveform,
+      );
+      return effectiveSkew(track.skew, lfoSample, track.skewLfoAmount);
+    },
+    applyTrackOscillatorPartials(track: PresetTrackData, chain: TrackAudioChain, skew: number, force = false) {
+      if (this.isNoiseWaveform(track.waveform)) {
+        return;
+      }
+      if (!force && Number.isFinite(chain.lastAppliedSkew) && Math.abs(chain.lastAppliedSkew - skew) < SKEW_LFO_PARTIAL_EPSILON) {
+        return;
+      }
+      const oscillatorOptions = {
+        type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
+        count: track.unisonVoices,
+        spread: track.unisonDetune,
+        partials: this.getTonewheelPartials(track, skew),
+      } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
+      chain.synth.set({ oscillator: oscillatorOptions });
+      chain.lastAppliedSkew = skew;
+    },
+    clearSkewLfoAutomation(chain: TrackAudioChain) {
+      if (chain.disposeSkewLfo) {
+        chain.disposeSkewLfo();
+        chain.disposeSkewLfo = undefined;
+      }
+    },
+    /**
+     * Control-rate skew LFO: rebuild oscillator partials as the effective inflection point moves.
+     * Works for live Transport and Tone.Offline when the transport is started.
+     */
+    setupSkewLfoAutomation(track: PresetTrackData, chain: TrackAudioChain) {
+      this.clearSkewLfoAutomation(chain);
+      if (!track.skewLfoEnabled || track.skewLfoAmount === 0 || this.isNoiseWaveform(track.waveform)) {
+        return;
+      }
+
+      const transport = Tone.getTransport();
+      const eventId = transport.scheduleRepeat((time) => {
+        const skew = this.getEffectiveTrackSkew(track, chain, time);
+        this.applyTrackOscillatorPartials(track, chain, skew);
+      }, SKEW_LFO_UPDATE_INTERVAL_SECONDS, 0);
+
+      chain.disposeSkewLfo = () => {
+        transport.clear(eventId);
+      };
     },
     triggerTrackVoice(
       track: PresetTrackData,
@@ -1466,6 +1604,7 @@ export default defineComponent({
       return 1 / Math.max(0.001, this.getModulationRateSeconds(rate));
     },
     disposeTrackChain(chain: TrackAudioChain) {
+      this.clearSkewLfoAutomation(chain);
       chain.synth.dispose();
       chain.noiseSynth.dispose();
       chain.filter.dispose();
@@ -1571,17 +1710,20 @@ export default defineComponent({
         release: Math.max(track.release, ENVELOPE_SMOOTHING_SECONDS),
         sustain: track.sustain,
       };
+      const initialSkew = this.getEffectiveTrackSkew(track, chain, 0);
+      chain.lastAppliedSkew = Number.NaN;
       const oscillatorOptions = {
         type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
         count: track.unisonVoices,
         spread: track.unisonDetune,
-        partials: this.getTonewheelPartials(track),
+        partials: this.getTonewheelPartials(track, initialSkew),
       } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
 
       chain.synth.set({
         envelope,
         oscillator: oscillatorOptions,
       });
+      chain.lastAppliedSkew = initialSkew;
 
       chain.noiseSynth.set({
         envelope,
@@ -1591,6 +1733,7 @@ export default defineComponent({
       });
 
       this.updateChoirFormantBank(track.waveform, chain.choirFormants);
+      this.setupSkewLfoAutomation(track, chain);
 
       chain.filter.set({
         type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',

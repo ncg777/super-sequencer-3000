@@ -5,6 +5,7 @@
         <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
         <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
         <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
+        <v-tab value="phase-distortion" prepend-icon="mdi-chart-timeline-variant">Phase Distortion</v-tab>
         <v-tab value="envelope" prepend-icon="mdi-chart-bell-curve-cumulative">Envelope</v-tab>
         <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Tremolo/Vibrato</v-tab>
@@ -183,6 +184,79 @@
           <v-row class="compact-row">
             <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
               <EditableSlider :label="label + ' Drawbar (' + draftTrack.tonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="draftTrack.tonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+        </v-window-item>
+
+        <v-window-item value="phase-distortion" class="control-tab-panel">
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
+                :label="'Base Skew (' + Number(draftTrack.skew).toFixed(2) + ')'"
+                :min="0.01"
+                :max="0.99"
+                :step="0.01"
+                v-model="draftTrack.skew"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.skewLfoEnabled" label="Skew LFO" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.skewLfoSync" label="Tempo Sync" hide-details density="compact" :disabled="!draftTrack.skewLfoEnabled" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <v-select
+                v-if="draftTrack.skewLfoSync"
+                v-model="draftTrack.skewLfoRate"
+                :label="'LFO Rate ' + formatModulationRate(draftTrack.skewLfoRate)"
+                :items="modulationRateOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                :disabled="!draftTrack.skewLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+              <EditableSlider
+                v-else
+                :label="'LFO Rate (' + Number(draftTrack.skewLfoRateHz).toFixed(2) + ' Hz)'"
+                :min="0.01"
+                :max="20"
+                :step="0.01"
+                v-model="draftTrack.skewLfoRateHz"
+                :disabled="!draftTrack.skewLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider
+                :label="'LFO Depth (' + Number(draftTrack.skewLfoAmount).toFixed(2) + ')'"
+                :min="-1"
+                :max="1"
+                :step="0.01"
+                v-model="draftTrack.skewLfoAmount"
+                :disabled="!draftTrack.skewLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="draftTrack.skewLfoWaveform"
+                label="LFO Waveform"
+                :items="skewLfoWaveformOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                :disabled="!draftTrack.skewLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
             </v-col>
           </v-row>
         </v-window-item>
@@ -473,6 +547,7 @@ import {
   ECHO_DELAY_OPTIONS,
   MODULATION_RATE_OPTIONS,
   PHASER_STAGE_OPTIONS,
+  SKEW_LFO_WAVEFORM_OPTIONS,
   TONEWHEEL_DRAWBAR_LABELS,
   WAVEFORM_OPTIONS,
   type ModulationRateValue,
@@ -510,6 +585,7 @@ export default defineComponent({
       modulationRateOptions: MODULATION_RATE_OPTIONS,
       phaserStageOptions: [...PHASER_STAGE_OPTIONS] as number[],
       waveformOptions: WAVEFORM_OPTIONS,
+      skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
       activeControlTab: 'sequence',
     };
   },
