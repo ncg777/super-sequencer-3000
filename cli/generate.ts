@@ -41,7 +41,7 @@ export interface GenerateTrackOptions {
   unisonDetune?: number;
   /** Nine Hammond-style drawbar levels (0-8) used by the tonewheel waveform. */
   tonewheelDrawbars?: number[];
-  /** Phase-distortion inflection point (0.01–0.99). Default 0.5 (linear). */
+  /** Phase-distortion warp amount (0.01–0.99). Default 0.5 (linear). */
   skew?: number;
   skewLfoEnabled?: boolean;
   skewLfoSync?: boolean;
