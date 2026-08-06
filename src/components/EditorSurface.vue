@@ -258,6 +258,17 @@
                 @update:modelValue="handleTrackDraftChange"
               />
             </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider
+                :label="'LFO Init Phase (' + Number(draftTrack.skewLfoInitPhase).toFixed(2) + ')'"
+                :min="0"
+                :max="0.99"
+                :step="0.01"
+                v-model="draftTrack.skewLfoInitPhase"
+                :disabled="!draftTrack.skewLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
           </v-row>
         </v-window-item>
 

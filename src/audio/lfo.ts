@@ -58,9 +58,17 @@ export interface SkewLfoState {
   seed: number;
 }
 
-export function createSkewLfoState(seed = 0x9e3779b9): SkewLfoState {
+/** Wrap any phase into the half-open unit interval [0, 1). */
+export function wrapLfoPhase(phase: number): number {
+  if (!Number.isFinite(phase)) {
+    return 0;
+  }
+  return phase - Math.floor(phase);
+}
+
+export function createSkewLfoState(seed = 0x9e3779b9, initPhase = 0): SkewLfoState {
   return {
-    phase: 0,
+    phase: wrapLfoPhase(initPhase),
     holdValue: 0,
     seed: seed >>> 0 || 0x9e3779b9,
   };
@@ -177,10 +185,11 @@ export function sampleLfoAtTime(
   timeSeconds: number,
   frequencyHz: number,
   waveform: LfoWaveform,
+  initPhase = 0,
 ): number {
   const safeFrequency = Math.max(0, frequencyHz);
-  const phase = safeFrequency * Math.max(0, timeSeconds);
-  const wrapped = phase - Math.floor(phase);
+  const phase = safeFrequency * Math.max(0, timeSeconds) + wrapLfoPhase(initPhase);
+  const wrapped = wrapLfoPhase(phase);
 
   if (waveform === 'sample-hold') {
     // Hold value is constant between integer cycle boundaries.

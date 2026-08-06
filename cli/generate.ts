@@ -49,6 +49,8 @@ export interface GenerateTrackOptions {
   skewLfoRate?: string;
   skewLfoAmount?: number;
   skewLfoWaveform?: string;
+  /** Normalized LFO start phase in [0, 1). */
+  skewLfoInitPhase?: number;
   tremoloEnabled?: boolean;
   tremoloFrequency?: number;
   tremoloDepth?: number;
@@ -273,6 +275,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     skewLfoRate: '1/4',
     skewLfoAmount: 0.25,
     skewLfoWaveform: 'sine',
+    skewLfoInitPhase: 0,
     tremoloEnabled: false,
     tremoloFrequency: 5,
     tremoloDepth: 0.35,
@@ -328,6 +331,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     skewLfoRate: track.skewLfoRate ?? fallbackTrack.skewLfoRate,
     skewLfoAmount: clamp(track.skewLfoAmount ?? fallbackTrack.skewLfoAmount, -1, 1),
     skewLfoWaveform: normalizeSkewLfoWaveform(track.skewLfoWaveform, fallbackTrack.skewLfoWaveform as LfoWaveform),
+    skewLfoInitPhase: clamp(track.skewLfoInitPhase ?? fallbackTrack.skewLfoInitPhase, 0, 0.999999),
     tremoloEnabled: Boolean(track.tremoloEnabled ?? fallbackTrack.tremoloEnabled),
     tremoloFrequency: clamp(track.tremoloFrequency ?? fallbackTrack.tremoloFrequency, 0.01, 40),
     tremoloDepth: clamp(track.tremoloDepth ?? fallbackTrack.tremoloDepth, 0, 1),
@@ -799,7 +803,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             let phase = 0;
             const skewLfoEnabled = entry.track.skewLfoEnabled && entry.track.skewLfoAmount !== 0;
             const skewLfoWaveform = normalizeSkewLfoWaveform(entry.track.skewLfoWaveform, 'sine');
-            const skewLfoState = createSkewLfoState((midiNote * 131 + voice * 17 + i * 13) >>> 0);
+            const skewLfoState = createSkewLfoState(
+              (midiNote * 131 + voice * 17 + i * 13) >>> 0,
+              entry.track.skewLfoInitPhase,
+            );
             const skewLfoFrequencyHz = getLfoFrequencyHz({
               sync: entry.track.skewLfoSync,
               rateHz: entry.track.skewLfoRateHz,

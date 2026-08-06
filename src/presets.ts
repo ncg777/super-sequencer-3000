@@ -34,6 +34,8 @@ export interface PresetTrackData {
   skewLfoAmount: number;
   /** Skew LFO shape. */
   skewLfoWaveform: SkewLfoWaveformValue;
+  /** Normalized LFO start phase in [0, 1). */
+  skewLfoInitPhase: number;
   tremoloEnabled: boolean;
   tremoloFrequency: number;
   tremoloDepth: number;
@@ -291,6 +293,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   skewLfoRate: '1/4',
   skewLfoAmount: 0.25,
   skewLfoWaveform: 'sine',
+  skewLfoInitPhase: 0,
   tremoloEnabled: false,
   tremoloFrequency: 5,
   tremoloDepth: 0.35,
@@ -552,6 +555,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     skewLfoRate: track.skewLfoRate,
     skewLfoAmount: track.skewLfoAmount,
     skewLfoWaveform: track.skewLfoWaveform,
+    skewLfoInitPhase: track.skewLfoInitPhase,
     tremoloEnabled: track.tremoloEnabled,
     tremoloFrequency: track.tremoloFrequency,
     tremoloDepth: track.tremoloDepth,
@@ -633,6 +637,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     skewLfoRate: normalizeModulationRate(raw.skewLfoRate, DEFAULT_PRESET_TRACK_DATA.skewLfoRate),
     skewLfoAmount: clamp(parseNumber(raw.skewLfoAmount, DEFAULT_PRESET_TRACK_DATA.skewLfoAmount), -1, 1),
     skewLfoWaveform: normalizeSkewLfoWaveform(raw.skewLfoWaveform),
+    skewLfoInitPhase: clamp(parseNumber(raw.skewLfoInitPhase, DEFAULT_PRESET_TRACK_DATA.skewLfoInitPhase), 0, 0.999999),
     tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
     tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
     tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
@@ -780,6 +785,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.skewLfoRate !== rightTrack.skewLfoRate
       || leftTrack.skewLfoAmount !== rightTrack.skewLfoAmount
       || leftTrack.skewLfoWaveform !== rightTrack.skewLfoWaveform
+      || leftTrack.skewLfoInitPhase !== rightTrack.skewLfoInitPhase
       || leftTrack.tremoloEnabled !== rightTrack.tremoloEnabled
       || leftTrack.tremoloFrequency !== rightTrack.tremoloFrequency
       || leftTrack.tremoloDepth !== rightTrack.tremoloDepth
