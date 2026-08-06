@@ -3,7 +3,6 @@
 A browser-based MIDI step sequencer that generates MIDI files from binary-encoded note sequences using Forte number pitch-class sets.
 
 **Live app:** [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/)
-*(Until the GitHub repository is renamed, the app is also accessible at [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/))*
 
 ### Presets
 
