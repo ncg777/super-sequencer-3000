@@ -1,3 +1,10 @@
+import {
+  CUSTOM_TIME_WARP_CURVE,
+  DEFAULT_TIME_WARP_CURVE,
+  TIME_WARP_CURVE_VALUES,
+  TIME_WARP_QUANTIZE_OPTIONS,
+} from './audio/timeWarp';
+
 export interface PresetTrackData {
   id: string;
   name: string;
@@ -13,6 +20,15 @@ export interface PresetTrackData {
   velocityMultiplier: number;
   delay: number;
   repeats: number;
+  timeWarpEnabled: boolean;
+  timeWarpCurve: string;
+  timeWarpExpression: string;
+  /** 0-100 blend between identity and selected warp curve. */
+  timeWarpAmount: number;
+  /** 0 disables quantization; 1,2,4,8 quantize by per-step subdivisions. */
+  timeWarpQuantize: number;
+  /** If true, warped end times redefine note durations. */
+  timeWarpNoteLengths: boolean;
   attack: number;
   decay: number;
   sustain: number;
@@ -279,6 +295,12 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   velocityMultiplier: 1,
   delay: 0,
   repeats: 1,
+  timeWarpEnabled: false,
+  timeWarpCurve: DEFAULT_TIME_WARP_CURVE,
+  timeWarpExpression: '',
+  timeWarpAmount: 100,
+  timeWarpQuantize: 0,
+  timeWarpNoteLengths: true,
   attack: 0.01,
   decay: 0,
   sustain: 1,
@@ -379,6 +401,7 @@ const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 const MODULATION_RATE_VALUES = new Set<string>(MODULATION_RATE_OPTIONS);
 const SKEW_LFO_WAVEFORM_VALUES = new Set<string>(SKEW_LFO_WAVEFORM_OPTIONS.map((option) => option.value));
 const PHASER_STAGES = new Set<number>(PHASER_STAGE_OPTIONS);
+const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
 
 type LegacyTrackFields = {
   numerator?: number;
@@ -485,6 +508,24 @@ function normalizePhaserStages(value: unknown): number {
   return PHASER_STAGES.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.phaserStages;
 }
 
+function normalizeTimeWarpCurve(value: unknown): string {
+  return typeof value === 'string' && TIME_WARP_CURVE_VALUES.has(value)
+    ? value
+    : DEFAULT_PRESET_TRACK_DATA.timeWarpCurve;
+}
+
+function normalizeTimeWarpExpression(value: unknown): string {
+  if (typeof value !== 'string') {
+    return DEFAULT_PRESET_TRACK_DATA.timeWarpExpression;
+  }
+  return value.slice(0, 512);
+}
+
+function normalizeTimeWarpQuantize(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  return TIME_WARP_QUANTIZE_VALUES.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.timeWarpQuantize;
+}
+
 export function clonePresetReverbData(reverb: PresetReverbData): PresetReverbData {
   return {
     enabled: reverb.enabled,
@@ -541,6 +582,12 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     velocityMultiplier: track.velocityMultiplier,
     delay: track.delay,
     repeats: track.repeats,
+    timeWarpEnabled: track.timeWarpEnabled,
+    timeWarpCurve: track.timeWarpCurve,
+    timeWarpExpression: track.timeWarpExpression,
+    timeWarpAmount: track.timeWarpAmount,
+    timeWarpQuantize: track.timeWarpQuantize,
+    timeWarpNoteLengths: track.timeWarpNoteLengths,
     attack: track.attack,
     decay: track.decay,
     sustain: track.sustain,
@@ -623,6 +670,12 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     velocityMultiplier: clamp(parseNumber(raw.velocityMultiplier, DEFAULT_PRESET_TRACK_DATA.velocityMultiplier), 0, 4),
     delay: clamp(parseInteger(raw.delay?.toString(), DEFAULT_PRESET_TRACK_DATA.delay), 0, 64),
     repeats: clamp(parseInteger(raw.repeats?.toString(), DEFAULT_PRESET_TRACK_DATA.repeats), 1, 64),
+    timeWarpEnabled: Boolean(raw.timeWarpEnabled ?? DEFAULT_PRESET_TRACK_DATA.timeWarpEnabled),
+    timeWarpCurve: normalizeTimeWarpCurve(raw.timeWarpCurve),
+    timeWarpExpression: normalizeTimeWarpExpression(raw.timeWarpExpression),
+    timeWarpAmount: clamp(parseNumber(raw.timeWarpAmount, DEFAULT_PRESET_TRACK_DATA.timeWarpAmount), 0, 100),
+    timeWarpQuantize: normalizeTimeWarpQuantize(raw.timeWarpQuantize),
+    timeWarpNoteLengths: Boolean(raw.timeWarpNoteLengths ?? DEFAULT_PRESET_TRACK_DATA.timeWarpNoteLengths),
     attack: clamp(parseNumber(raw.attack, DEFAULT_PRESET_TRACK_DATA.attack), 0, 10),
     decay: clamp(parseNumber(raw.decay, DEFAULT_PRESET_TRACK_DATA.decay), 0, 10),
     sustain: clamp(parseNumber(raw.sustain, DEFAULT_PRESET_TRACK_DATA.sustain), 0, 1),
@@ -771,6 +824,12 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.velocityMultiplier !== rightTrack.velocityMultiplier
       || leftTrack.delay !== rightTrack.delay
       || leftTrack.repeats !== rightTrack.repeats
+      || leftTrack.timeWarpEnabled !== rightTrack.timeWarpEnabled
+      || leftTrack.timeWarpCurve !== rightTrack.timeWarpCurve
+      || leftTrack.timeWarpExpression !== rightTrack.timeWarpExpression
+      || leftTrack.timeWarpAmount !== rightTrack.timeWarpAmount
+      || leftTrack.timeWarpQuantize !== rightTrack.timeWarpQuantize
+      || leftTrack.timeWarpNoteLengths !== rightTrack.timeWarpNoteLengths
       || leftTrack.attack !== rightTrack.attack
       || leftTrack.decay !== rightTrack.decay
       || leftTrack.sustain !== rightTrack.sustain
@@ -1265,6 +1324,12 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
         lengthFactor: params.get('lengthFactor') ?? firstTrack.lengthFactor,
         delay: params.get('delay') ?? firstTrack.delay,
         repeats: params.get('repeats') ?? firstTrack.repeats,
+        timeWarpEnabled: params.get('timeWarpEnabled') ?? firstTrack.timeWarpEnabled,
+        timeWarpCurve: params.get('timeWarpCurve') ?? firstTrack.timeWarpCurve,
+        timeWarpExpression: params.get('timeWarpExpression') ?? firstTrack.timeWarpExpression,
+        timeWarpAmount: params.get('timeWarpAmount') ?? firstTrack.timeWarpAmount,
+        timeWarpQuantize: params.get('timeWarpQuantize') ?? firstTrack.timeWarpQuantize,
+        timeWarpNoteLengths: params.get('timeWarpNoteLengths') ?? firstTrack.timeWarpNoteLengths,
       },
       ...baseData.tracks.slice(1),
     ],
@@ -1274,7 +1339,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 export function hasUrlPresetOverrides(search: string): boolean {
   const params = new URLSearchParams(search);
 
-  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats']
+  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats', 'timeWarpEnabled', 'timeWarpCurve', 'timeWarpExpression', 'timeWarpAmount', 'timeWarpQuantize', 'timeWarpNoteLengths']
     .some((key) => params.has(key));
 }
 

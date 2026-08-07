@@ -4,6 +4,7 @@
       <v-tabs v-model="activeControlTab" :direction="$vuetify.display.xs ? 'horizontal' : 'vertical'" class="control-tabs" color="primary">
         <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
         <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
+        <v-tab value="time-warp" prepend-icon="mdi-chart-sankey">Time Warp</v-tab>
         <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
         <v-tab value="phase-distortion" prepend-icon="mdi-chart-timeline-variant">Phase Distortion</v-tab>
         <v-tab value="envelope" prepend-icon="mdi-chart-bell-curve-cumulative">Envelope</v-tab>
@@ -162,6 +163,102 @@
                 :step="1"
                 v-model="draftTrack.repeats"
                 @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+        </v-window-item>
+
+        <v-window-item value="time-warp" class="control-tab-panel">
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-switch
+                v-model="draftTrack.timeWarpEnabled"
+                label="Enable Time Warp"
+                hide-details
+                density="compact"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-switch
+                v-model="draftTrack.timeWarpNoteLengths"
+                label="Warp note lengths"
+                hide-details
+                density="compact"
+                :disabled="!draftTrack.timeWarpEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row>
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="draftTrack.timeWarpCurve"
+                label="Warp curve"
+                :items="timeWarpCurveOptions"
+                hide-details="auto"
+                density="comfortable"
+                variant="outlined"
+                :disabled="!draftTrack.timeWarpEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row v-if="draftTrack.timeWarpCurve === customTimeWarpCurve">
+            <v-col cols="12">
+              <v-text-field
+                v-model="draftTrack.timeWarpExpression"
+                label="Custom expression"
+                placeholder="Y=T+sin(PI*T)*0.125"
+                hide-details="auto"
+                density="comfortable"
+                variant="outlined"
+                :error="timeWarpExpressionError.length > 0"
+                :error-messages="timeWarpExpressionError"
+                :disabled="!draftTrack.timeWarpEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
+                :label="'Warp amount (' + Number(draftTrack.timeWarpAmount).toFixed(0) + '%)'"
+                :min="0"
+                :max="100"
+                :step="1"
+                v-model="draftTrack.timeWarpAmount"
+                :disabled="!draftTrack.timeWarpEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="draftTrack.timeWarpQuantize"
+                label="Grid quantize"
+                :items="timeWarpQuantizeOptions"
+                hide-details="auto"
+                density="comfortable"
+                variant="outlined"
+                :disabled="!draftTrack.timeWarpEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row>
+            <v-col cols="12">
+              <TimeWarpPreview
+                :curve="draftTrack.timeWarpCurve"
+                :expression="draftTrack.timeWarpExpression"
+                :amount="draftTrack.timeWarpAmount"
+                :steps="Math.max(1, selectedTrackSequenceLength)"
               />
             </v-col>
           </v-row>
@@ -552,6 +649,13 @@
 import { defineComponent, type PropType } from 'vue';
 import EditableSlider from './EditableSlider.vue';
 import ReverbControls from './ReverbControls.vue';
+import TimeWarpPreview from './TimeWarpPreview.vue';
+import {
+  CUSTOM_TIME_WARP_CURVE,
+  TIME_WARP_CURVE_OPTIONS,
+  TIME_WARP_QUANTIZE_OPTIONS,
+  resolveTimeWarpFunction,
+} from '../audio/timeWarp';
 import {
   clonePresetTrackData,
   DEFAULT_PRESET_TRACK_DATA,
@@ -571,6 +675,7 @@ export default defineComponent({
   components: {
     EditableSlider,
     ReverbControls,
+    TimeWarpPreview,
   },
   props: {
     track: {
@@ -597,12 +702,32 @@ export default defineComponent({
       phaserStageOptions: [...PHASER_STAGE_OPTIONS] as number[],
       waveformOptions: WAVEFORM_OPTIONS,
       skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
+      customTimeWarpCurve: CUSTOM_TIME_WARP_CURVE,
+      timeWarpCurveOptions: [
+        { title: 'Custom expression', value: CUSTOM_TIME_WARP_CURVE },
+        ...TIME_WARP_CURVE_OPTIONS.map((option) => ({
+          title: `${option.group} - ${option.title}`,
+          value: option.value,
+        })),
+      ],
+      timeWarpQuantizeOptions: TIME_WARP_QUANTIZE_OPTIONS.map((value) => ({
+        title: value === 0 ? 'Off' : `${value} subdivisions per step`,
+        value,
+      })),
       activeControlTab: 'sequence',
     };
   },
   computed: {
     selectedTrackSequenceLength(): number {
       return this.parseSequence(this.draftTrack.sequenceInput).length;
+    },
+    timeWarpExpressionError(): string {
+      if (!this.draftTrack.timeWarpEnabled || this.draftTrack.timeWarpCurve !== CUSTOM_TIME_WARP_CURVE) {
+        return '';
+      }
+
+      const resolution = resolveTimeWarpFunction(this.draftTrack.timeWarpCurve, this.draftTrack.timeWarpExpression);
+      return resolution.error ?? '';
     },
   },
   watch: {

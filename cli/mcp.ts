@@ -91,10 +91,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description: 'Legacy single-track number of pattern repetitions (1-64). Used when tracks is omitted. Default: 1.',
             },
+            timeWarpEnabled: {
+              type: 'boolean',
+              description: 'Legacy single-track time warp enabled. Used when tracks is omitted. Default: false.',
+            },
+            timeWarpCurve: {
+              type: 'string',
+              description: 'Legacy single-track time warp curve name. Used when tracks is omitted. Default: lin.',
+            },
+            timeWarpExpression: {
+              type: 'string',
+              description: 'Legacy single-track custom time warp expression when timeWarpCurve is custom.',
+            },
+            timeWarpAmount: {
+              type: 'number',
+              description: 'Legacy single-track warp amount percent (0-100). Used when tracks is omitted. Default: 100.',
+            },
+            timeWarpQuantize: {
+              type: 'number',
+              description: 'Legacy single-track warp quantize subdivisions per step (0,1,2,4,8). Used when tracks is omitted. Default: 0.',
+            },
+            timeWarpNoteLengths: {
+              type: 'boolean',
+              description: 'Legacy single-track note length warping enabled. Used when tracks is omitted. Default: true.',
+            },
             tracks: {
               type: 'array',
               description:
-                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, midiChannel, gain, delay, repeats.',
+                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, midiChannel, gain, delay, repeats, and time warp fields.',
               items: {
                 type: 'object',
                 properties: {
@@ -109,6 +133,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                   gain: { type: 'number' },
                   delay: { type: 'number' },
                   repeats: { type: 'number' },
+                  timeWarpEnabled: { type: 'boolean' },
+                  timeWarpCurve: { type: 'string' },
+                  timeWarpExpression: { type: 'string' },
+                  timeWarpAmount: { type: 'number' },
+                  timeWarpQuantize: { type: 'number' },
+                  timeWarpNoteLengths: { type: 'boolean' },
                 },
               },
             },
@@ -139,6 +169,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     args[key] !== undefined ? Number(args[key]) : undefined;
   const optStr = (key: string) =>
     args[key] !== undefined ? String(args[key]) : undefined;
+  const optBool = (key: string) => {
+    if (args[key] === undefined) {
+      return undefined;
+    }
+    if (typeof args[key] === 'boolean') {
+      return args[key] as boolean;
+    }
+    const normalized = String(args[key]).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+    throw new Error(`Invalid boolean value for ${key}: ${args[key]}`);
+  };
 
   try {
     const data = await generateMidi({
@@ -155,6 +201,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       waveform: optStr('waveform'),
       delay: optNum('delay'),
       repeats: optNum('repeats'),
+      timeWarpEnabled: optBool('timeWarpEnabled'),
+      timeWarpCurve: optStr('timeWarpCurve'),
+      timeWarpExpression: optStr('timeWarpExpression'),
+      timeWarpAmount: optNum('timeWarpAmount'),
+      timeWarpQuantize: optNum('timeWarpQuantize'),
+      timeWarpNoteLengths: optBool('timeWarpNoteLengths'),
       tracks: Array.isArray(args['tracks']) ? (args['tracks'] as Record<string, unknown>[]) : undefined,
     });
 

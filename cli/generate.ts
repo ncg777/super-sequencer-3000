@@ -9,6 +9,14 @@ import {
   type LfoWaveform,
 } from '../src/audio/lfo.js';
 import { effectiveSkew, warpPhase } from '../src/audio/phaseDistortion.js';
+import {
+  DEFAULT_TIME_WARP_CURVE,
+  quantizeNormalizedTime,
+  resolveTimeWarpFunction,
+  TIME_WARP_CURVE_VALUES,
+  TIME_WARP_QUANTIZE_OPTIONS,
+  warpNormalizedTime,
+} from '../src/audio/timeWarp.js';
 
 export interface GenerateTrackOptions {
   /** Optional display name for the track. */
@@ -35,6 +43,12 @@ export interface GenerateTrackOptions {
   delay?: number;
   /** Number of repetitions of the pattern (1-64). */
   repeats?: number;
+  timeWarpEnabled?: boolean;
+  timeWarpCurve?: string;
+  timeWarpExpression?: string;
+  timeWarpAmount?: number;
+  timeWarpQuantize?: number;
+  timeWarpNoteLengths?: boolean;
   attack?: number;
   release?: number;
   unisonVoices?: number;
@@ -103,9 +117,21 @@ const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
 const TONEWHEEL_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 const SKEW_LFO_WAVEFORMS = new Set<string>(['sine', 'triangle', 'saw-up', 'saw-down', 'square', 'sample-hold']);
+const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
 
 function normalizeSkewLfoWaveform(value: string | undefined, fallback: LfoWaveform): LfoWaveform {
   return value && SKEW_LFO_WAVEFORMS.has(value) ? value as LfoWaveform : fallback;
+}
+
+function normalizeTimeWarpCurve(value: string | undefined): string {
+  return value && TIME_WARP_CURVE_VALUES.has(value) ? value : DEFAULT_TIME_WARP_CURVE;
+}
+
+function normalizeTimeWarpQuantize(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return TIME_WARP_QUANTIZE_VALUES.has(value) ? value : fallback;
 }
 
 export interface GenerateReverbOptions {
@@ -147,6 +173,12 @@ export interface GenerateOptions {
   delay?: number;
   /** Legacy single-track number of pattern repetitions used when tracks is omitted. */
   repeats?: number;
+  timeWarpEnabled?: boolean;
+  timeWarpCurve?: string;
+  timeWarpExpression?: string;
+  timeWarpAmount?: number;
+  timeWarpQuantize?: number;
+  timeWarpNoteLengths?: boolean;
   /** Multi-track definition. If omitted, legacy single-track fields are used. */
   tracks?: GenerateTrackOptions[];
   reverb?: GenerateReverbOptions;
@@ -161,6 +193,14 @@ interface TrackRenderData {
   track: NormalizedTrack;
   quant: number;
   actualNotes: number[][];
+}
+
+interface TrackScheduledEvent {
+  time: number;
+  duration: number;
+  velocity: number;
+  notes: number[];
+  order: number;
 }
 
 interface PreparedRenderData {
@@ -241,6 +281,86 @@ function getStepDuration(actualNotes: number[][], index: number): number {
   return 1;
 }
 
+function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration: number): TrackScheduledEvent[] {
+  if (entry.actualNotes.length === 0) {
+    return [];
+  }
+
+  const trackPeriod = entry.actualNotes.length * entry.quant;
+  if (trackPeriod <= 0) {
+    return [];
+  }
+
+  const delaySeconds = getTrackDelaySeconds(bpm, entry.track);
+  const warpAmount = entry.track.timeWarpEnabled ? entry.track.timeWarpAmount / 100 : 0;
+  const warpEnabled = entry.track.timeWarpEnabled && warpAmount > 0;
+  const warpResolution = resolveTimeWarpFunction(entry.track.timeWarpCurve, entry.track.timeWarpExpression);
+  const quantizeDivisions = entry.track.timeWarpQuantize > 0 ? entry.actualNotes.length * entry.track.timeWarpQuantize : 0;
+  const events: TrackScheduledEvent[] = [];
+  let order = 0;
+
+  for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
+    const loopStart = delaySeconds + repeat * trackPeriod;
+    for (let i = 0; i < entry.actualNotes.length; i += 1) {
+      const notes = entry.actualNotes[i];
+      if (notes.length === 0) {
+        continue;
+      }
+
+      const durSteps = getStepDuration(entry.actualNotes, i);
+      const baseDuration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
+      let eventTime = loopStart + (i * entry.quant);
+      let duration = baseDuration;
+
+      if (warpEnabled) {
+        const startNormalized = i / entry.actualNotes.length;
+        const endNormalized = startNormalized + (baseDuration / trackPeriod);
+        let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
+        let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
+
+        if (quantizeDivisions > 0) {
+          warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
+          warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
+        }
+
+        if (warpedStart === warpedEnd) {
+          continue;
+        }
+
+        if (warpedEnd < warpedStart) {
+          const tmp = warpedStart;
+          warpedStart = warpedEnd;
+          warpedEnd = tmp;
+        }
+
+        eventTime = loopStart + warpedStart * trackPeriod;
+        if (entry.track.timeWarpNoteLengths) {
+          duration = Math.max(0.0005, (warpedEnd - warpedStart) * trackPeriod);
+        }
+      }
+
+      if (eventTime >= totalLoopDuration || duration <= 0) {
+        continue;
+      }
+
+      events.push({
+        time: eventTime,
+        duration,
+        velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
+        notes,
+        order,
+      });
+      order += 1;
+    }
+  }
+
+  if (warpEnabled) {
+    events.sort((left, right) => (left.time === right.time ? left.order - right.order : left.time - right.time));
+  }
+
+  return events;
+}
+
 function normalizeTonewheelDrawbars(value: unknown): number[] {
   const raw = Array.isArray(value) ? value : [];
   return DEFAULT_TONEWHEEL_DRAWBARS.map((fallback, index) => {
@@ -263,6 +383,12 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     velocityMultiplier: 1,
     delay: clamp(options.delay ?? 0, 0, 64),
     repeats: clamp(options.repeats ?? 1, 1, 64),
+    timeWarpEnabled: Boolean(options.timeWarpEnabled ?? false),
+    timeWarpCurve: normalizeTimeWarpCurve(options.timeWarpCurve),
+    timeWarpExpression: typeof options.timeWarpExpression === 'string' ? options.timeWarpExpression.slice(0, 512) : '',
+    timeWarpAmount: clamp(options.timeWarpAmount ?? 100, 0, 100),
+    timeWarpQuantize: normalizeTimeWarpQuantize(options.timeWarpQuantize, 0),
+    timeWarpNoteLengths: Boolean(options.timeWarpNoteLengths ?? true),
     attack: 0.01,
     release: 0.12,
     unisonVoices: 1,
@@ -319,6 +445,12 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     velocityMultiplier: clamp(track.velocityMultiplier ?? fallbackTrack.velocityMultiplier, 0, 4),
     delay: clamp(track.delay ?? fallbackTrack.delay, 0, 64),
     repeats: clamp(track.repeats ?? fallbackTrack.repeats, 1, 64),
+    timeWarpEnabled: Boolean(track.timeWarpEnabled ?? fallbackTrack.timeWarpEnabled),
+    timeWarpCurve: normalizeTimeWarpCurve(track.timeWarpCurve ?? fallbackTrack.timeWarpCurve),
+    timeWarpExpression: typeof track.timeWarpExpression === 'string' ? track.timeWarpExpression.slice(0, 512) : fallbackTrack.timeWarpExpression,
+    timeWarpAmount: clamp(track.timeWarpAmount ?? fallbackTrack.timeWarpAmount, 0, 100),
+    timeWarpQuantize: normalizeTimeWarpQuantize(track.timeWarpQuantize, fallbackTrack.timeWarpQuantize),
+    timeWarpNoteLengths: Boolean(track.timeWarpNoteLengths ?? fallbackTrack.timeWarpNoteLengths),
     attack: clamp(track.attack ?? fallbackTrack.attack, 0, 10),
     release: clamp(track.release ?? fallbackTrack.release, 0, 20),
     unisonVoices: clamp(track.unisonVoices ?? fallbackTrack.unisonVoices, 1, 8),
@@ -684,43 +816,22 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
   const totalLoopDuration = getLoopDurationSecondsFromTrackLengths(prepared);
 
   for (const entry of prepared.tracks) {
-    if (entry.actualNotes.length === 0) {
+    const events = buildTrackEvents(entry, prepared.bpm, totalLoopDuration);
+    if (events.length === 0) {
       continue;
     }
 
     const track = midi.addTrack();
     track.channel = entry.track.midiChannel - 1;
-    const trackPeriod = entry.actualNotes.length * entry.quant;
-    if (trackPeriod <= 0) {
-      continue;
-    }
 
-    const delaySeconds = getTrackDelaySeconds(prepared.bpm, entry.track);
-
-    for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
-      const loopStart = delaySeconds + repeat * trackPeriod;
-      for (let i = 0; i < entry.actualNotes.length; i += 1) {
-        const notes = entry.actualNotes[i];
-        if (notes.length === 0) {
-          continue;
-        }
-
-        const eventTime = loopStart + (i * entry.quant);
-        if (eventTime >= totalLoopDuration) {
-          continue;
-        }
-
-        const vel = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier);
-        const dur = getStepDuration(entry.actualNotes, i);
-
-        for (const note of notes) {
-          track.addNote({
-            midi: note,
-            time: eventTime,
-            duration: (dur * entry.quant * entry.track.lengthFactor) / 100.0,
-            velocity: vel,
-          });
-        }
+    for (const event of events) {
+      for (const note of event.notes) {
+        track.addNote({
+          midi: note,
+          time: event.time,
+          duration: event.duration,
+          velocity: event.velocity,
+        });
       }
     }
   }
@@ -753,42 +864,25 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
 
   for (const entry of prepared.tracks) {
-    if (entry.actualNotes.length === 0) {
+    const events = buildTrackEvents(entry, prepared.bpm, totalDuration);
+    if (events.length === 0) {
       continue;
     }
 
-    const trackPeriod = entry.actualNotes.length * entry.quant;
-    if (trackPeriod <= 0) {
-      continue;
-    }
-
-    const delaySeconds = getTrackDelaySeconds(prepared.bpm, entry.track);
     const trackLeft = new Float32Array(frameCount);
     const trackRight = new Float32Array(frameCount);
     const tonewheel = prepareTonewheel(entry.track.tonewheelDrawbars);
 
-    for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
-      const loopStart = delaySeconds + repeat * trackPeriod;
-      for (let i = 0; i < entry.actualNotes.length; i += 1) {
-        const notes = entry.actualNotes[i];
-        if (notes.length === 0) {
-          continue;
-        }
+    for (const event of events) {
+      const start = event.time;
+      const duration = event.duration;
+      const notes = event.notes;
+      const noteAmplitude = event.velocity * 0.12 * dbToGain(entry.track.gain);
 
-        const start = loopStart + (i * entry.quant);
-        if (start >= totalDuration) {
-          continue;
-        }
+      const startFrame = Math.max(0, Math.floor(start * sampleRate));
+      const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));
 
-        const durSteps = getStepDuration(entry.actualNotes, i);
-        const duration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
-        const velocity = Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier);
-        const noteAmplitude = velocity * 0.12 * dbToGain(entry.track.gain);
-
-        const startFrame = Math.max(0, Math.floor(start * sampleRate));
-        const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));
-
-        for (const midiNote of notes) {
+      for (const midiNote of notes) {
           const voiceCount = entry.track.unisonVoices;
 
           for (let voice = 0; voice < voiceCount; voice += 1) {
@@ -804,7 +898,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             const skewLfoEnabled = entry.track.skewLfoEnabled && entry.track.skewLfoAmount !== 0;
             const skewLfoWaveform = normalizeSkewLfoWaveform(entry.track.skewLfoWaveform, 'sine');
             const skewLfoState = createSkewLfoState(
-              (midiNote * 131 + voice * 17 + i * 13) >>> 0,
+              (midiNote * 131 + voice * 17 + event.order * 13) >>> 0,
               entry.track.skewLfoInitPhase,
             );
             const skewLfoFrequencyHz = getLfoFrequencyHz({
@@ -864,7 +958,6 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             }
           }
         }
-      }
     }
 
     applyFeedbackEcho(trackLeft, trackRight, entry.track, sampleRate, getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay));

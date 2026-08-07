@@ -5,6 +5,24 @@ import { generateMidi, generateWav, type GenerateReverbOptions, type GenerateTra
 
 const program = new Command();
 
+function parseBooleanOption(value: unknown): boolean | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+  throw new Error(`Invalid boolean value: ${value}`);
+}
+
 function parseTracksJson(value: string): GenerateTrackOptions[] {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -51,6 +69,12 @@ program
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
   .option('--delay <number>', 'Legacy single-track delay in bars (0-64)', '0')
   .option('--repeats <number>', 'Legacy single-track number of pattern repetitions (1-64)', '1')
+  .option('--time-warp-enabled <boolean>', 'Legacy single-track time warp enabled (true/false)')
+  .option('--time-warp-curve <string>', 'Legacy single-track time warp curve name')
+  .option('--time-warp-expression <string>', 'Legacy single-track custom time warp expression')
+  .option('--time-warp-amount <number>', 'Legacy single-track warp amount percent (0-100)')
+  .option('--time-warp-quantize <number>', 'Legacy single-track warp quantize subdivisions per step (0,1,2,4,8)')
+  .option('--time-warp-note-lengths <boolean>', 'Legacy single-track warped note lengths (true/false)')
   .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echoDelay notation (1/1..1/16T), and reverb send controls', parseTracksJson)
   .option('--reverb <json>', 'JSON object with global reverb enabled, decay, preDelay, wet, lowCut, highCut', parseReverbJson)
   .action(async (options) => {
@@ -69,6 +93,12 @@ program
         waveform: options.waveform,
         delay: parseInt(options.delay),
         repeats: parseInt(options.repeats),
+        timeWarpEnabled: parseBooleanOption(options.timeWarpEnabled),
+        timeWarpCurve: options.timeWarpCurve,
+        timeWarpExpression: options.timeWarpExpression,
+        timeWarpAmount: options.timeWarpAmount !== undefined ? parseFloat(options.timeWarpAmount) : undefined,
+        timeWarpQuantize: options.timeWarpQuantize !== undefined ? parseInt(options.timeWarpQuantize) : undefined,
+        timeWarpNoteLengths: parseBooleanOption(options.timeWarpNoteLengths),
         tracks: options.tracks,
         reverb: options.reverb,
       };

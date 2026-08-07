@@ -285,6 +285,11 @@ import {
 } from './audio/lfo';
 import { effectiveSkew, warpPhase } from './audio/phaseDistortion';
 import {
+  quantizeNormalizedTime,
+  resolveTimeWarpFunction,
+  warpNormalizedTime,
+} from './audio/timeWarp';
+import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
   arePresetDataEqual,
@@ -398,6 +403,15 @@ export interface TrackMixState {
   soloed: boolean;
 }
 
+interface TrackScheduledEvent {
+  time: number;
+  duration: number;
+  velocity: number;
+  notes: number[];
+  step: number;
+  order: number;
+}
+
 function buildInitialState() {
   const presetLibrary = loadPresetLibrary();
   const selectedPreset = getSelectedPreset(presetLibrary);
@@ -447,7 +461,7 @@ export default defineComponent({
       playbackErrorMessage: '',
       showPlaybackError: false,
       audioContextResumeHandler: null as (() => void) | null,
-      trackLoops: {} as Record<string, Tone.Part<{ time: number; step: number }>>,
+      trackLoops: {} as Record<string, Tone.Part<TrackScheduledEvent>>,
       showHelp: false,
       trackSynths: {} as Record<string, TrackAudioChain>,
       reverbChain: null as ReverbAudioChain | null,
@@ -828,6 +842,87 @@ export default defineComponent({
       }
       return Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * velocityMultiplier);
     },
+    buildTrackEvents(track: PresetTrackData, trackNotes: number[][], totalLoopDuration: number): TrackScheduledEvent[] {
+      if (trackNotes.length === 0) {
+        return [];
+      }
+
+      const trackQuant = this.getTrackQuant(track);
+      const trackPeriod = trackNotes.length * trackQuant;
+      if (trackPeriod <= 0) {
+        return [];
+      }
+
+      const delaySeconds = this.getTrackDelaySeconds(track);
+      const warpAmount = track.timeWarpEnabled ? track.timeWarpAmount / 100 : 0;
+      const warpEnabled = track.timeWarpEnabled && warpAmount > 0;
+      const warpResolution = resolveTimeWarpFunction(track.timeWarpCurve, track.timeWarpExpression);
+      const quantizeDivisions = track.timeWarpQuantize > 0 ? trackNotes.length * track.timeWarpQuantize : 0;
+      const events: TrackScheduledEvent[] = [];
+      let order = 0;
+
+      for (let repeat = 0; repeat < track.repeats; repeat += 1) {
+        const loopStart = delaySeconds + repeat * trackPeriod;
+        for (let i = 0; i < trackNotes.length; i += 1) {
+          const notes = trackNotes[i];
+          if (notes.length === 0) {
+            continue;
+          }
+
+          const durSteps = this.getTrackStepDuration(trackNotes, i);
+          const baseDuration = durSteps * trackQuant * track.lengthFactor / 100.0;
+          let eventTime = loopStart + (i * trackQuant);
+          let duration = baseDuration;
+
+          if (warpEnabled) {
+            const startNormalized = i / trackNotes.length;
+            const endNormalized = startNormalized + (baseDuration / trackPeriod);
+            let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
+            let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
+
+            if (quantizeDivisions > 0) {
+              warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
+              warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
+            }
+
+            if (warpedStart === warpedEnd) {
+              continue;
+            }
+
+            if (warpedEnd < warpedStart) {
+              const tmp = warpedStart;
+              warpedStart = warpedEnd;
+              warpedEnd = tmp;
+            }
+
+            eventTime = loopStart + warpedStart * trackPeriod;
+            if (track.timeWarpNoteLengths) {
+              duration = Math.max(0.0005, (warpedEnd - warpedStart) * trackPeriod);
+            }
+          }
+
+          if (eventTime >= totalLoopDuration || duration <= 0) {
+            continue;
+          }
+
+          events.push({
+            time: eventTime,
+            duration,
+            velocity: this.getTrackVelocity(notes, track.velocityMultiplier),
+            notes,
+            step: i,
+            order,
+          });
+          order += 1;
+        }
+      }
+
+      if (warpEnabled) {
+        events.sort((left, right) => (left.time === right.time ? left.order - right.order : left.time - right.time));
+      }
+
+      return events;
+    },
     midiToFrequency(midi: number): number {
       return this.a4 * Math.pow(2, (midi - 69) / 12);
     },
@@ -844,7 +939,15 @@ export default defineComponent({
         || previous.delay !== next.delay
         || previous.repeats !== next.repeats
         || previous.sequenceInput !== next.sequenceInput
-        || previous.octave !== next.octave;
+        || previous.octave !== next.octave
+        || previous.lengthFactor !== next.lengthFactor
+        || previous.velocityMultiplier !== next.velocityMultiplier
+        || previous.timeWarpEnabled !== next.timeWarpEnabled
+        || previous.timeWarpCurve !== next.timeWarpCurve
+        || previous.timeWarpExpression !== next.timeWarpExpression
+        || previous.timeWarpAmount !== next.timeWarpAmount
+        || previous.timeWarpQuantize !== next.timeWarpQuantize
+        || previous.timeWarpNoteLengths !== next.timeWarpNoteLengths;
     },
     dbToWetMix(db: number): number {
       return this.clampNormalRange(this.dbToGain(db));
@@ -966,13 +1069,10 @@ export default defineComponent({
             'Scheduling tracks...',
           );
 
-          const trackQuant = this.getTrackQuant(entry.track);
-          const trackPeriod = entry.notes.length * trackQuant;
-          if (trackPeriod <= 0) {
+          const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration);
+          if (events.length === 0) {
             continue;
           }
-
-          const delaySeconds = this.getTrackDelaySeconds(entry.track);
 
           const chain = this.createTrackAudioChain({
             echoPingPong: entry.track.echoPingPong,
@@ -982,25 +1082,9 @@ export default defineComponent({
           this.trackSynths[`offline-${entry.track.id}`] = chain;
           this.updateTrackChainSettings(entry.track, chain);
 
-          for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
-            const loopStart = delaySeconds + repeat * trackPeriod;
-            for (let i = 0; i < entry.notes.length; i += 1) {
-              const notes = entry.notes[i];
-              if (notes.length === 0) {
-                continue;
-              }
-
-              const eventTime = loopStart + (i * trackQuant);
-              if (eventTime >= loopDuration) {
-                continue;
-              }
-
-              const durSteps = this.getTrackStepDuration(entry.notes, i);
-              const duration = durSteps * trackQuant * entry.track.lengthFactor / 100.0;
-              const velocity = this.getTrackVelocity(notes, entry.track.velocityMultiplier);
-              this.scheduleFilterEnvelope(entry.track, notes, eventTime, duration, chain.filter);
-              this.triggerTrackVoice(entry.track, chain, notes, duration, eventTime, velocity);
-            }
+          for (const event of events) {
+            this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain.filter);
+            this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity);
           }
         }
 
@@ -1945,45 +2029,22 @@ export default defineComponent({
       const totalLoopDuration = this.getLoopDurationSecondsFromTrackLengths();
 
       for (const entry of this.allTrackActualNotes) {
-        const notesByStep = entry.notes;
-        if (notesByStep.length === 0) {
+        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration);
+        if (events.length === 0) {
           continue;
         }
 
         const track = midi.addTrack();
         track.channel = entry.track.midiChannel - 1;
-        const trackQuant = this.getTrackQuant(entry.track);
-        const trackPeriod = notesByStep.length * trackQuant;
-        if (trackPeriod <= 0) {
-          continue;
-        }
 
-        const delaySeconds = this.getTrackDelaySeconds(entry.track);
-
-        for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
-          const loopStart = delaySeconds + repeat * trackPeriod;
-          for (let i = 0; i < notesByStep.length; i += 1) {
-            const notes = notesByStep[i];
-            if (notes.length === 0) {
-              continue;
-            }
-
-            const eventTime = loopStart + (i * trackQuant);
-            if (eventTime >= totalLoopDuration) {
-              continue;
-            }
-
-            const dur = this.getTrackStepDuration(notesByStep, i);
-            const vel = this.getTrackVelocity(notes, entry.track.velocityMultiplier);
-
-            for (const note of notes) {
-              track.addNote({
-                midi: note,
-                time: eventTime,
-                duration: dur * trackQuant * entry.track.lengthFactor / 100.0,
-                velocity: vel,
-              });
-            }
+        for (const event of events) {
+          for (const note of event.notes) {
+            track.addNote({
+              midi: note,
+              time: event.time,
+              duration: event.duration,
+              velocity: event.velocity,
+            });
           }
         }
       }
@@ -2037,24 +2098,14 @@ export default defineComponent({
           continue;
         }
 
-        const trackQuant = this.getTrackQuant(entry.track);
-        const trackPeriod = entry.notes.length * trackQuant;
-        if (trackPeriod <= 0) {
+        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration);
+        if (events.length === 0) {
           continue;
         }
 
-        const delaySeconds = this.getTrackDelaySeconds(entry.track);
-        const events: Array<{ time: number; step: number }> = [];
-        for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
-          const repeatStart = delaySeconds + repeat * trackPeriod;
-          for (let i = 0; i < entry.notes.length; i += 1) {
-            events.push({ time: repeatStart + (i * trackQuant), step: i });
-          }
-        }
-
-        const part = markRaw(new Tone.Part<{ time: number; step: number }>((when, event) => {
+        const part = markRaw(new Tone.Part<TrackScheduledEvent>((when, event) => {
           const liveTrack = this.tracks.find((track) => track.id === entry.track.id) ?? entry.track;
-          this.playTrackStep(liveTrack, entry.notes, event.step, when);
+          this.playTrackStep(liveTrack, event, when);
         }, events));
         part.loop = true;
         part.loopStart = 0;
@@ -2129,21 +2180,20 @@ export default defineComponent({
       Tone.getTransport().seconds=0;
       this.activeNotes = [];
     },
-    playTrackStep(track: PresetTrackData, trackNotes: number[][], counter: number, when: Tone.Unit.Seconds) {
+    playTrackStep(track: PresetTrackData, event: TrackScheduledEvent, when: Tone.Unit.Seconds) {
       if (!this.isTrackAudible(track.id)) {
         return;
       }
 
-      const arr = trackNotes[counter % trackNotes.length];
+      const arr = event.notes;
       this.activeNotes = Array.from(new Set([...this.activeNotes, ...arr])).sort((left, right) => left - right);
 
       if (arr.length === 0) {
         return;
       }
 
-      const dur = this.getTrackStepDuration(trackNotes, counter);
-      const vel = this.getTrackVelocity(arr, track.velocityMultiplier);
-      const noteDuration = dur * this.getTrackQuant(track) * track.lengthFactor / 100.0;
+      const vel = event.velocity;
+      const noteDuration = event.duration;
 
       if (this.useMidiOutput) {
         for (const note of arr) {

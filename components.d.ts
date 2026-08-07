@@ -13,6 +13,7 @@ declare module 'vue' {
     HelpDialog: typeof import('./src/components/HelpDialog.vue')['default']
     PresetManager: typeof import('./src/components/PresetManager.vue')['default']
     ReverbControls: typeof import('./src/components/ReverbControls.vue')['default']
+    TimeWarpPreview: typeof import('./src/components/TimeWarpPreview.vue')['default']
     TrackStrip: typeof import('./src/components/TrackStrip.vue')['default']
   }
 }
