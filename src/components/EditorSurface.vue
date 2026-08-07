@@ -226,7 +226,7 @@
           <v-row class="compact-row">
             <v-col cols="12">
               <EditableSlider
-                :label="'Warp pattern repetitions (' + draftTrack.timeWarpRepeats + ')'"
+                :label="'Warp chunks (' + draftTrack.timeWarpRepeats + ')'"
                 :min="1"
                 :max="64"
                 :step="1"

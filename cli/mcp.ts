@@ -109,7 +109,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             timeWarpRepeats: {
               type: 'number',
-              description: 'Legacy single-track pattern and warp repetitions per pattern duration (1-64). Used when tracks is omitted. Default: 1.',
+              description: 'Legacy single-track number of warp chunks the pattern is split into, with the warp curve applied within each chunk (1-64). Used when tracks is omitted. Default: 1.',
             },
             timeWarpQuantize: {
               type: 'number',
