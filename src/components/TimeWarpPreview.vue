@@ -44,6 +44,10 @@ export default defineComponent({
       type: Number,
       default: 8,
     },
+    repeats: {
+      type: Number,
+      default: 1,
+    },
   },
   computed: {
     resolution() {
@@ -60,24 +64,31 @@ export default defineComponent({
     },
     curvePath(): string {
       const points: string[] = [];
-      for (let index = 0; index < this.samples.length; index += 1) {
-        const x = (index / (this.samples.length - 1)) * 240;
-        const y = 140 - this.samples[index] * 140;
-        points.push(`${index === 0 ? 'M' : 'L'} ${x.toFixed(3)} ${y.toFixed(3)}`);
+      const safeRepeats = Math.max(1, Math.floor(this.repeats));
+      for (let repeat = 0; repeat < safeRepeats; repeat += 1) {
+        for (let index = 0; index < this.samples.length; index += 1) {
+          const local = index / (this.samples.length - 1);
+          const x = ((repeat + local) / safeRepeats) * 240;
+          const y = 140 - ((repeat + this.samples[index]) / safeRepeats) * 140;
+          points.push(`${index === 0 ? 'M' : 'L'} ${x.toFixed(3)} ${y.toFixed(3)}`);
+        }
       }
       return points.join(' ');
     },
     stepTicks(): Array<{ key: string; x: number; y: number }> {
       const safeSteps = Math.max(1, Math.floor(this.steps));
+      const safeRepeats = Math.max(1, Math.floor(this.repeats));
       const ticks: Array<{ key: string; x: number; y: number }> = [];
-      for (let step = 0; step < safeSteps; step += 1) {
-        const t = step / safeSteps;
-        const warped = warpNormalizedTime(t, this.resolution.fn, this.amountMix);
-        ticks.push({
-          key: `${step}-${warped.toFixed(5)}`,
-          x: t * 240,
-          y: 140 - warped * 140,
-        });
+      for (let repeat = 0; repeat < safeRepeats; repeat += 1) {
+        for (let step = 0; step < safeSteps; step += 1) {
+          const t = step / safeSteps;
+          const warped = warpNormalizedTime(t, this.resolution.fn, this.amountMix);
+          ticks.push({
+            key: `${repeat}-${step}-${warped.toFixed(5)}`,
+            x: ((repeat + t) / safeRepeats) * 240,
+            y: 140 - ((repeat + warped) / safeRepeats) * 140,
+          });
+        }
       }
       return ticks;
     },

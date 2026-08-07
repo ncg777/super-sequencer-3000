@@ -858,66 +858,68 @@ export default defineComponent({
       const warpEnabled = track.timeWarpEnabled && warpAmount > 0;
       const warpResolution = resolveTimeWarpFunction(track.timeWarpCurve, track.timeWarpExpression);
       const warpRepeats = Math.max(1, Math.floor(track.timeWarpRepeats));
-      const warpWindow = warpRepeats * trackPeriod;
-      const quantizeDivisions = track.timeWarpQuantize > 0 ? trackNotes.length * warpRepeats * track.timeWarpQuantize : 0;
+      const patternRepeats = track.timeWarpEnabled ? warpRepeats : 1;
+      const chunkPeriod = trackPeriod / patternRepeats;
+      const quantizeDivisions = track.timeWarpQuantize > 0 ? trackNotes.length * track.timeWarpQuantize : 0;
       const events: TrackScheduledEvent[] = [];
       let order = 0;
 
       for (let repeat = 0; repeat < track.repeats; repeat += 1) {
         const loopStart = delaySeconds + repeat * trackPeriod;
-        const windowStart = delaySeconds + Math.floor(repeat / warpRepeats) * warpWindow;
-        const windowOffset = (repeat % warpRepeats) * trackPeriod;
-        for (let i = 0; i < trackNotes.length; i += 1) {
-          const notes = trackNotes[i];
-          if (notes.length === 0) {
-            continue;
-          }
-
-          const durSteps = this.getTrackStepDuration(trackNotes, i);
-          const baseDuration = durSteps * trackQuant * track.lengthFactor / 100.0;
-          let eventTime = loopStart + (i * trackQuant);
-          let duration = baseDuration;
-
-          if (warpEnabled) {
-            const startNormalized = (windowOffset + (i * trackQuant)) / warpWindow;
-            const endNormalized = startNormalized + (baseDuration / warpWindow);
-            let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
-            let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
-
-            if (quantizeDivisions > 0) {
-              warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
-              warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
-            }
-
-            if (warpedStart === warpedEnd) {
+        for (let chunk = 0; chunk < patternRepeats; chunk += 1) {
+          const chunkStart = loopStart + chunk * chunkPeriod;
+          for (let i = 0; i < trackNotes.length; i += 1) {
+            const notes = trackNotes[i];
+            if (notes.length === 0) {
               continue;
             }
 
-            if (warpedEnd < warpedStart) {
-              const tmp = warpedStart;
-              warpedStart = warpedEnd;
-              warpedEnd = tmp;
+            const durSteps = this.getTrackStepDuration(trackNotes, i);
+            const baseDuration = (durSteps * trackQuant * track.lengthFactor / 100.0) / patternRepeats;
+            let eventTime = chunkStart + (i * trackQuant) / patternRepeats;
+            let duration = baseDuration;
+
+            if (warpEnabled) {
+              const startNormalized = i / trackNotes.length;
+              const endNormalized = startNormalized + (baseDuration / chunkPeriod);
+              let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
+              let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
+
+              if (quantizeDivisions > 0) {
+                warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
+                warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
+              }
+
+              if (warpedStart === warpedEnd) {
+                continue;
+              }
+
+              if (warpedEnd < warpedStart) {
+                const tmp = warpedStart;
+                warpedStart = warpedEnd;
+                warpedEnd = tmp;
+              }
+
+              eventTime = chunkStart + warpedStart * chunkPeriod;
+              if (track.timeWarpNoteLengths) {
+                duration = Math.max(0.0005, (warpedEnd - warpedStart) * chunkPeriod);
+              }
             }
 
-            eventTime = windowStart + warpedStart * warpWindow;
-            if (track.timeWarpNoteLengths) {
-              duration = Math.max(0.0005, (warpedEnd - warpedStart) * warpWindow);
+            if (eventTime >= totalLoopDuration || duration <= 0) {
+              continue;
             }
-          }
 
-          if (eventTime >= totalLoopDuration || duration <= 0) {
-            continue;
+            events.push({
+              time: eventTime,
+              duration,
+              velocity: this.getTrackVelocity(notes, track.velocityMultiplier),
+              notes,
+              step: i,
+              order,
+            });
+            order += 1;
           }
-
-          events.push({
-            time: eventTime,
-            duration,
-            velocity: this.getTrackVelocity(notes, track.velocityMultiplier),
-            notes,
-            step: i,
-            order,
-          });
-          order += 1;
         }
       }
 

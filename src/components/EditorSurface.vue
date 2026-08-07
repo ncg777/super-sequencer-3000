@@ -272,7 +272,8 @@
                 :curve="draftTrack.timeWarpCurve"
                 :expression="draftTrack.timeWarpExpression"
                 :amount="draftTrack.timeWarpAmount"
-                :steps="Math.max(1, selectedTrackSequenceLength * draftTrack.timeWarpRepeats)"
+                :steps="Math.max(1, selectedTrackSequenceLength)"
+                :repeats="draftTrack.timeWarpRepeats"
               />
             </v-col>
           </v-row>
