@@ -226,6 +226,20 @@
           <v-row class="compact-row">
             <v-col cols="12">
               <EditableSlider
+                :label="'Warp pattern repetitions (' + draftTrack.timeWarpRepeats + ')'"
+                :min="1"
+                :max="64"
+                :step="1"
+                v-model="draftTrack.timeWarpRepeats"
+                :disabled="!draftTrack.timeWarpEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
                 :label="'Warp amount (' + Number(draftTrack.timeWarpAmount).toFixed(0) + '%)'"
                 :min="0"
                 :max="100"
@@ -258,7 +272,7 @@
                 :curve="draftTrack.timeWarpCurve"
                 :expression="draftTrack.timeWarpExpression"
                 :amount="draftTrack.timeWarpAmount"
-                :steps="Math.max(1, selectedTrackSequenceLength)"
+                :steps="Math.max(1, selectedTrackSequenceLength * draftTrack.timeWarpRepeats)"
               />
             </v-col>
           </v-row>

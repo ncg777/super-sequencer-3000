@@ -46,6 +46,8 @@ export interface GenerateTrackOptions {
   timeWarpEnabled?: boolean;
   timeWarpCurve?: string;
   timeWarpExpression?: string;
+  /** Number of pattern repetitions the warp curve spans before it restarts (1-64). */
+  timeWarpRepeats?: number;
   timeWarpAmount?: number;
   timeWarpQuantize?: number;
   timeWarpNoteLengths?: boolean;
@@ -176,6 +178,7 @@ export interface GenerateOptions {
   timeWarpEnabled?: boolean;
   timeWarpCurve?: string;
   timeWarpExpression?: string;
+  timeWarpRepeats?: number;
   timeWarpAmount?: number;
   timeWarpQuantize?: number;
   timeWarpNoteLengths?: boolean;
@@ -295,12 +298,16 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
   const warpAmount = entry.track.timeWarpEnabled ? entry.track.timeWarpAmount / 100 : 0;
   const warpEnabled = entry.track.timeWarpEnabled && warpAmount > 0;
   const warpResolution = resolveTimeWarpFunction(entry.track.timeWarpCurve, entry.track.timeWarpExpression);
-  const quantizeDivisions = entry.track.timeWarpQuantize > 0 ? entry.actualNotes.length * entry.track.timeWarpQuantize : 0;
+  const warpRepeats = Math.max(1, Math.floor(entry.track.timeWarpRepeats));
+  const warpWindow = warpRepeats * trackPeriod;
+  const quantizeDivisions = entry.track.timeWarpQuantize > 0 ? entry.actualNotes.length * warpRepeats * entry.track.timeWarpQuantize : 0;
   const events: TrackScheduledEvent[] = [];
   let order = 0;
 
   for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
     const loopStart = delaySeconds + repeat * trackPeriod;
+    const windowStart = delaySeconds + Math.floor(repeat / warpRepeats) * warpWindow;
+    const windowOffset = (repeat % warpRepeats) * trackPeriod;
     for (let i = 0; i < entry.actualNotes.length; i += 1) {
       const notes = entry.actualNotes[i];
       if (notes.length === 0) {
@@ -313,8 +320,8 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
       let duration = baseDuration;
 
       if (warpEnabled) {
-        const startNormalized = i / entry.actualNotes.length;
-        const endNormalized = startNormalized + (baseDuration / trackPeriod);
+        const startNormalized = (windowOffset + (i * entry.quant)) / warpWindow;
+        const endNormalized = startNormalized + (baseDuration / warpWindow);
         let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
         let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
 
@@ -333,9 +340,9 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
           warpedEnd = tmp;
         }
 
-        eventTime = loopStart + warpedStart * trackPeriod;
+        eventTime = windowStart + warpedStart * warpWindow;
         if (entry.track.timeWarpNoteLengths) {
-          duration = Math.max(0.0005, (warpedEnd - warpedStart) * trackPeriod);
+          duration = Math.max(0.0005, (warpedEnd - warpedStart) * warpWindow);
         }
       }
 
@@ -386,6 +393,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     timeWarpEnabled: Boolean(options.timeWarpEnabled ?? false),
     timeWarpCurve: normalizeTimeWarpCurve(options.timeWarpCurve),
     timeWarpExpression: typeof options.timeWarpExpression === 'string' ? options.timeWarpExpression.slice(0, 512) : '',
+    timeWarpRepeats: clamp(options.timeWarpRepeats ?? 1, 1, 64),
     timeWarpAmount: clamp(options.timeWarpAmount ?? 100, 0, 100),
     timeWarpQuantize: normalizeTimeWarpQuantize(options.timeWarpQuantize, 0),
     timeWarpNoteLengths: Boolean(options.timeWarpNoteLengths ?? true),
@@ -448,6 +456,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     timeWarpEnabled: Boolean(track.timeWarpEnabled ?? fallbackTrack.timeWarpEnabled),
     timeWarpCurve: normalizeTimeWarpCurve(track.timeWarpCurve ?? fallbackTrack.timeWarpCurve),
     timeWarpExpression: typeof track.timeWarpExpression === 'string' ? track.timeWarpExpression.slice(0, 512) : fallbackTrack.timeWarpExpression,
+    timeWarpRepeats: clamp(track.timeWarpRepeats ?? fallbackTrack.timeWarpRepeats, 1, 64),
     timeWarpAmount: clamp(track.timeWarpAmount ?? fallbackTrack.timeWarpAmount, 0, 100),
     timeWarpQuantize: normalizeTimeWarpQuantize(track.timeWarpQuantize, fallbackTrack.timeWarpQuantize),
     timeWarpNoteLengths: Boolean(track.timeWarpNoteLengths ?? fallbackTrack.timeWarpNoteLengths),

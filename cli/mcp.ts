@@ -107,6 +107,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description: 'Legacy single-track warp amount percent (0-100). Used when tracks is omitted. Default: 100.',
             },
+            timeWarpRepeats: {
+              type: 'number',
+              description: 'Legacy single-track pattern repetitions spanned by the warp curve (1-64). Used when tracks is omitted. Default: 1.',
+            },
             timeWarpQuantize: {
               type: 'number',
               description: 'Legacy single-track warp quantize subdivisions per step (0,1,2,4,8). Used when tracks is omitted. Default: 0.',
@@ -136,6 +140,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                   timeWarpEnabled: { type: 'boolean' },
                   timeWarpCurve: { type: 'string' },
                   timeWarpExpression: { type: 'string' },
+                  timeWarpRepeats: { type: 'number' },
                   timeWarpAmount: { type: 'number' },
                   timeWarpQuantize: { type: 'number' },
                   timeWarpNoteLengths: { type: 'boolean' },
@@ -204,6 +209,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       timeWarpEnabled: optBool('timeWarpEnabled'),
       timeWarpCurve: optStr('timeWarpCurve'),
       timeWarpExpression: optStr('timeWarpExpression'),
+      timeWarpRepeats: optNum('timeWarpRepeats'),
       timeWarpAmount: optNum('timeWarpAmount'),
       timeWarpQuantize: optNum('timeWarpQuantize'),
       timeWarpNoteLengths: optBool('timeWarpNoteLengths'),

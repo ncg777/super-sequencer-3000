@@ -857,12 +857,16 @@ export default defineComponent({
       const warpAmount = track.timeWarpEnabled ? track.timeWarpAmount / 100 : 0;
       const warpEnabled = track.timeWarpEnabled && warpAmount > 0;
       const warpResolution = resolveTimeWarpFunction(track.timeWarpCurve, track.timeWarpExpression);
-      const quantizeDivisions = track.timeWarpQuantize > 0 ? trackNotes.length * track.timeWarpQuantize : 0;
+      const warpRepeats = Math.max(1, Math.floor(track.timeWarpRepeats));
+      const warpWindow = warpRepeats * trackPeriod;
+      const quantizeDivisions = track.timeWarpQuantize > 0 ? trackNotes.length * warpRepeats * track.timeWarpQuantize : 0;
       const events: TrackScheduledEvent[] = [];
       let order = 0;
 
       for (let repeat = 0; repeat < track.repeats; repeat += 1) {
         const loopStart = delaySeconds + repeat * trackPeriod;
+        const windowStart = delaySeconds + Math.floor(repeat / warpRepeats) * warpWindow;
+        const windowOffset = (repeat % warpRepeats) * trackPeriod;
         for (let i = 0; i < trackNotes.length; i += 1) {
           const notes = trackNotes[i];
           if (notes.length === 0) {
@@ -875,8 +879,8 @@ export default defineComponent({
           let duration = baseDuration;
 
           if (warpEnabled) {
-            const startNormalized = i / trackNotes.length;
-            const endNormalized = startNormalized + (baseDuration / trackPeriod);
+            const startNormalized = (windowOffset + (i * trackQuant)) / warpWindow;
+            const endNormalized = startNormalized + (baseDuration / warpWindow);
             let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
             let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
 
@@ -895,9 +899,9 @@ export default defineComponent({
               warpedEnd = tmp;
             }
 
-            eventTime = loopStart + warpedStart * trackPeriod;
+            eventTime = windowStart + warpedStart * warpWindow;
             if (track.timeWarpNoteLengths) {
-              duration = Math.max(0.0005, (warpedEnd - warpedStart) * trackPeriod);
+              duration = Math.max(0.0005, (warpedEnd - warpedStart) * warpWindow);
             }
           }
 
@@ -945,6 +949,7 @@ export default defineComponent({
         || previous.timeWarpEnabled !== next.timeWarpEnabled
         || previous.timeWarpCurve !== next.timeWarpCurve
         || previous.timeWarpExpression !== next.timeWarpExpression
+        || previous.timeWarpRepeats !== next.timeWarpRepeats
         || previous.timeWarpAmount !== next.timeWarpAmount
         || previous.timeWarpQuantize !== next.timeWarpQuantize
         || previous.timeWarpNoteLengths !== next.timeWarpNoteLengths;
