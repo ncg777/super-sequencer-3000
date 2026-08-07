@@ -79,16 +79,16 @@ export default defineComponent({
       const safeSteps = Math.max(1, Math.floor(this.steps));
       const safeRepeats = Math.max(1, Math.floor(this.repeats));
       const ticks: Array<{ key: string; x: number; y: number }> = [];
-      for (let repeat = 0; repeat < safeRepeats; repeat += 1) {
-        for (let step = 0; step < safeSteps; step += 1) {
-          const t = step / safeSteps;
-          const warped = warpNormalizedTime(t, this.resolution.fn, this.amountMix);
-          ticks.push({
-            key: `${repeat}-${step}-${warped.toFixed(5)}`,
-            x: ((repeat + t) / safeRepeats) * 240,
-            y: 140 - ((repeat + warped) / safeRepeats) * 140,
-          });
-        }
+      for (let step = 0; step < safeSteps; step += 1) {
+        const global = step / safeSteps;
+        const chunkIndex = Math.min(safeRepeats - 1, Math.floor(global * safeRepeats));
+        const t = (global * safeRepeats) - chunkIndex;
+        const warped = warpNormalizedTime(t, this.resolution.fn, this.amountMix);
+        ticks.push({
+          key: `${step}-${warped.toFixed(5)}`,
+          x: global * 240,
+          y: 140 - ((chunkIndex + warped) / safeRepeats) * 140,
+        });
       }
       return ticks;
     },
