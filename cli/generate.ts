@@ -324,7 +324,7 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
 
       if (warpEnabled) {
         const startNormalized = (localTime - chunkIndex * chunkPeriod) / chunkPeriod;
-        const endNormalized = startNormalized + (baseDuration / chunkPeriod);
+        const endNormalized = Math.min(1, startNormalized + (baseDuration / chunkPeriod));
         let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
         let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
 
@@ -333,19 +333,9 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
           warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
         }
 
-        if (warpedStart === warpedEnd) {
-          continue;
-        }
-
-        if (warpedEnd < warpedStart) {
-          const tmp = warpedStart;
-          warpedStart = warpedEnd;
-          warpedEnd = tmp;
-        }
-
         eventTime = chunkStart + warpedStart * chunkPeriod;
         if (entry.track.timeWarpNoteLengths) {
-          duration = Math.max(0.0005, (warpedEnd - warpedStart) * chunkPeriod);
+          duration = Math.max(0.0005, Math.abs(warpedEnd - warpedStart) * chunkPeriod);
         }
       }
 
