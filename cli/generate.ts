@@ -46,7 +46,7 @@ export interface GenerateTrackOptions {
   timeWarpEnabled?: boolean;
   timeWarpCurve?: string;
   timeWarpExpression?: string;
-  /** Number of pattern repetitions the warp curve spans before it restarts (1-64). */
+  /** Number of times the pattern and warp curve repeat within one pattern duration (1-64). */
   timeWarpRepeats?: number;
   timeWarpAmount?: number;
   timeWarpQuantize?: number;
@@ -299,65 +299,67 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
   const warpEnabled = entry.track.timeWarpEnabled && warpAmount > 0;
   const warpResolution = resolveTimeWarpFunction(entry.track.timeWarpCurve, entry.track.timeWarpExpression);
   const warpRepeats = Math.max(1, Math.floor(entry.track.timeWarpRepeats));
-  const warpWindow = warpRepeats * trackPeriod;
-  const quantizeDivisions = entry.track.timeWarpQuantize > 0 ? entry.actualNotes.length * warpRepeats * entry.track.timeWarpQuantize : 0;
+  const patternRepeats = entry.track.timeWarpEnabled ? warpRepeats : 1;
+  const chunkPeriod = trackPeriod / patternRepeats;
+  const quantizeDivisions = entry.track.timeWarpQuantize > 0 ? entry.actualNotes.length * entry.track.timeWarpQuantize : 0;
   const events: TrackScheduledEvent[] = [];
   let order = 0;
 
   for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
     const loopStart = delaySeconds + repeat * trackPeriod;
-    const windowStart = delaySeconds + Math.floor(repeat / warpRepeats) * warpWindow;
-    const windowOffset = (repeat % warpRepeats) * trackPeriod;
-    for (let i = 0; i < entry.actualNotes.length; i += 1) {
-      const notes = entry.actualNotes[i];
-      if (notes.length === 0) {
-        continue;
-      }
-
-      const durSteps = getStepDuration(entry.actualNotes, i);
-      const baseDuration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
-      let eventTime = loopStart + (i * entry.quant);
-      let duration = baseDuration;
-
-      if (warpEnabled) {
-        const startNormalized = (windowOffset + (i * entry.quant)) / warpWindow;
-        const endNormalized = startNormalized + (baseDuration / warpWindow);
-        let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
-        let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
-
-        if (quantizeDivisions > 0) {
-          warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
-          warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
-        }
-
-        if (warpedStart === warpedEnd) {
+    for (let chunk = 0; chunk < patternRepeats; chunk += 1) {
+      const chunkStart = loopStart + chunk * chunkPeriod;
+      for (let i = 0; i < entry.actualNotes.length; i += 1) {
+        const notes = entry.actualNotes[i];
+        if (notes.length === 0) {
           continue;
         }
 
-        if (warpedEnd < warpedStart) {
-          const tmp = warpedStart;
-          warpedStart = warpedEnd;
-          warpedEnd = tmp;
+        const durSteps = getStepDuration(entry.actualNotes, i);
+        const baseDuration = ((durSteps * entry.quant * entry.track.lengthFactor) / 100.0) / patternRepeats;
+        let eventTime = chunkStart + (i * entry.quant) / patternRepeats;
+        let duration = baseDuration;
+
+        if (warpEnabled) {
+          const startNormalized = i / entry.actualNotes.length;
+          const endNormalized = startNormalized + (baseDuration / chunkPeriod);
+          let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
+          let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
+
+          if (quantizeDivisions > 0) {
+            warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
+            warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
+          }
+
+          if (warpedStart === warpedEnd) {
+            continue;
+          }
+
+          if (warpedEnd < warpedStart) {
+            const tmp = warpedStart;
+            warpedStart = warpedEnd;
+            warpedEnd = tmp;
+          }
+
+          eventTime = chunkStart + warpedStart * chunkPeriod;
+          if (entry.track.timeWarpNoteLengths) {
+            duration = Math.max(0.0005, (warpedEnd - warpedStart) * chunkPeriod);
+          }
         }
 
-        eventTime = windowStart + warpedStart * warpWindow;
-        if (entry.track.timeWarpNoteLengths) {
-          duration = Math.max(0.0005, (warpedEnd - warpedStart) * warpWindow);
+        if (eventTime >= totalLoopDuration || duration <= 0) {
+          continue;
         }
-      }
 
-      if (eventTime >= totalLoopDuration || duration <= 0) {
-        continue;
+        events.push({
+          time: eventTime,
+          duration,
+          velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
+          notes,
+          order,
+        });
+        order += 1;
       }
-
-      events.push({
-        time: eventTime,
-        duration,
-        velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
-        notes,
-        order,
-      });
-      order += 1;
     }
   }
 

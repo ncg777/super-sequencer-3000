@@ -72,7 +72,7 @@ program
   .option('--time-warp-enabled <boolean>', 'Legacy single-track time warp enabled (true/false)')
   .option('--time-warp-curve <string>', 'Legacy single-track time warp curve name')
   .option('--time-warp-expression <string>', 'Legacy single-track custom time warp expression')
-  .option('--time-warp-repeats <number>', 'Legacy single-track pattern repetitions spanned by the warp curve (1-64)')
+  .option('--time-warp-repeats <number>', 'Legacy single-track pattern and warp repetitions per pattern duration (1-64)')
   .option('--time-warp-amount <number>', 'Legacy single-track warp amount percent (0-100)')
   .option('--time-warp-quantize <number>', 'Legacy single-track warp quantize subdivisions per step (0,1,2,4,8)')
   .option('--time-warp-note-lengths <boolean>', 'Legacy single-track warped note lengths (true/false)')
