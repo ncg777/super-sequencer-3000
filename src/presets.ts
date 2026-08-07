@@ -23,7 +23,7 @@ export interface PresetTrackData {
   timeWarpEnabled: boolean;
   timeWarpCurve: string;
   timeWarpExpression: string;
-  /** Number of times the pattern and warp curve repeat within one pattern duration (1-64). */
+  /** Number of equal chunks the pattern is split into, with the warp curve applied locally to each chunk (1-64). */
   timeWarpRepeats: number;
   /** 0-100 blend between identity and selected warp curve. */
   timeWarpAmount: number;

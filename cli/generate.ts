@@ -46,7 +46,7 @@ export interface GenerateTrackOptions {
   timeWarpEnabled?: boolean;
   timeWarpCurve?: string;
   timeWarpExpression?: string;
-  /** Number of times the pattern and warp curve repeat within one pattern duration (1-64). */
+  /** Number of equal chunks the pattern is split into, with the warp curve applied locally to each chunk (1-64). */
   timeWarpRepeats?: number;
   timeWarpAmount?: number;
   timeWarpQuantize?: number;
@@ -298,68 +298,69 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
   const warpAmount = entry.track.timeWarpEnabled ? entry.track.timeWarpAmount / 100 : 0;
   const warpEnabled = entry.track.timeWarpEnabled && warpAmount > 0;
   const warpResolution = resolveTimeWarpFunction(entry.track.timeWarpCurve, entry.track.timeWarpExpression);
-  const warpRepeats = Math.max(1, Math.floor(entry.track.timeWarpRepeats));
-  const patternRepeats = entry.track.timeWarpEnabled ? warpRepeats : 1;
-  const chunkPeriod = trackPeriod / patternRepeats;
-  const quantizeDivisions = entry.track.timeWarpQuantize > 0 ? entry.actualNotes.length * entry.track.timeWarpQuantize : 0;
+  const warpChunks = entry.track.timeWarpEnabled ? Math.max(1, Math.floor(entry.track.timeWarpRepeats)) : 1;
+  const chunkPeriod = trackPeriod / warpChunks;
+  const quantizeDivisions = entry.track.timeWarpQuantize > 0
+    ? Math.max(1, Math.round((entry.actualNotes.length / warpChunks) * entry.track.timeWarpQuantize))
+    : 0;
   const events: TrackScheduledEvent[] = [];
   let order = 0;
 
   for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
     const loopStart = delaySeconds + repeat * trackPeriod;
-    for (let chunk = 0; chunk < patternRepeats; chunk += 1) {
-      const chunkStart = loopStart + chunk * chunkPeriod;
-      for (let i = 0; i < entry.actualNotes.length; i += 1) {
-        const notes = entry.actualNotes[i];
-        if (notes.length === 0) {
-          continue;
-        }
-
-        const durSteps = getStepDuration(entry.actualNotes, i);
-        const baseDuration = ((durSteps * entry.quant * entry.track.lengthFactor) / 100.0) / patternRepeats;
-        let eventTime = chunkStart + (i * entry.quant) / patternRepeats;
-        let duration = baseDuration;
-
-        if (warpEnabled) {
-          const startNormalized = i / entry.actualNotes.length;
-          const endNormalized = startNormalized + (baseDuration / chunkPeriod);
-          let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
-          let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
-
-          if (quantizeDivisions > 0) {
-            warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
-            warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
-          }
-
-          if (warpedStart === warpedEnd) {
-            continue;
-          }
-
-          if (warpedEnd < warpedStart) {
-            const tmp = warpedStart;
-            warpedStart = warpedEnd;
-            warpedEnd = tmp;
-          }
-
-          eventTime = chunkStart + warpedStart * chunkPeriod;
-          if (entry.track.timeWarpNoteLengths) {
-            duration = Math.max(0.0005, (warpedEnd - warpedStart) * chunkPeriod);
-          }
-        }
-
-        if (eventTime >= totalLoopDuration || duration <= 0) {
-          continue;
-        }
-
-        events.push({
-          time: eventTime,
-          duration,
-          velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
-          notes,
-          order,
-        });
-        order += 1;
+    for (let i = 0; i < entry.actualNotes.length; i += 1) {
+      const notes = entry.actualNotes[i];
+      if (notes.length === 0) {
+        continue;
       }
+
+      const durSteps = getStepDuration(entry.actualNotes, i);
+      const baseDuration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
+      const localTime = i * entry.quant;
+      const chunkIndex = Math.min(warpChunks - 1, Math.floor(localTime / chunkPeriod));
+      const chunkStart = loopStart + chunkIndex * chunkPeriod;
+      let eventTime = loopStart + localTime;
+      let duration = baseDuration;
+
+      if (warpEnabled) {
+        const startNormalized = (localTime - chunkIndex * chunkPeriod) / chunkPeriod;
+        const endNormalized = startNormalized + (baseDuration / chunkPeriod);
+        let warpedStart = warpNormalizedTime(startNormalized, warpResolution.fn, warpAmount);
+        let warpedEnd = warpNormalizedTime(endNormalized, warpResolution.fn, warpAmount);
+
+        if (quantizeDivisions > 0) {
+          warpedStart = quantizeNormalizedTime(warpedStart, quantizeDivisions);
+          warpedEnd = quantizeNormalizedTime(warpedEnd, quantizeDivisions);
+        }
+
+        if (warpedStart === warpedEnd) {
+          continue;
+        }
+
+        if (warpedEnd < warpedStart) {
+          const tmp = warpedStart;
+          warpedStart = warpedEnd;
+          warpedEnd = tmp;
+        }
+
+        eventTime = chunkStart + warpedStart * chunkPeriod;
+        if (entry.track.timeWarpNoteLengths) {
+          duration = Math.max(0.0005, (warpedEnd - warpedStart) * chunkPeriod);
+        }
+      }
+
+      if (eventTime >= totalLoopDuration || duration <= 0) {
+        continue;
+      }
+
+      events.push({
+        time: eventTime,
+        duration,
+        velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
+        notes,
+        order,
+      });
+      order += 1;
     }
   }
 
