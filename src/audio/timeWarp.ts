@@ -183,6 +183,50 @@ function fmModel5(amp: number, freq: number, modfreq: number, modindex: number):
   return (t) => t + Math.sin(PI * t) * amp * sawWform(freq * (t + modindex * Math.sin(modfreq * 2 * PI * t)));
 }
 
+function circularIn(t: number): number {
+  return 1.0 - Math.sqrt(Math.max(0, 1.0 - t * t));
+}
+
+function circularOut(t: number): number {
+  const u = t - 1.0;
+  return Math.sqrt(Math.max(0, 1.0 - u * u));
+}
+
+function circularInOut(t: number): number {
+  return t < 0.5 ? circularIn(t * 2.0) / 2.0 : 0.5 + circularOut((t * 2.0) - 1.0) / 2.0;
+}
+
+function backIn(t: number): number {
+  return (t * t) * ((2.70158 * t) - 1.70158);
+}
+
+function backOut(t: number): number {
+  const u = t - 1.0;
+  return 1.0 + (2.70158 * u * u * u) + (1.70158 * u * u);
+}
+
+function bounceOut(t: number): number {
+  const n = 7.5625;
+  const d = 2.75;
+  if (t < 1.0 / d) {
+    return n * t * t;
+  }
+  if (t < 2.0 / d) {
+    const u = t - (1.5 / d);
+    return (n * u * u) + 0.75;
+  }
+  if (t < 2.5 / d) {
+    const u = t - (2.25 / d);
+    return (n * u * u) + 0.9375;
+  }
+  const u = t - (2.625 / d);
+  return (n * u * u) + 0.984375;
+}
+
+function elasticPulse(amp: number, freq: number): TimeWarpFn {
+  return (t) => t + Math.sin(PI * t) * amp * Math.sin(freq * 2 * PI * t);
+}
+
 const F5_WFORM_ARGS = [
   0, 0.0625, 0.0625, 0, 0.3125, 0.125, 0.4375, 0, 0.1875, 0.0625,
   0.25, 0, 0.5, 0.25, 0.75, 0, 0.25, 0.0625, 0.3125, 0,
@@ -229,13 +273,31 @@ const BUILTIN_CURVES: BuiltinCurveEntry[] = [
   { value: 'pow5', title: 'pow5', group: 'Power', fn: (t) => Math.pow(t, 5.0) },
   { value: 'powm1over3', title: 'powm1over3', group: 'Power', fn: (t) => 1.0 - Math.pow(t, 1.0 / 3.0) },
   { value: 'sqrt', title: 'sqrt', group: 'Power', fn: (t) => Math.sqrt(t) },
+  { value: 'step2', title: 'step2', group: 'Basic', fn: (t) => integerPart(t * 2) / 2.0 },
+  { value: 'step4', title: 'step4', group: 'Basic', fn: (t) => integerPart(t * 4) / 4.0 },
   { value: 'step8', title: 'step8', group: 'Basic', fn: (t) => integerPart(t * 8) / 8.0 },
+  { value: 'step16', title: 'step16', group: 'Basic', fn: (t) => integerPart(t * 16) / 16.0 },
+  { value: 'circin', title: 'circin', group: 'Circular', fn: circularIn },
+  { value: 'circout', title: 'circout', group: 'Circular', fn: circularOut },
+  { value: 'circinout', title: 'circinout', group: 'Circular', fn: circularInOut },
+  { value: 'backin', title: 'backin', group: 'Overshoot', fn: backIn },
+  { value: 'backout', title: 'backout', group: 'Overshoot', fn: backOut },
+  { value: 'bouncein', title: 'bouncein', group: 'Overshoot', fn: (t) => 1.0 - bounceOut(1.0 - t) },
+  { value: 'bounceout', title: 'bounceout', group: 'Overshoot', fn: bounceOut },
+  { value: 'elastic1', title: 'elastic1', group: 'Overshoot', fn: elasticPulse(0.1875, 5) },
+  { value: 'elastic2', title: 'elastic2', group: 'Overshoot', fn: elasticPulse(0.25, 8) },
+  { value: 'sin1', title: 'sin1', group: 'Wobble', fn: (t) => t + Math.sin(2 * PI * t) * 0.25 },
+  { value: 'sin2', title: 'sin2', group: 'Wobble', fn: (t) => t + Math.sin(2 * PI * 2 * t) * 0.1875 },
   { value: 'sin4', title: 'sin4', group: 'Wobble', fn: (t) => t + Math.sin(2 * PI * 4 * t) * 0.125 },
   { value: 'sin8', title: 'sin8', group: 'Wobble', fn: (t) => t + Math.sin(2 * PI * 8 * t) * 0.125 },
   { value: 'sin16', title: 'sin16', group: 'Wobble', fn: (t) => t + Math.sin(2 * PI * 16 * t) * 0.0625 },
+  { value: 'tri4', title: 'tri4', group: 'Wobble', fn: (t) => t + triangleWform(4 * t) * 0.1875 },
   { value: 'tri8', title: 'tri8', group: 'Wobble', fn: (t) => t + triangleWform(8 * t) * 0.125 },
+  { value: 'saw4', title: 'saw4', group: 'Wobble', fn: (t) => t + sawWform(4 * t) * 0.1875 },
   { value: 'saw8', title: 'saw8', group: 'Wobble', fn: (t) => t + sawWform(8 * t) * 0.125 },
+  { value: 'revsaw4', title: 'revsaw4', group: 'Wobble', fn: (t) => t + revsawWform(4 * t) * 0.1875 },
   { value: 'revsaw8', title: 'revsaw8', group: 'Wobble', fn: (t) => t + revsawWform(8 * t) * 0.125 },
+  { value: 'ripple', title: 'ripple', group: 'Wobble', fn: (t) => t + Math.sin(PI * t) * Math.sin(12 * PI * t) * 0.0625 },
   { value: 'archseq', title: 'archseq', group: 'Sequence Shapes', fn: (t) => stowform(t, [0, 2, 4, 6, 4, 2, 0]) },
   { value: 'zigzag', title: 'zigzag', group: 'Sequence Shapes', fn: (t) => stowform(t, [0, 4, 1, 5, 2, 6, 3, 7]) },
   { value: 'pendulum', title: 'pendulum', group: 'Sequence Shapes', fn: (t) => stowform(t, [0, 2, 4, 6, 8, 6, 4, 2, 0]) },
@@ -245,6 +307,9 @@ const BUILTIN_CURVES: BuiltinCurveEntry[] = [
   { value: 'f4', title: 'f4', group: 'Sequence Shapes', fn: (t) => stowform(t, [0, 4, 2, 1, 4]) },
   { value: 'f5', title: 'f5', group: 'Sequence Shapes', fn: (t) => wform(t, ...F5_WFORM_ARGS) },
   { value: 'f6', title: 'f6', group: 'Sequence Shapes', fn: (t) => wform(t, ...F6_WFORM_ARGS) },
+  { value: 'climb', title: 'climb', group: 'Sequence Shapes', fn: (t) => stowform(t, [0, 2, 1, 3, 2, 4, 3, 5]) },
+  { value: 'valley', title: 'valley', group: 'Sequence Shapes', fn: (t) => stowform(t, [4, 2, 0, 2, 4]) },
+  { value: 'hesitate', title: 'hesitate', group: 'Sequence Shapes', fn: (t) => stowform(t, [0, 0, 2, 2, 1, 3, 3, 4]) },
   { value: 'sin+x', title: 'sin+x', group: 'Wobble', fn: (t) => t + Math.sin(8 * PI * t) * 0.125 },
   { value: 'f7', title: 'f7', group: 'Wobble', fn: (t) => t + triangleWform(t / 2.0) * 0.25 * triangleWform(8 * t) },
   { value: 'f8', title: 'f8', group: 'Wobble', fn: (t) => t + triangleWform(t / 2.0) * 0.25 * sawWform(8 * t) },

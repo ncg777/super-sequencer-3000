@@ -723,7 +723,7 @@ export default defineComponent({
         ...TIME_WARP_CURVE_OPTIONS.map((option) => ({
           title: `${option.group} - ${option.title}`,
           value: option.value,
-        })),
+        })).sort((left, right) => left.title.localeCompare(right.title, undefined, { numeric: true })),
       ],
       timeWarpQuantizeOptions: TIME_WARP_QUANTIZE_OPTIONS.map((value) => ({
         title: value === 0 ? 'Off' : `${value} subdivisions per step`,
