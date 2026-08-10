@@ -1968,7 +1968,8 @@ export default defineComponent({
         wet: track.vibratoEnabled && !this.isNoiseWaveform(track.waveform) ? 1 : 0,
       });
       chain.echo.set({
-        delayTime: this.getEchoDelaySeconds(track.echoDelay),
+        // Tone rejects a delay time above the node's maxDelay, which would abort playback.
+        delayTime: Math.min(this.getEchoDelaySeconds(track.echoDelay), chain.maxDelay),
         feedback: this.clampNormalRange(track.echoFeedback),
         wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
       });
@@ -2027,7 +2028,9 @@ export default defineComponent({
         if (!existing && !createMissingChains) {
           continue;
         }
-        const chain = existing ?? this.getOrCreateTrackChain(track);
+        // Always go through getOrCreateTrackChain: an existing chain may no longer
+        // fit the track (e.g. a lower bpm pushes the echo delay past its maxDelay).
+        const chain = this.getOrCreateTrackChain(track);
         this.updateTrackChainSettings(track, chain);
       }
     },

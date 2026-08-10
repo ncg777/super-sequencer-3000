@@ -24,6 +24,24 @@ export interface PhaserSettings {
 /** The phaser mix is always at least half wet so the sweeping notches stay audible. */
 const PHASER_MIN_WET_MIX = 0.5;
 
+/** Widest sweep the octaves-to-Hz waveshaper can represent. */
+const MAX_SWEEP_OCTAVES = 12;
+
+/** Highest allpass resonance accepted by the Web Audio biquad filters. */
+const MAX_STAGE_Q = 1000;
+
+/**
+ * Tone params reject out-of-range values by throwing, which would abort playback,
+ * so every incoming setting is clamped (and non-finite values fall back to a safe
+ * default) before it reaches an audio param.
+ */
+function clampSetting(value: number, min: number, max: number, fallback: number = min): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
 /**
  * First-order allpasses phase-shift frequencies near their corner by up to 90°,
  * so one pole pair sums to full cancellation against the dry signal. The poles of
@@ -116,15 +134,22 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
   }
 
   apply(settings: PhaserSettings) {
+    // Sweep depth is applied to the LFO's output range, not its amplitude: amplitude
+    // is a normalRange [0, 1] param and would throw on any sweep wider than an octave.
+    const sweepOctaves = clampSetting(settings.sweepOctaves, 0, MAX_SWEEP_OCTAVES, 0);
     this.lfo.set({
-      frequency: settings.frequency,
-      amplitude: Math.max(0, settings.sweepOctaves),
+      frequency: clampSetting(settings.frequency, 0, 1000, 1),
+      amplitude: 1,
     });
-    this.feedbackGain.gain.value = -Math.min(0.95, Math.max(0, settings.feedback));
+    this.lfo.min = -sweepOctaves;
+    this.lfo.max = sweepOctaves;
+    this.feedbackGain.gain.value = -clampSetting(settings.feedback, 0, 0.95, 0);
+    const stageQ = clampSetting(settings.Q, 0.0001, MAX_STAGE_Q, 0.0001);
     this.stages.forEach((stage) => {
-      stage.Q.value = Math.max(0.0001, settings.Q);
+      stage.Q.value = stageQ;
     });
-    this.mix.fade.value = PHASER_MIN_WET_MIX + (1 - PHASER_MIN_WET_MIX) * Math.min(1, Math.max(0, settings.wet));
+    this.mix.fade.value = PHASER_MIN_WET_MIX
+      + (1 - PHASER_MIN_WET_MIX) * clampSetting(settings.wet, 0, 1, 0);
   }
 
   dispose(): this {
