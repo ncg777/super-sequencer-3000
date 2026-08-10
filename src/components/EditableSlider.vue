@@ -97,6 +97,7 @@ function updateFromSlider(nextValue: unknown): void {
           :disabled="disabled"
           :aria-label="`Edit ${label}`"
           @click="beginManualEdit"
+          @touchstart.prevent="beginManualEdit"
         />
       </div>
       <v-text-field
