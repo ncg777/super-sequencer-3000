@@ -86,6 +86,8 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
   readonly frequencyConverters: Tone.WaveShaper[] = [];
   /** Scales feedback amount into negative feedback around the cascade. */
   readonly feedbackGain: Tone.Gain;
+  /** Makes the feedback cycle valid in Web Audio with an inaudible one-sample delay. */
+  readonly feedbackDelay: Tone.Delay;
   /** Mixes the dry signal against the cascade output to create the notches. */
   readonly mix: Tone.CrossFade;
   readonly stagesCount: number;
@@ -100,6 +102,8 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
     this.output = markRaw(new Tone.Gain(1));
     this.mix = markRaw(new Tone.CrossFade(0.5));
     this.feedbackGain = markRaw(new Tone.Gain(0));
+    const feedbackDelaySeconds = 1 / this.context.sampleRate;
+    this.feedbackDelay = markRaw(new Tone.Delay(feedbackDelaySeconds, feedbackDelaySeconds));
     this.lfo = markRaw(new Tone.LFO({
       type: 'sine',
       min: -1,
@@ -128,7 +132,8 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
     this.mix.output.connect(this.output);
     // Negative feedback stays stable for any stage count while sharpening the notches.
     cascadeTail.connect(this.feedbackGain);
-    this.feedbackGain.connect(this.input);
+    this.feedbackGain.connect(this.feedbackDelay);
+    this.feedbackDelay.connect(this.input);
 
     this.lfo.start();
   }
@@ -159,6 +164,7 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
     this.centerOffsets.forEach((offset) => offset.dispose());
     this.frequencyConverters.forEach((converter) => converter.dispose());
     this.feedbackGain.dispose();
+    this.feedbackDelay.dispose();
     this.mix.dispose();
     // input/output are disconnected (not disposed) by super.dispose().
     super.dispose();
