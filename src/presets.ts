@@ -1,4 +1,10 @@
 import {
+  DEFAULT_PITCH_ENVELOPE_SHAPE,
+  normalizePitchEnvelopeShape,
+  PITCH_ENVELOPE_SHAPE_MAX,
+  PITCH_ENVELOPE_SHAPE_MIN,
+} from './audio/pitchEnvelope';
+import {
   CUSTOM_TIME_WARP_CURVE,
   DEFAULT_TIME_WARP_CURVE,
   TIME_WARP_CURVE_VALUES,
@@ -37,6 +43,18 @@ export interface PresetTrackData {
   decay: number;
   sustain: number;
   release: number;
+  /** Pitch envelope attack time in seconds. */
+  pitchEnvelopeAttack: number;
+  /** Pitch envelope decay time in seconds. */
+  pitchEnvelopeDecay: number;
+  /** Pitch envelope sustain level (0-1). */
+  pitchEnvelopeSustain: number;
+  /** Pitch envelope release time in seconds. */
+  pitchEnvelopeRelease: number;
+  /** Pitch envelope depth in MIDI pitches (can be negative). */
+  pitchEnvelopeAmount: number;
+  /** Exponential steepness for pitch envelope segments (0 = linear). */
+  pitchEnvelopeShape: number;
   unisonVoices: number;
   unisonDetune: number;
   tonewheelDrawbars: number[];
@@ -108,6 +126,7 @@ export interface PresetTrackData {
 export type EchoDelayValue = typeof ECHO_DELAY_OPTIONS[number];
 export type ModulationRateValue = typeof MODULATION_RATE_OPTIONS[number];
 export type SkewLfoWaveformValue = typeof SKEW_LFO_WAVEFORM_OPTIONS[number]['value'];
+export { DEFAULT_PITCH_ENVELOPE_SHAPE, PITCH_ENVELOPE_SHAPE_MAX, PITCH_ENVELOPE_SHAPE_MIN };
 
 export const SKEW_LFO_WAVEFORM_OPTIONS = [
   { title: 'Sine', value: 'sine' },
@@ -314,6 +333,12 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   decay: 0,
   sustain: 1,
   release: 0.12,
+  pitchEnvelopeAttack: 0.01,
+  pitchEnvelopeDecay: 0.1,
+  pitchEnvelopeSustain: 0,
+  pitchEnvelopeRelease: 0.2,
+  pitchEnvelopeAmount: 0,
+  pitchEnvelopeShape: DEFAULT_PITCH_ENVELOPE_SHAPE,
   unisonVoices: 1,
   unisonDetune: 0,
   tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
@@ -643,6 +668,12 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     decay: track.decay,
     sustain: track.sustain,
     release: track.release,
+    pitchEnvelopeAttack: track.pitchEnvelopeAttack,
+    pitchEnvelopeDecay: track.pitchEnvelopeDecay,
+    pitchEnvelopeSustain: track.pitchEnvelopeSustain,
+    pitchEnvelopeRelease: track.pitchEnvelopeRelease,
+    pitchEnvelopeAmount: track.pitchEnvelopeAmount,
+    pitchEnvelopeShape: track.pitchEnvelopeShape,
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
     tonewheelDrawbars: track.tonewheelDrawbars.slice(),
@@ -734,6 +765,12 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     decay: clamp(parseNumber(raw.decay, DEFAULT_PRESET_TRACK_DATA.decay), 0, 10),
     sustain: clamp(parseNumber(raw.sustain, DEFAULT_PRESET_TRACK_DATA.sustain), 0, 1),
     release: clamp(parseNumber(raw.release, DEFAULT_PRESET_TRACK_DATA.release), 0, 20),
+    pitchEnvelopeAttack: clamp(parseNumber(raw.pitchEnvelopeAttack, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeAttack), 0, 10),
+    pitchEnvelopeDecay: clamp(parseNumber(raw.pitchEnvelopeDecay, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeDecay), 0, 10),
+    pitchEnvelopeSustain: clamp(parseNumber(raw.pitchEnvelopeSustain, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeSustain), 0, 1),
+    pitchEnvelopeRelease: clamp(parseNumber(raw.pitchEnvelopeRelease, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeRelease), 0, 20),
+    pitchEnvelopeAmount: clamp(parseNumber(raw.pitchEnvelopeAmount, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeAmount), -48, 48),
+    pitchEnvelopeShape: normalizePitchEnvelopeShape(raw.pitchEnvelopeShape, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeShape),
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
@@ -891,6 +928,12 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.decay !== rightTrack.decay
       || leftTrack.sustain !== rightTrack.sustain
       || leftTrack.release !== rightTrack.release
+      || leftTrack.pitchEnvelopeAttack !== rightTrack.pitchEnvelopeAttack
+      || leftTrack.pitchEnvelopeDecay !== rightTrack.pitchEnvelopeDecay
+      || leftTrack.pitchEnvelopeSustain !== rightTrack.pitchEnvelopeSustain
+      || leftTrack.pitchEnvelopeRelease !== rightTrack.pitchEnvelopeRelease
+      || leftTrack.pitchEnvelopeAmount !== rightTrack.pitchEnvelopeAmount
+      || leftTrack.pitchEnvelopeShape !== rightTrack.pitchEnvelopeShape
       || leftTrack.unisonVoices !== rightTrack.unisonVoices
       || leftTrack.unisonDetune !== rightTrack.unisonDetune
       || leftTrack.tonewheelDrawbars.some((drawbar, drawbarIndex) => drawbar !== rightTrack.tonewheelDrawbars[drawbarIndex])

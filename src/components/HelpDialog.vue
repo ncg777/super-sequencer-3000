@@ -30,7 +30,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>BPM</strong>: Controls the tempo of the sequence.</li>
           <li><strong>A4</strong>: Master concert pitch in Hz for all tracks (default 440; some prefer 432).</li>
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, envelope, unison, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
+          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, amp/pitch envelopes, unison, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
           <li><strong>Waveform</strong>: Select from classic oscillator waves, choir vowels, colored noise, and other resonant spectra per track.</li>
           <li><strong>Phase Distortion</strong>: Skew/tilt the oscillator phase before waveform lookup. Base Skew of 0.5 is linear; values toward 0 or 1 warp the shape. Optional free-rate or tempo-synced LFO (sine, triangle, saw, square, S&amp;H) modulates skew around the base, with Init Phase setting where the LFO starts in its cycle (0–1).</li>
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
@@ -41,7 +41,8 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
           <li><strong>Track Length View</strong>: The track strip shows each track's delay, repeats, and total duration in beats/bars with compact selectable blocks.</li>
           <li><strong>Tanh Drive</strong>: Applies the selected dB gain before a tanh waveshaper, so high values amplify and distort while the final track signal remains softly bounded.</li>
-          <li><strong>Instrument/Modulation/Filter</strong>: Shape each track with attack/release, unison voices, tremolo, vibrato, and a key-following multimode filter.</li>
+          <li><strong>Envelopes</strong>: Each track has a separate amp ADSR and pitch ADSR. Pitch Env Amount is in MIDI pitches (can be negative). Pitch Env Shape is a numeric exponential steepness (0 = linear; higher values make the curve steeper).</li>
+          <li><strong>Instrument/Modulation/Filter</strong>: Shape each track with amp/pitch envelopes, unison voices, tremolo, vibrato, and a key-following multimode filter.</li>
           <li><strong>Effects</strong>: Add optional per-track feedback echo and send each track into the global pink-noise convolution reverb.</li>
           <li><strong>Chorus/Flanger/Phaser</strong>: Tempo-synced modulation effects whose LFO completes one cycle per selected note division (e.g. 4/1 sweeps over four whole notes, 1/8T warbles per eighth triplet), so they follow the BPM automatically.</li>
           <li><strong>Phaser</strong>: A classic phaser pedal: a cascade of first-order allpass stages (each stage pair creates one notch) whose poles are spaced one octave apart around the Center frequency and swept by the LFO over ±(Sweep % of 5 octaves). Stages picks the pole count (classic pedals use 4), Feedback resonates the notches, Resonance sharpens each pole, and Wet sets the dry/phase-shifted mix (always at least 50% wet so the notches stay audible).</li>

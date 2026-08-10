@@ -285,6 +285,7 @@ import {
   type SkewLfoState,
 } from './audio/lfo';
 import { effectiveSkew, warpPhase } from './audio/phaseDistortion';
+import { PitchEnvelopeSynth } from './audio/pitchEnvelopeSynth';
 import {
   quantizeNormalizedTime,
   resolveTimeWarpFunction,
@@ -319,9 +320,9 @@ interface ChoirFormantPath {
 
 interface TrackAudioChain {
   /** Primary oscillator bank (crossfaded with synthAlt when skew LFO moves). */
-  synth: Tone.PolySynth;
+  synth: Tone.PolySynth<PitchEnvelopeSynth>;
   /** Alternate oscillator bank used for click-free partial morphing. */
-  synthAlt: Tone.PolySynth;
+  synthAlt: Tone.PolySynth<PitchEnvelopeSynth>;
   synthGain: Tone.Gain;
   synthAltGain: Tone.Gain;
   /** When true, synth/synthGain are the audible bank; otherwise synthAlt is. */
@@ -989,7 +990,7 @@ export default defineComponent({
         0,
         ...this.tracks.map((track) => track.echoEnabled ? this.getEchoDelaySeconds(track.echoDelay) * (1 + track.echoFeedback * 8) : 0),
       );
-      const releaseTrail = Math.max(0, ...this.tracks.map((track) => track.release));
+      const releaseTrail = Math.max(0, ...this.tracks.map((track) => Math.max(track.release, track.pitchEnvelopeRelease)));
       const hasReverbSend = this.reverbEnabled && this.reverbWet > -96 && this.tracks.some((track) => track.reverbWet > -96);
       const reverbTrail = hasReverbSend ? this.reverbPreDelay + this.reverbDecay : 0;
       return this.getLoopDurationSecondsFromTrackLengths() + Math.max(2, releaseTrail, echoTrail, reverbTrail);
@@ -1281,8 +1282,8 @@ export default defineComponent({
       const maxDelay = options.maxDelay ?? 1;
       const phaserStages = options.phaserStages ?? DEFAULT_PRESET_TRACK_DATA.phaserStages;
       const phaserCenterFrequency = options.phaserCenterFrequency ?? this.midiToFrequency(DEFAULT_PRESET_TRACK_DATA.phaserCenter);
-      const synth = markRaw(new Tone.PolySynth(Tone.Synth));
-      const synthAlt = markRaw(new Tone.PolySynth(Tone.Synth));
+      const synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
+      const synthAlt = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
       const synthGain = markRaw(new Tone.Gain(1));
       const synthAltGain = markRaw(new Tone.Gain(0));
       const noiseSynth = markRaw(new Tone.NoiseSynth({
@@ -1918,18 +1919,26 @@ export default defineComponent({
         release: Math.max(track.release, ENVELOPE_SMOOTHING_SECONDS),
         sustain: track.sustain,
       };
+      const pitchEnvelope = {
+        attack: Math.max(track.pitchEnvelopeAttack, ENVELOPE_SMOOTHING_SECONDS),
+        decay: Math.max(track.pitchEnvelopeDecay, ENVELOPE_SMOOTHING_SECONDS),
+        sustain: track.pitchEnvelopeSustain,
+        release: Math.max(track.pitchEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS),
+      };
       const initialSkew = this.getEffectiveTrackSkew(track, chain, Tone.getTransport().seconds);
       const oscillatorOptions = this.buildTrackOscillatorOptions(track, initialSkew);
       const now = Tone.now();
+      // PolySynth.set typings only expose base SynthOptions; PitchEnvelopeSynth accepts the extras.
+      const voiceSettings = {
+        envelope,
+        oscillator: oscillatorOptions,
+        pitchEnvelope,
+        pitchEnvelopeAmount: track.pitchEnvelopeAmount,
+        pitchEnvelopeShape: track.pitchEnvelopeShape,
+      };
 
-      chain.synth.set({
-        envelope,
-        oscillator: oscillatorOptions,
-      });
-      chain.synthAlt.set({
-        envelope,
-        oscillator: oscillatorOptions,
-      });
+      chain.synth.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
+      chain.synthAlt.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
       chain.synthGain.gain.cancelScheduledValues(now);
       chain.synthAltGain.gain.cancelScheduledValues(now);
       chain.synthGain.gain.setValueAtTime(1, now);

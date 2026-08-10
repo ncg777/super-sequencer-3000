@@ -7,7 +7,7 @@
         <v-tab value="time-warp" prepend-icon="mdi-chart-sankey">Time Warp</v-tab>
         <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
         <v-tab value="phase-distortion" prepend-icon="mdi-chart-timeline-variant">Phase Distortion</v-tab>
-        <v-tab value="envelope" prepend-icon="mdi-chart-bell-curve-cumulative">Envelope</v-tab>
+        <v-tab value="envelopes" prepend-icon="mdi-chart-bell-curve-cumulative">Envelopes</v-tab>
         <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Tremolo/Vibrato</v-tab>
         <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
@@ -397,21 +397,48 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item value="envelope" class="control-tab-panel">
+        <v-window-item value="envelopes" class="control-tab-panel">
+          <div class="envelope-section-label">Amp Envelope</div>
           <v-row class="compact-row">
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Attack (' + Number(draftTrack.attack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.attack" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Amp Attack (' + Number(draftTrack.attack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.attack" @update:modelValue="handleTrackDraftChange" />
             </v-col>
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Decay (' + Number(draftTrack.decay).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.decay" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Amp Decay (' + Number(draftTrack.decay).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.decay" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
           <v-row class="compact-row">
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Sustain (' + Number(draftTrack.sustain).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.sustain" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Amp Sustain (' + Number(draftTrack.sustain).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.sustain" @update:modelValue="handleTrackDraftChange" />
             </v-col>
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Release (' + Number(draftTrack.release).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="draftTrack.release" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Amp Release (' + Number(draftTrack.release).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="draftTrack.release" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+
+          <div class="envelope-section-label envelope-section-label--spaced">Pitch Envelope</div>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Pitch Env Amount (' + Number(draftTrack.pitchEnvelopeAmount).toFixed(2) + ' MIDI)'" :min="-48" :max="48" :step="0.01" v-model="draftTrack.pitchEnvelopeAmount" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Pitch Env Shape (' + Number(draftTrack.pitchEnvelopeShape).toFixed(2) + ')'" :min="pitchEnvelopeShapeMin" :max="pitchEnvelopeShapeMax" :step="0.01" v-model="draftTrack.pitchEnvelopeShape" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Pitch Env Attack (' + Number(draftTrack.pitchEnvelopeAttack).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.pitchEnvelopeAttack" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Pitch Env Decay (' + Number(draftTrack.pitchEnvelopeDecay).toFixed(2) + 's)'" :min="0" :max="10" :step="0.01" v-model="draftTrack.pitchEnvelopeDecay" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Pitch Env Sustain (' + Number(draftTrack.pitchEnvelopeSustain).toFixed(2) + ')'" :min="0" :max="1" :step="0.01" v-model="draftTrack.pitchEnvelopeSustain" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Pitch Env Release (' + Number(draftTrack.pitchEnvelopeRelease).toFixed(2) + 's)'" :min="0" :max="20" :step="0.01" v-model="draftTrack.pitchEnvelopeRelease" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
         </v-window-item>
@@ -693,6 +720,8 @@ import {
   ECHO_DELAY_OPTIONS,
   MODULATION_RATE_OPTIONS,
   PHASER_STAGE_OPTIONS,
+  PITCH_ENVELOPE_SHAPE_MAX,
+  PITCH_ENVELOPE_SHAPE_MIN,
   SKEW_LFO_WAVEFORM_OPTIONS,
   TONEWHEEL_DRAWBAR_LABELS,
   WAVEFORM_OPTIONS,
@@ -733,6 +762,8 @@ export default defineComponent({
       phaserStageOptions: [...PHASER_STAGE_OPTIONS] as number[],
       waveformOptions: WAVEFORM_OPTIONS,
       skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
+      pitchEnvelopeShapeMin: PITCH_ENVELOPE_SHAPE_MIN,
+      pitchEnvelopeShapeMax: PITCH_ENVELOPE_SHAPE_MAX,
       customTimeWarpCurve: CUSTOM_TIME_WARP_CURVE,
       timeWarpCurveOptions: [
         { title: 'Custom expression', value: CUSTOM_TIME_WARP_CURVE },
@@ -745,7 +776,7 @@ export default defineComponent({
         title: value === 0 ? 'Off' : `${value} subdivisions per step`,
         value,
       })),
-      activeControlTab: 'sequence',
+      activeControlTab: 'sequence' as string,
     };
   },
   computed: {
@@ -848,6 +879,19 @@ export default defineComponent({
 
 .control-tab-panel {
   padding: 12px 14px 6px;
+}
+
+.envelope-section-label {
+  margin: 2px 0 8px;
+  color: rgba(176, 236, 255, 0.88);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.envelope-section-label--spaced {
+  margin-top: 14px;
 }
 
 :deep(.v-btn),

@@ -10,6 +10,11 @@ import {
 } from '../src/audio/lfo.js';
 import { effectiveSkew, warpPhase } from '../src/audio/phaseDistortion.js';
 import {
+  getPitchEnvelopeLevel,
+  getPitchEnvelopeMidiOffset,
+  normalizePitchEnvelopeShape,
+} from '../src/audio/pitchEnvelope.js';
+import {
   DEFAULT_TIME_WARP_CURVE,
   quantizeNormalizedTime,
   resolveTimeWarpFunction,
@@ -54,7 +59,17 @@ export interface GenerateTrackOptions {
   timeWarpQuantize?: number;
   timeWarpNoteLengths?: boolean;
   attack?: number;
+  decay?: number;
+  sustain?: number;
   release?: number;
+  pitchEnvelopeAttack?: number;
+  pitchEnvelopeDecay?: number;
+  pitchEnvelopeSustain?: number;
+  pitchEnvelopeRelease?: number;
+  /** Pitch envelope depth in MIDI pitches. */
+  pitchEnvelopeAmount?: number;
+  /** Exponential steepness for pitch envelope segments (0 = linear). */
+  pitchEnvelopeShape?: number;
   unisonVoices?: number;
   unisonDetune?: number;
   /** Nine Hammond-style drawbar levels (0-8) used by the tonewheel waveform. */
@@ -396,7 +411,15 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     timeWarpQuantize: normalizeTimeWarpQuantize(options.timeWarpQuantize, 0),
     timeWarpNoteLengths: Boolean(options.timeWarpNoteLengths ?? true),
     attack: 0.01,
+    decay: 0,
+    sustain: 1,
     release: 0.12,
+    pitchEnvelopeAttack: 0.01,
+    pitchEnvelopeDecay: 0.1,
+    pitchEnvelopeSustain: 0,
+    pitchEnvelopeRelease: 0.2,
+    pitchEnvelopeAmount: 0,
+    pitchEnvelopeShape: 0,
     unisonVoices: 1,
     unisonDetune: 12,
     tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
@@ -460,7 +483,15 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     timeWarpQuantize: normalizeTimeWarpQuantize(track.timeWarpQuantize, fallbackTrack.timeWarpQuantize),
     timeWarpNoteLengths: Boolean(track.timeWarpNoteLengths ?? fallbackTrack.timeWarpNoteLengths),
     attack: clamp(track.attack ?? fallbackTrack.attack, 0, 10),
+    decay: clamp(track.decay ?? fallbackTrack.decay, 0, 10),
+    sustain: clamp(track.sustain ?? fallbackTrack.sustain, 0, 1),
     release: clamp(track.release ?? fallbackTrack.release, 0, 20),
+    pitchEnvelopeAttack: clamp(track.pitchEnvelopeAttack ?? fallbackTrack.pitchEnvelopeAttack, 0, 10),
+    pitchEnvelopeDecay: clamp(track.pitchEnvelopeDecay ?? fallbackTrack.pitchEnvelopeDecay, 0, 10),
+    pitchEnvelopeSustain: clamp(track.pitchEnvelopeSustain ?? fallbackTrack.pitchEnvelopeSustain, 0, 1),
+    pitchEnvelopeRelease: clamp(track.pitchEnvelopeRelease ?? fallbackTrack.pitchEnvelopeRelease, 0, 20),
+    pitchEnvelopeAmount: clamp(track.pitchEnvelopeAmount ?? fallbackTrack.pitchEnvelopeAmount, -48, 48),
+    pitchEnvelopeShape: normalizePitchEnvelopeShape(track.pitchEnvelopeShape, fallbackTrack.pitchEnvelopeShape),
     unisonVoices: clamp(track.unisonVoices ?? fallbackTrack.unisonVoices, 1, 8),
     unisonDetune: clamp(track.unisonDetune ?? fallbackTrack.unisonDetune, 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(track.tonewheelDrawbars),
@@ -604,7 +635,10 @@ function sampleTonewheel(phase: number, waveform: string, tonewheel: Array<{ amp
 }
 
 function getRenderTrailSeconds(prepared: PreparedRenderData): number {
-  const releaseTrail = Math.max(0, ...prepared.tracks.map((entry) => entry.track.release));
+  const releaseTrail = Math.max(
+    0,
+    ...prepared.tracks.map((entry) => Math.max(entry.track.release, entry.track.pitchEnvelopeRelease)),
+  );
   const echoTrail = Math.max(
     0,
     ...prepared.tracks.map((entry) => entry.track.echoEnabled ? getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay) * (1 + entry.track.echoFeedback * 8) : 0),
@@ -925,6 +959,15 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               let env = 1;
               if (entry.track.attack > 0 && t < entry.track.attack) {
                 env = t / entry.track.attack;
+              } else if (entry.track.decay > 0) {
+                const decayElapsed = t - entry.track.attack;
+                if (decayElapsed >= 0 && decayElapsed < entry.track.decay) {
+                  env = 1 - ((decayElapsed / entry.track.decay) * (1 - entry.track.sustain));
+                } else if (t >= entry.track.attack + entry.track.decay) {
+                  env = entry.track.sustain;
+                }
+              } else if (t >= entry.track.attack) {
+                env = entry.track.sustain;
               }
               if (releaseTime < entry.track.release) {
                 env = Math.min(env, Math.max(0, (releaseTime + entry.track.release) / Math.max(entry.track.release, 0.001)));
@@ -939,6 +982,11 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               const vibrato = entry.track.vibratoEnabled
                 ? Math.pow(2, Math.sin(2 * Math.PI * entry.track.vibratoFrequency * t) * entry.track.vibratoDepth / 12)
                 : 1;
+              const pitchEnvelopeLevel = getPitchEnvelopeLevel(entry.track, t, duration);
+              const pitchEnvelopeRatio = Math.pow(
+                2,
+                getPitchEnvelopeMidiOffset(entry.track, pitchEnvelopeLevel) / 12,
+              );
               const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
               const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel, prepared.a4);
 
@@ -959,7 +1007,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               trackLeft[frame] += sample * leftPan;
               trackRight[frame] += sample * rightPan;
 
-              phase += phaseIncrement * vibrato;
+              phase += phaseIncrement * vibrato * pitchEnvelopeRatio;
               if (phase >= 1) {
                 phase -= Math.floor(phase);
               }
