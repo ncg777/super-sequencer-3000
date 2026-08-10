@@ -4,6 +4,12 @@ export interface EncodeWavOptions {  /**
    * Invoked with a 0..1 ratio while the PCM data is being interleaved.
    */
   onProgress?: (ratio: number) => void;
+  /**
+   * Applies TPDF dither at 1 LSB before 16-bit quantization. Enabled by default;
+   * dithering decorrelates quantization error from the signal, trading a tiny
+   * noise floor increase for the removal of harmonic distortion at low levels.
+   */
+  dither?: boolean;
 }
 
 export function encodeWavFromChannels(
@@ -57,12 +63,17 @@ export function encodeWavFromChannels(
   // dominated export time for long mixes.
   const samples = new Int16Array(wavBuffer, offset, frameCount * numChannels);
   const reportEvery = Math.max(1, Math.floor(frameCount / 20));
+  const dither = options.dither !== false;
+  // One LSB of 16-bit audio. TPDF dither is the difference of two independent
+  // uniform random values in [0, 1 LSB), giving triangular noise of ±1 LSB.
+  const lsb = 1 / 0x8000;
   let writeIndex = 0;
 
   for (let frame = 0; frame < frameCount; frame += 1) {
     for (let channel = 0; channel < numChannels; channel += 1) {
       const raw = channels[channel][frame];
-      const sample = raw > 1 ? 1 : raw < -1 ? -1 : raw;
+      const dithered = dither ? raw + (Math.random() - Math.random()) * lsb : raw;
+      const sample = dithered > 1 ? 1 : dithered < -1 ? -1 : dithered;
       const intSample = Math.round(sample < 0 ? sample * 0x8000 : sample * 0x7fff);
       if (isLittleEndian) {
         samples[writeIndex] = intSample;
