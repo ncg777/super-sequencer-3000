@@ -564,17 +564,20 @@
               />
             </v-col>
             <v-col cols="12" md="4">
-              <EditableSlider :label="'Phaser Base (' + Number(draftTrack.phaserBaseFrequency).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="draftTrack.phaserBaseFrequency" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Phaser Center (' + Number(draftTrack.phaserCenter).toFixed(2) + ' MIDI)'" :min="0" :max="127" :step="0.01" v-model="draftTrack.phaserCenter" @update:modelValue="handleTrackDraftChange" />
             </v-col>
             <v-col cols="12" md="4">
-              <EditableSlider :label="'Phaser Sweep (' + Number(draftTrack.phaserOctaves).toFixed(2) + ' octaves)'" :min="0.1" :max="8" :step="0.01" v-model="draftTrack.phaserOctaves" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Phaser Sweep (' + Number(draftTrack.phaserDepth).toFixed(0) + '%)'" :min="0" :max="100" :step="1" v-model="draftTrack.phaserDepth" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
           <v-row class="compact-row">
-            <v-col cols="12" md="6">
-              <EditableSlider :label="'Phaser Q (' + Number(draftTrack.phaserQ).toFixed(2) + ')'" :min="0.01" :max="30" :step="0.01" v-model="draftTrack.phaserQ" @update:modelValue="handleTrackDraftChange" />
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Phaser Feedback (' + Number(draftTrack.phaserFeedback).toFixed(2) + ')'" :min="0" :max="0.95" :step="0.01" v-model="draftTrack.phaserFeedback" @update:modelValue="handleTrackDraftChange" />
             </v-col>
-            <v-col cols="12" md="6">
+            <v-col cols="12" md="4">
+              <EditableSlider :label="'Phaser Resonance (' + Number(draftTrack.phaserQ).toFixed(2) + ')'" :min="0.01" :max="30" :step="0.01" v-model="draftTrack.phaserQ" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="4">
               <EditableSlider :label="'Phaser Wet (' + Number(draftTrack.phaserWet).toFixed(1) + ' dB)'" :min="-96" :max="0" :step="0.1" v-model="draftTrack.phaserWet" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>

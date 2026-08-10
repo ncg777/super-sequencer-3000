@@ -276,6 +276,7 @@ import {
   type ReverbAudioChain,
 } from './audio/reverb';
 import { encodeWavFromChannels } from './audio/wav';
+import { Phaser } from './audio/phaser';
 import {
   createSkewLfoState,
   getLfoFrequencyHz,
@@ -292,6 +293,7 @@ import {
 import {
   DEFAULT_PRESET_DATA,
   DEFAULT_PRESET_TRACK_DATA,
+  PHASER_MAX_SWEEP_OCTAVES,
   arePresetDataEqual,
   buildDraftFromUrl,
   clonePresetData,
@@ -339,8 +341,9 @@ interface TrackAudioChain {
   chorus: Tone.Chorus;
   flanger: Tone.FeedbackDelay;
   flangerLfo: Tone.LFO;
-  phaser: Tone.Phaser;
+  phaser: Phaser;
   phaserStages: number;
+  phaserCenterFrequency: number;
   echo: Tone.FeedbackDelay | Tone.PingPongDelay;
   echoPingPong: boolean;
   maxDelay: number;
@@ -1077,6 +1080,7 @@ export default defineComponent({
             echoPingPong: entry.track.echoPingPong,
             maxDelay: this.getTrackEchoMaxDelay(entry.track),
             phaserStages: entry.track.phaserStages,
+            phaserCenterFrequency: this.midiToFrequency(entry.track.phaserCenter),
           });
           this.trackSynths[`offline-${entry.track.id}`] = chain;
           this.updateTrackChainSettings(entry.track, chain);
@@ -1272,10 +1276,11 @@ export default defineComponent({
     getTrackEchoMaxDelay(track: PresetTrackData): number {
       return Math.max(1, this.getEchoDelaySeconds(track.echoDelay));
     },
-    createTrackAudioChain(options: { echoPingPong?: boolean; maxDelay?: number; phaserStages?: number } = {}): TrackAudioChain {
+    createTrackAudioChain(options: { echoPingPong?: boolean; maxDelay?: number; phaserStages?: number; phaserCenterFrequency?: number } = {}): TrackAudioChain {
       const echoPingPong = options.echoPingPong ?? true;
       const maxDelay = options.maxDelay ?? 1;
       const phaserStages = options.phaserStages ?? DEFAULT_PRESET_TRACK_DATA.phaserStages;
+      const phaserCenterFrequency = options.phaserCenterFrequency ?? this.midiToFrequency(DEFAULT_PRESET_TRACK_DATA.phaserCenter);
       const synth = markRaw(new Tone.PolySynth(Tone.Synth));
       const synthAlt = markRaw(new Tone.PolySynth(Tone.Synth));
       const synthGain = markRaw(new Tone.Gain(1));
@@ -1317,7 +1322,7 @@ export default defineComponent({
         feedback: 0,
       }));
       const flangerLfo = markRaw(new Tone.LFO());
-      const phaser = markRaw(new Tone.Phaser({ stages: phaserStages }));
+      const phaser = markRaw(new Phaser({ stages: phaserStages, centerFrequency: phaserCenterFrequency }));
       const echo = markRaw(echoPingPong ? new Tone.PingPongDelay({ maxDelay }) : new Tone.FeedbackDelay({ maxDelay }));
       const outputGain = markRaw(new Tone.Gain(1));
       const mixGain = markRaw(new Tone.Gain(1));
@@ -1357,6 +1362,7 @@ export default defineComponent({
         flangerLfo,
         phaser,
         phaserStages,
+        phaserCenterFrequency,
         echo,
         echoPingPong,
         maxDelay,
@@ -1370,9 +1376,13 @@ export default defineComponent({
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
       const maxDelay = this.getTrackEchoMaxDelay(track);
+      const phaserCenterFrequency = this.midiToFrequency(track.phaserCenter);
       const existing = this.trackSynths[track.id];
       if (existing) {
-        if (existing.echoPingPong !== track.echoPingPong || existing.maxDelay < maxDelay || existing.phaserStages !== track.phaserStages) {
+        if (existing.echoPingPong !== track.echoPingPong
+          || existing.maxDelay < maxDelay
+          || existing.phaserStages !== track.phaserStages
+          || existing.phaserCenterFrequency !== phaserCenterFrequency) {
           this.disposeTrackChain(existing);
           delete this.trackSynths[track.id];
         } else {
@@ -1380,7 +1390,7 @@ export default defineComponent({
         }
       }
 
-      const chain = this.createTrackAudioChain({ echoPingPong: track.echoPingPong, maxDelay, phaserStages: track.phaserStages });
+      const chain = this.createTrackAudioChain({ echoPingPong: track.echoPingPong, maxDelay, phaserStages: track.phaserStages, phaserCenterFrequency });
       this.trackSynths[track.id] = chain;
       this.updateTrackChainSettings(track, chain);
       return chain;
@@ -1981,11 +1991,11 @@ export default defineComponent({
         feedback: this.clampNormalRange(track.flangerFeedback),
         wet: track.flangerEnabled ? this.dbToWetMix(track.flangerWet) : 0,
       });
-      chain.phaser.set({
+      chain.phaser.apply({
         frequency: this.getModulationRateHz(track.phaserRate),
-        octaves: track.phaserOctaves,
-        baseFrequency: this.midiToFrequency(track.phaserBaseFrequency),
+        sweepOctaves: (track.phaserDepth / 100) * PHASER_MAX_SWEEP_OCTAVES,
         Q: track.phaserQ,
+        feedback: track.phaserFeedback,
         wet: track.phaserEnabled ? this.dbToWetMix(track.phaserWet) : 0,
       });
       chain.outputGain.gain.value = this.dbToGain(track.gain);
