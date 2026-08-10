@@ -2007,6 +2007,31 @@ export default defineComponent({
       chain.synthAlt.context.lookAhead = 0.05;
       chain.noiseSynth.context.lookAhead = 0.05;
       this.routeTrackAudioChain(track, chain);
+      // Tone modulation sources can end up stopped after graph rewires / param sets
+      // (especially on the first chain build before Transport starts). Restart them so
+      // tremolo, vibrato, chorus, flanger, and phaser keep modulating the signal.
+      this.ensureTrackModulationRunning(chain);
+    },
+    /**
+     * Force-restart every free-running modulator on the track chain.
+     * stop()+start() recreates each LFO's internal oscillator and re-binds frequency,
+     * which recovers units that report "started" but are no longer producing motion.
+     */
+    ensureTrackModulationRunning(chain: TrackAudioChain) {
+      chain.tremolo.stop();
+      chain.tremolo.start();
+      chain.chorus.stop();
+      chain.chorus.start();
+      chain.flangerLfo.stop();
+      chain.flangerLfo.start();
+      chain.phaser.lfo.stop();
+      chain.phaser.lfo.start();
+      // Vibrato keeps its LFO private; restart through the same Tone surface when present.
+      const vibratoLfo = (chain.vibrato as unknown as { _lfo?: Tone.LFO })._lfo;
+      if (vibratoLfo && typeof vibratoLfo.stop === 'function' && typeof vibratoLfo.start === 'function') {
+        vibratoLfo.stop();
+        vibratoLfo.start();
+      }
     },
     updateSynths(trackId?: string, createMissingChains = true) {
       const activeTrackIds = new Set(this.tracks.map((track) => track.id));
