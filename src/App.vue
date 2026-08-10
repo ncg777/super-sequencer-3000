@@ -2026,10 +2026,12 @@ export default defineComponent({
       chain.flangerLfo.start();
       chain.phaser.lfo.stop();
       chain.phaser.lfo.start();
-      // Vibrato keeps its LFO private; restart through the same Tone surface.
-      const vibratoLfo = (chain.vibrato as unknown as { _lfo: Tone.LFO })._lfo;
-      vibratoLfo.stop();
-      vibratoLfo.start();
+      // Vibrato keeps its LFO private; restart through the same Tone surface when present.
+      const vibratoLfo = (chain.vibrato as unknown as { _lfo?: Tone.LFO })._lfo;
+      if (vibratoLfo && typeof vibratoLfo.stop === 'function' && typeof vibratoLfo.start === 'function') {
+        vibratoLfo.stop();
+        vibratoLfo.start();
+      }
     },
     updateSynths(trackId?: string, createMissingChains = true) {
       const activeTrackIds = new Set(this.tracks.map((track) => track.id));
