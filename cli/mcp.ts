@@ -69,7 +69,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             lengthFactor: {
               type: 'number',
               description:
-                'Note length as a percentage of the quantization step (1-400). Default: 100.',
+                'Note length as a percentage of the quantization step (0-400). Default: 100.',
+            },
+            lengthOffset: {
+              type: 'number',
+              description:
+                'Fixed duration added to every note, measured in quantization steps (0-64). Default: 0.',
             },
             midiChannel: {
               type: 'number',
@@ -122,7 +127,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             tracks: {
               type: 'array',
               description:
-                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, midiChannel, gain, delay, repeats, and time warp fields.',
+                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, lengthOffset, midiChannel, gain, delay, repeats, and time warp fields.',
               items: {
                 type: 'object',
                 properties: {
@@ -133,6 +138,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                   sequence: { type: 'string' },
                   octave: { type: 'number' },
                   lengthFactor: { type: 'number' },
+                  lengthOffset: { type: 'number' },
                   midiChannel: { type: 'number' },
                   gain: { type: 'number' },
                   delay: { type: 'number' },
@@ -201,6 +207,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       sequence: optStr('sequence'),
       octave: optNum('octave'),
       lengthFactor: optNum('lengthFactor'),
+      lengthOffset: optNum('lengthOffset'),
       midiChannel: optNum('midiChannel'),
       gain: optNum('gain'),
       waveform: optStr('waveform'),

@@ -15,6 +15,8 @@ export interface PresetTrackData {
   sequenceInput: string;
   octave: number;
   lengthFactor: number;
+  /** Fixed duration added to every note, measured in this track's quantization steps. */
+  lengthOffset: number;
   midiChannel: number;
   gain: number;
   velocityMultiplier: number;
@@ -292,6 +294,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   sequenceInput: '1 2 4 8',
   octave: 4,
   lengthFactor: 100,
+  lengthOffset: 0,
   midiChannel: 1,
   gain: -6,
   velocityMultiplier: 1,
@@ -580,6 +583,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     sequenceInput: track.sequenceInput,
     octave: track.octave,
     lengthFactor: track.lengthFactor,
+    lengthOffset: track.lengthOffset,
     midiChannel: track.midiChannel,
     gain: track.gain,
     velocityMultiplier: track.velocityMultiplier,
@@ -668,7 +672,8 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     waveform: normalizeWaveform(raw.waveform),
     sequenceInput: typeof raw.sequenceInput === 'string' ? raw.sequenceInput : DEFAULT_PRESET_TRACK_DATA.sequenceInput,
     octave: clamp(parseInteger(raw.octave?.toString(), DEFAULT_PRESET_TRACK_DATA.octave), 0, 10),
-    lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_TRACK_DATA.lengthFactor), 1, 400),
+    lengthFactor: clamp(parseInteger(raw.lengthFactor?.toString(), DEFAULT_PRESET_TRACK_DATA.lengthFactor), 0, 400),
+    lengthOffset: clamp(parseNumber(raw.lengthOffset, DEFAULT_PRESET_TRACK_DATA.lengthOffset), 0, 64),
     midiChannel: clamp(parseInteger(raw.midiChannel?.toString(), DEFAULT_PRESET_TRACK_DATA.midiChannel), 1, 16),
     gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), -96, 24),
     velocityMultiplier: clamp(parseNumber(raw.velocityMultiplier, DEFAULT_PRESET_TRACK_DATA.velocityMultiplier), 0, 4),
@@ -824,6 +829,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.sequenceInput !== rightTrack.sequenceInput
       || leftTrack.octave !== rightTrack.octave
       || leftTrack.lengthFactor !== rightTrack.lengthFactor
+      || leftTrack.lengthOffset !== rightTrack.lengthOffset
       || leftTrack.midiChannel !== rightTrack.midiChannel
       || leftTrack.gain !== rightTrack.gain
       || leftTrack.velocityMultiplier !== rightTrack.velocityMultiplier
@@ -1328,6 +1334,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
         sequenceInput: params.get('sequence') ?? firstTrack.sequenceInput,
         octave: params.get('octave') ?? firstTrack.octave,
         lengthFactor: params.get('lengthFactor') ?? firstTrack.lengthFactor,
+        lengthOffset: params.get('lengthOffset') ?? firstTrack.lengthOffset,
         delay: params.get('delay') ?? firstTrack.delay,
         repeats: params.get('repeats') ?? firstTrack.repeats,
         timeWarpEnabled: params.get('timeWarpEnabled') ?? firstTrack.timeWarpEnabled,
@@ -1346,7 +1353,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 export function hasUrlPresetOverrides(search: string): boolean {
   const params = new URLSearchParams(search);
 
-  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'forte', 'delay', 'repeats', 'timeWarpEnabled', 'timeWarpCurve', 'timeWarpExpression', 'timeWarpRepeats', 'timeWarpAmount', 'timeWarpQuantize', 'timeWarpNoteLengths']
+  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'lengthOffset', 'forte', 'delay', 'repeats', 'timeWarpEnabled', 'timeWarpCurve', 'timeWarpExpression', 'timeWarpRepeats', 'timeWarpAmount', 'timeWarpQuantize', 'timeWarpNoteLengths']
     .some((key) => params.has(key));
 }
 

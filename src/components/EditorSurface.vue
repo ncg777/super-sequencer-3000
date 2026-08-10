@@ -93,10 +93,23 @@
             <v-col cols="12">
               <EditableSlider
                 :label="'Track Note Length (' + draftTrack.lengthFactor + '%)'"
-                :min="1"
+                :min="0"
                 :max="400"
                 :step="1"
                 v-model="draftTrack.lengthFactor"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
+                :label="'Fixed Note Length (+' + Number(draftTrack.lengthOffset).toFixed(2) + ' steps)'"
+                :min="0"
+                :max="64"
+                :step="0.01"
+                v-model="draftTrack.lengthOffset"
                 @update:modelValue="handleTrackDraftChange"
               />
             </v-col>

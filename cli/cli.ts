@@ -63,7 +63,8 @@ program
   .option('--forte <string>', 'Forte number (pitch-class set identifier)', '5-35.05')
   .option('--sequence <string>', 'Legacy single-track sequence', '1 2 4 8 16')
   .option('--octave <number>', 'Legacy single-track octave (0-10)', '6')
-  .option('--length-factor <number>', 'Legacy single-track note length percent (1-400)', '100')
+  .option('--length-factor <number>', 'Legacy single-track note length percent (0-400)', '100')
+  .option('--length-offset <number>', 'Legacy single-track fixed note length in steps (0-64)', '0')
   .option('--midi-channel <number>', 'Legacy single-track MIDI channel (1-16)', '1')
   .option('--gain <number>', 'Legacy single-track audio gain in dB (-96 to +24)', '0')
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
@@ -89,6 +90,7 @@ program
         sequence: options.sequence,
         octave: parseInt(options.octave),
         lengthFactor: parseInt(options.lengthFactor),
+        lengthOffset: parseFloat(options.lengthOffset),
         midiChannel: parseInt(options.midiChannel),
         gain: parseFloat(options.gain),
         waveform: options.waveform,

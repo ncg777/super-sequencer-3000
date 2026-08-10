@@ -36,7 +36,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
           <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
           <li><strong>Track Gain</strong>: Sets each track's audio level in dB. Use the velocity multiplier to control MIDI note velocity independently.</li>
-          <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes.</li>
+          <li><strong>Note length</strong>: Multiplies the durations of the selected track's notes, then adds the optional fixed length measured in that track's steps (for example, a denominator of 4 makes one step a sixteenth note).</li>
           <li><strong>Track Delay</strong>: Number of bars to wait before the track starts playing.</li>
           <li><strong>Track Repeats</strong>: Number of times the track's pattern is repeated. After its repeats, the track stays silent until the longest track finishes, then everything loops.</li>
           <li><strong>Track Length View</strong>: The track strip shows each track's delay, repeats, and total duration in beats/bars with compact selectable blocks.</li>

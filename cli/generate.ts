@@ -31,8 +31,10 @@ export interface GenerateTrackOptions {
   sequence?: string;
   /** Octave shift (0-10). */
   octave?: number;
-  /** Note length as percentage of quantization step (1-400). */
+  /** Note length as percentage of quantization step (0-400). */
   lengthFactor?: number;
+  /** Fixed duration added to every note, measured in quantization steps (0-64). */
+  lengthOffset?: number;
   /** MIDI channel (1-16). */
   midiChannel?: number;
   /** Audio level in dB (-96 to +24). */
@@ -165,6 +167,8 @@ export interface GenerateOptions {
   octave?: number;
   /** Legacy single-track length factor used when tracks is omitted. */
   lengthFactor?: number;
+  /** Legacy single-track fixed note length in steps used when tracks is omitted. */
+  lengthOffset?: number;
   /** Legacy single-track midi channel used when tracks is omitted. */
   midiChannel?: number;
   /** Legacy single-track audio gain in dB used when tracks is omitted. */
@@ -315,7 +319,7 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
       }
 
       const durSteps = getStepDuration(entry.actualNotes, i);
-      const baseDuration = (durSteps * entry.quant * entry.track.lengthFactor) / 100.0;
+      const baseDuration = ((durSteps * entry.track.lengthFactor) / 100.0 + entry.track.lengthOffset) * entry.quant;
       const localTime = i * entry.quant;
       const chunkIndex = Math.min(warpChunks - 1, Math.floor(localTime / chunkPeriod));
       const chunkStart = loopStart + chunkIndex * chunkPeriod;
@@ -377,7 +381,8 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     waveform: options.waveform ?? 'sine',
     sequence: options.sequence ?? '1 2 4 8 16',
     octave: clamp(options.octave ?? 6, 0, 10),
-    lengthFactor: clamp(options.lengthFactor ?? 100, 1, 400),
+    lengthFactor: clamp(options.lengthFactor ?? 100, 0, 400),
+    lengthOffset: clamp(options.lengthOffset ?? 0, 0, 64),
     midiChannel: clamp(options.midiChannel ?? 1, 1, 16),
     gain: clamp(options.gain ?? 0, -96, 24),
     velocityMultiplier: 1,
@@ -440,7 +445,8 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     waveform: track.waveform ?? fallbackTrack.waveform,
     sequence: track.sequence ?? fallbackTrack.sequence,
     octave: clamp(track.octave ?? fallbackTrack.octave, 0, 10),
-    lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 1, 400),
+    lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 0, 400),
+    lengthOffset: clamp(track.lengthOffset ?? fallbackTrack.lengthOffset, 0, 64),
     midiChannel: clamp(track.midiChannel ?? clamp(index + 1, 1, 16), 1, 16),
     gain: clamp(track.gain ?? fallbackTrack.gain, -96, 24),
     velocityMultiplier: clamp(track.velocityMultiplier ?? fallbackTrack.velocityMultiplier, 0, 4),

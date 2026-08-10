@@ -874,7 +874,7 @@ export default defineComponent({
           }
 
           const durSteps = this.getTrackStepDuration(trackNotes, i);
-          const baseDuration = durSteps * trackQuant * track.lengthFactor / 100.0;
+          const baseDuration = ((durSteps * track.lengthFactor / 100.0) + track.lengthOffset) * trackQuant;
           const localTime = i * trackQuant;
           const chunkIndex = Math.min(warpChunks - 1, Math.floor(localTime / chunkPeriod));
           const chunkStart = loopStart + chunkIndex * chunkPeriod;
@@ -938,6 +938,7 @@ export default defineComponent({
         || previous.sequenceInput !== next.sequenceInput
         || previous.octave !== next.octave
         || previous.lengthFactor !== next.lengthFactor
+        || previous.lengthOffset !== next.lengthOffset
         || previous.velocityMultiplier !== next.velocityMultiplier
         || previous.timeWarpEnabled !== next.timeWarpEnabled
         || previous.timeWarpCurve !== next.timeWarpCurve
