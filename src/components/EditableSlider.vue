@@ -85,7 +85,7 @@ function updateFromSlider(nextValue: unknown): void {
           class="editable-slider__label"
           :disabled="disabled"
           @click.stop="beginManualEdit"
-          @touchstart.prevent="beginManualEdit"
+          @touchstart.prevent.stop="beginManualEdit"
         >
           {{ label }}
         </button>
@@ -97,7 +97,7 @@ function updateFromSlider(nextValue: unknown): void {
           :disabled="disabled"
           :aria-label="`Edit ${label}`"
           @click.stop="beginManualEdit"
-          @touchstart.prevent="beginManualEdit"
+          @touchstart.prevent.stop="beginManualEdit"
         />
       </div>
       <v-text-field
