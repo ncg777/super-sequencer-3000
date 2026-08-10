@@ -54,7 +54,7 @@ program
   .name('gaterunner')
   .description('Generate a MIDI file from a GateRunner sequence')
   .version('2026.8.10')
-  .requiredOption('-o, --output <file>', 'Output MIDI file path')
+  .requiredOption('-o, --output <file>', 'Output file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
   .option('--a4 <number>', 'Concert pitch A4 frequency in Hz (380-500)', '440')
