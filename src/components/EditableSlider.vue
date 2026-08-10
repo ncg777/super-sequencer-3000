@@ -79,15 +79,27 @@ function updateFromSlider(nextValue: unknown): void {
 <template>
   <div class="editable-slider" :class="{ 'editable-slider--disabled': disabled }">
     <div class="editable-slider__header">
-      <button
-        type="button"
-        class="editable-slider__label"
-        :disabled="disabled"
-        @click="beginManualEdit"
-        @touchstart.prevent="beginManualEdit"
-      >
-        {{ label }}
-      </button>
+      <div class="editable-slider__label-group">
+        <button
+          type="button"
+          class="editable-slider__label"
+          :disabled="disabled"
+          @click.stop="beginManualEdit"
+          @touchstart.prevent.stop="beginManualEdit"
+        >
+          {{ label }}
+        </button>
+        <v-btn
+          icon="mdi-pencil-outline"
+          class="editable-slider__edit-button"
+          variant="text"
+          size="x-small"
+          :disabled="disabled"
+          :aria-label="`Edit ${label}`"
+          @click.stop="beginManualEdit"
+          @touchstart.prevent.stop="beginManualEdit"
+        />
+      </div>
       <v-text-field
         v-if="isEditing"
         ref="manualInputRef"
@@ -142,6 +154,16 @@ function updateFromSlider(nextValue: unknown): void {
   padding: 0;
   text-align: left;
   cursor: pointer;
+}
+
+.editable-slider__label-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.editable-slider__edit-button {
+  color: inherit;
 }
 
 .editable-slider__label:hover,

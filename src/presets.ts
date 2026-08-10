@@ -315,7 +315,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   sustain: 1,
   release: 0.12,
   unisonVoices: 1,
-  unisonDetune: 12,
+  unisonDetune: 0,
   tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
   skew: 0.5,
   skewLfoEnabled: false,
