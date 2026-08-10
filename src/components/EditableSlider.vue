@@ -162,7 +162,7 @@ function updateFromSlider(nextValue: unknown): void {
 }
 
 .editable-slider__edit-button {
-  color: #ffffff;
+  color: inherit;
 }
 
 .editable-slider__label:hover,
