@@ -128,7 +128,6 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
   }
 
   dispose(): this {
-    super.dispose();
     this.lfo.stop();
     this.lfo.dispose();
     this.stages.forEach((stage) => stage.dispose());
@@ -136,6 +135,8 @@ export class Phaser extends Tone.ToneAudioNode<PhaserOptions> {
     this.frequencyConverters.forEach((converter) => converter.dispose());
     this.feedbackGain.dispose();
     this.mix.dispose();
+    // input/output are disconnected (not disposed) by super.dispose().
+    super.dispose();
     return this;
   }
 }

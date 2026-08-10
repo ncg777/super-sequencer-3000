@@ -528,16 +528,16 @@ type LegacyPhaserFields = {
 
 /**
  * Older presets stored the sweep as octaves plus a base MIDI note that had almost
- * no audible effect; map both onto the new center/sweep-percent controls.
+ * no audible effect; the base note maps directly onto the new center control
+ * while the octaves value is handled by normalizePhaserDepth.
  */
 function normalizePhaserCenter(raw: LegacyPhaserFields): number {
   if (typeof raw.phaserCenter === 'number' && Number.isFinite(raw.phaserCenter)) {
     return clamp(raw.phaserCenter, 0, 127);
   }
-  const legacyOctaves = parseNumber(raw.phaserOctaves, Number.NaN);
   const legacyBase = parseNumber(raw.phaserBaseFrequency, Number.NaN);
-  if (Number.isFinite(legacyOctaves) && Number.isFinite(legacyBase)) {
-    return clamp(legacyBase + legacyOctaves, 0, 127);
+  if (Number.isFinite(legacyBase)) {
+    return clamp(legacyBase, 0, 127);
   }
   return DEFAULT_PRESET_TRACK_DATA.phaserCenter;
 }
