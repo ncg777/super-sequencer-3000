@@ -96,9 +96,10 @@ export interface PresetTrackData {
   flangerWet: number;
   phaserEnabled: boolean;
   phaserRate: ModulationRateValue;
-  phaserOctaves: number;
+  phaserCenter: number;
+  phaserDepth: number;
   phaserStages: number;
-  phaserBaseFrequency: number;
+  phaserFeedback: number;
   phaserQ: number;
   phaserWet: number;
   reverbWet: number;
@@ -159,7 +160,9 @@ export const MODULATION_RATE_OPTIONS = [
   '1/32',
 ] as const;
 
+/** Classic phaser pedals use an even number of first-order allpass poles. */
 export const PHASER_STAGE_OPTIONS = [2, 4, 6, 8, 10, 12] as const;
+export const PHASER_MAX_SWEEP_OCTAVES = 5;
 
 export const WAVEFORM_OPTIONS = [
   { title: 'Sine', value: 'sine' },
@@ -362,11 +365,12 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   flangerWet: -6,
   phaserEnabled: false,
   phaserRate: '2/1',
-  phaserOctaves: 3,
-  phaserStages: 10,
-  phaserBaseFrequency: 65,
-  phaserQ: 10,
-  phaserWet: 0,
+  phaserCenter: 76,
+  phaserDepth: 70,
+  phaserStages: 4,
+  phaserFeedback: 0.3,
+  phaserQ: 0.5,
+  phaserWet: -6,
   reverbWet: -14,
 };
 
@@ -514,6 +518,45 @@ function normalizePhaserStages(value: unknown): number {
   return PHASER_STAGES.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.phaserStages;
 }
 
+type LegacyPhaserFields = {
+  phaserCenter?: number;
+  phaserDepth?: number;
+  phaserFeedback?: number;
+  phaserOctaves?: number;
+  phaserBaseFrequency?: number;
+};
+
+/**
+ * Older presets stored the sweep as octaves plus a base MIDI note that had almost
+ * no audible effect; the base note maps directly onto the new center control
+ * while the octaves value is handled by normalizePhaserDepth.
+ */
+function normalizePhaserCenter(raw: LegacyPhaserFields): number {
+  if (typeof raw.phaserCenter === 'number' && Number.isFinite(raw.phaserCenter)) {
+    return clamp(raw.phaserCenter, 0, 127);
+  }
+  const legacyBase = parseNumber(raw.phaserBaseFrequency, Number.NaN);
+  if (Number.isFinite(legacyBase)) {
+    return clamp(legacyBase, 0, 127);
+  }
+  return DEFAULT_PRESET_TRACK_DATA.phaserCenter;
+}
+
+function normalizePhaserDepth(raw: LegacyPhaserFields): number {
+  if (typeof raw.phaserDepth === 'number' && Number.isFinite(raw.phaserDepth)) {
+    return clamp(raw.phaserDepth, 0, 100);
+  }
+  const legacyOctaves = parseNumber(raw.phaserOctaves, Number.NaN);
+  if (Number.isFinite(legacyOctaves)) {
+    return clamp((legacyOctaves / PHASER_MAX_SWEEP_OCTAVES) * 100, 0, 100);
+  }
+  return DEFAULT_PRESET_TRACK_DATA.phaserDepth;
+}
+
+function normalizePhaserFeedback(raw: LegacyPhaserFields): number {
+  return clamp(parseNumber(raw.phaserFeedback, DEFAULT_PRESET_TRACK_DATA.phaserFeedback), 0, 0.95);
+}
+
 function normalizeTimeWarpCurve(value: unknown): string {
   return typeof value === 'string' && TIME_WARP_CURVE_VALUES.has(value)
     ? value
@@ -651,9 +694,10 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     flangerWet: track.flangerWet,
     phaserEnabled: track.phaserEnabled,
     phaserRate: track.phaserRate,
-    phaserOctaves: track.phaserOctaves,
+    phaserCenter: track.phaserCenter,
+    phaserDepth: track.phaserDepth,
     phaserStages: track.phaserStages,
-    phaserBaseFrequency: track.phaserBaseFrequency,
+    phaserFeedback: track.phaserFeedback,
     phaserQ: track.phaserQ,
     phaserWet: track.phaserWet,
     reverbWet: track.reverbWet,
@@ -741,9 +785,10 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     flangerWet: clamp(parseNumber(raw.flangerWet, DEFAULT_PRESET_TRACK_DATA.flangerWet), -96, 0),
     phaserEnabled: Boolean(raw.phaserEnabled ?? DEFAULT_PRESET_TRACK_DATA.phaserEnabled),
     phaserRate: normalizeModulationRate(raw.phaserRate, DEFAULT_PRESET_TRACK_DATA.phaserRate),
-    phaserOctaves: clamp(parseNumber(raw.phaserOctaves, DEFAULT_PRESET_TRACK_DATA.phaserOctaves), 0.1, 8),
+    phaserCenter: normalizePhaserCenter(raw),
+    phaserDepth: normalizePhaserDepth(raw),
     phaserStages: normalizePhaserStages(raw.phaserStages),
-    phaserBaseFrequency: clamp(parseNumber(raw.phaserBaseFrequency, DEFAULT_PRESET_TRACK_DATA.phaserBaseFrequency), 0, 127),
+    phaserFeedback: normalizePhaserFeedback(raw),
     phaserQ: clamp(parseNumber(raw.phaserQ, DEFAULT_PRESET_TRACK_DATA.phaserQ), 0.01, 30),
     phaserWet: clamp(parseNumber(raw.phaserWet, DEFAULT_PRESET_TRACK_DATA.phaserWet), -96, 0),
     reverbWet: clamp(parseNumber(raw.reverbWet, DEFAULT_PRESET_TRACK_DATA.reverbWet), -96, 0),
@@ -897,9 +942,10 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.flangerWet !== rightTrack.flangerWet
       || leftTrack.phaserEnabled !== rightTrack.phaserEnabled
       || leftTrack.phaserRate !== rightTrack.phaserRate
-      || leftTrack.phaserOctaves !== rightTrack.phaserOctaves
+      || leftTrack.phaserCenter !== rightTrack.phaserCenter
+      || leftTrack.phaserDepth !== rightTrack.phaserDepth
       || leftTrack.phaserStages !== rightTrack.phaserStages
-      || leftTrack.phaserBaseFrequency !== rightTrack.phaserBaseFrequency
+      || leftTrack.phaserFeedback !== rightTrack.phaserFeedback
       || leftTrack.phaserQ !== rightTrack.phaserQ
       || leftTrack.phaserWet !== rightTrack.phaserWet
       || leftTrack.reverbWet !== rightTrack.reverbWet) {
