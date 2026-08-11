@@ -3,13 +3,13 @@ import {
   normalizePitchEnvelopeShape,
   PITCH_ENVELOPE_SHAPE_MAX,
   PITCH_ENVELOPE_SHAPE_MIN,
-} from './audio/pitchEnvelope';
+} from './audio/pitchEnvelope.js';
 import {
   CUSTOM_TIME_WARP_CURVE,
   DEFAULT_TIME_WARP_CURVE,
   TIME_WARP_CURVE_VALUES,
   TIME_WARP_QUANTIZE_OPTIONS,
-} from './audio/timeWarp';
+} from './audio/timeWarp.js';
 
 export interface PresetTrackData {
   id: string;

@@ -1,9 +1,113 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
+import { parsePresetImportPayload, type PresetData } from '../src/presets.js';
 import { generateMidi, generateWav, type GenerateReverbOptions, type GenerateTrackOptions } from './generate.js';
 
 const program = new Command();
+
+function presetDataToGeneratorInput(data: PresetData) {
+  return {
+    bpm: data.bpm,
+    a4: data.a4,
+    forte: data.forte,
+    tracks: data.tracks.map((track) => ({
+      name: track.name,
+      numerator: track.numerator,
+      denominator: track.denominator,
+      waveform: track.waveform,
+      sequence: track.sequenceInput,
+      octave: track.octave,
+      lengthFactor: track.lengthFactor,
+      lengthOffset: track.lengthOffset,
+      midiChannel: track.midiChannel,
+      gain: track.gain,
+      velocityMultiplier: track.velocityMultiplier,
+      delay: track.delay,
+      repeats: track.repeats,
+      timeWarpEnabled: track.timeWarpEnabled,
+      timeWarpCurve: track.timeWarpCurve,
+      timeWarpExpression: track.timeWarpExpression,
+      timeWarpRepeats: track.timeWarpRepeats,
+      timeWarpAmount: track.timeWarpAmount,
+      timeWarpQuantize: track.timeWarpQuantize,
+      timeWarpNoteLengths: track.timeWarpNoteLengths,
+      attack: track.attack,
+      decay: track.decay,
+      sustain: track.sustain,
+      release: track.release,
+      pitchEnvelopeAttack: track.pitchEnvelopeAttack,
+      pitchEnvelopeDecay: track.pitchEnvelopeDecay,
+      pitchEnvelopeSustain: track.pitchEnvelopeSustain,
+      pitchEnvelopeRelease: track.pitchEnvelopeRelease,
+      pitchEnvelopeAmount: track.pitchEnvelopeAmount,
+      pitchEnvelopeShape: track.pitchEnvelopeShape,
+      unisonVoices: track.unisonVoices,
+      unisonDetune: track.unisonDetune,
+      tonewheelDrawbars: track.tonewheelDrawbars,
+      skew: track.skew,
+      skewLfoEnabled: track.skewLfoEnabled,
+      skewLfoSync: track.skewLfoSync,
+      skewLfoRateHz: track.skewLfoRateHz,
+      skewLfoRate: track.skewLfoRate,
+      skewLfoAmount: track.skewLfoAmount,
+      skewLfoWaveform: track.skewLfoWaveform,
+      skewLfoInitPhase: track.skewLfoInitPhase,
+      tremoloEnabled: track.tremoloEnabled,
+      tremoloFrequency: track.tremoloFrequency,
+      tremoloDepth: track.tremoloDepth,
+      vibratoEnabled: track.vibratoEnabled,
+      vibratoFrequency: track.vibratoFrequency,
+      vibratoDepth: track.vibratoDepth,
+      filterEnabled: track.filterEnabled,
+      filterType: track.filterType,
+      filterFrequency: track.filterFrequency,
+      filterQ: track.filterQ,
+      filterGain: track.filterGain,
+      filterKeyFollow: track.filterKeyFollow,
+      filterEnvelopeAttack: track.filterEnvelopeAttack,
+      filterEnvelopeDecay: track.filterEnvelopeDecay,
+      filterEnvelopeSustain: track.filterEnvelopeSustain,
+      filterEnvelopeRelease: track.filterEnvelopeRelease,
+      filterEnvelopeAmount: track.filterEnvelopeAmount,
+      echoEnabled: track.echoEnabled,
+      echoDelay: track.echoDelay,
+      echoFeedback: track.echoFeedback,
+      echoWet: track.echoWet,
+      echoPingPong: track.echoPingPong,
+      reverbWet: track.reverbWet,
+    })),
+    reverb: {
+      enabled: data.reverb.enabled,
+      decay: data.reverb.decay,
+      preDelay: data.reverb.preDelay,
+      wet: data.reverb.wet,
+      lowCut: data.reverb.lowCut,
+      highCut: data.reverb.highCut,
+    },
+  } satisfies {
+    bpm: number;
+    a4: number;
+    forte: string;
+    tracks: GenerateTrackOptions[];
+    reverb: GenerateReverbOptions;
+  };
+}
+
+function parsePresetFile(value: string): { bpm: number; a4: number; forte: string; tracks: GenerateTrackOptions[]; reverb: GenerateReverbOptions } {
+  const text = readFileSync(value, 'utf8');
+  const payload = parsePresetImportPayload(text);
+
+  const sourcePreset = payload.kind === 'single-preset'
+    ? payload.preset
+    : payload.presets.find((preset) => preset.id === payload.selectedPresetId) ?? payload.presets[0];
+
+  if (!sourcePreset) {
+    throw new Error('Preset file does not contain any presets.');
+  }
+
+  return presetDataToGeneratorInput(sourcePreset.data);
+}
 
 function parseBooleanOption(value: unknown): boolean | undefined {
   if (value === undefined || value === null) {
@@ -53,7 +157,7 @@ function parseReverbJson(value: string): GenerateReverbOptions {
 program
   .name('gaterunner')
   .description('Generate a MIDI file from a GateRunner sequence')
-  .version('2026.8.10')
+  .version('2026.8.11')
   .requiredOption('-o, --output <file>', 'Output file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
@@ -77,35 +181,38 @@ program
   .option('--time-warp-amount <number>', 'Legacy single-track warp amount percent (0-100)')
   .option('--time-warp-quantize <number>', 'Legacy single-track warp quantize subdivisions per step (0,1,2,4,8)')
   .option('--time-warp-note-lengths <boolean>', 'Legacy single-track warped note lengths (true/false)')
+  .option('-p, --preset <file>', 'JSON preset file to load instead of individual generation parameters')
   .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echoDelay notation (1/1..1/16T), and reverb send controls', parseTracksJson)
   .option('--reverb <json>', 'JSON object with global reverb enabled, decay, preDelay, wet, lowCut, highCut', parseReverbJson)
   .action(async (options) => {
     try {
-      const generatorInput = {
-        bpm: parseInt(options.bpm),
-        a4: parseFloat(options.a4),
-        numerator: parseInt(options.numerator),
-        denominator: parseInt(options.denominator),
-        forte: options.forte,
-        sequence: options.sequence,
-        octave: parseInt(options.octave),
-        lengthFactor: parseInt(options.lengthFactor),
-        lengthOffset: parseFloat(options.lengthOffset),
-        midiChannel: parseInt(options.midiChannel),
-        gain: parseFloat(options.gain),
-        waveform: options.waveform,
-        delay: parseInt(options.delay),
-        repeats: parseInt(options.repeats),
-        timeWarpEnabled: parseBooleanOption(options.timeWarpEnabled),
-        timeWarpCurve: options.timeWarpCurve,
-        timeWarpExpression: options.timeWarpExpression,
-        timeWarpRepeats: options.timeWarpRepeats !== undefined ? parseInt(options.timeWarpRepeats) : undefined,
-        timeWarpAmount: options.timeWarpAmount !== undefined ? parseFloat(options.timeWarpAmount) : undefined,
-        timeWarpQuantize: options.timeWarpQuantize !== undefined ? parseInt(options.timeWarpQuantize) : undefined,
-        timeWarpNoteLengths: parseBooleanOption(options.timeWarpNoteLengths),
-        tracks: options.tracks,
-        reverb: options.reverb,
-      };
+      const generatorInput = options.preset
+        ? parsePresetFile(options.preset)
+        : {
+            bpm: parseInt(options.bpm),
+            a4: parseFloat(options.a4),
+            numerator: parseInt(options.numerator),
+            denominator: parseInt(options.denominator),
+            forte: options.forte,
+            sequence: options.sequence,
+            octave: parseInt(options.octave),
+            lengthFactor: parseInt(options.lengthFactor),
+            lengthOffset: parseFloat(options.lengthOffset),
+            midiChannel: parseInt(options.midiChannel),
+            gain: parseFloat(options.gain),
+            waveform: options.waveform,
+            delay: parseInt(options.delay),
+            repeats: parseInt(options.repeats),
+            timeWarpEnabled: parseBooleanOption(options.timeWarpEnabled),
+            timeWarpCurve: options.timeWarpCurve,
+            timeWarpExpression: options.timeWarpExpression,
+            timeWarpRepeats: options.timeWarpRepeats !== undefined ? parseInt(options.timeWarpRepeats) : undefined,
+            timeWarpAmount: options.timeWarpAmount !== undefined ? parseFloat(options.timeWarpAmount) : undefined,
+            timeWarpQuantize: options.timeWarpQuantize !== undefined ? parseInt(options.timeWarpQuantize) : undefined,
+            timeWarpNoteLengths: parseBooleanOption(options.timeWarpNoteLengths),
+            tracks: options.tracks,
+            reverb: options.reverb,
+          };
 
       const normalizedFormat = String(options.format ?? 'midi').toLowerCase();
       const isWav = normalizedFormat === 'wav';
