@@ -93,6 +93,20 @@ export interface PresetTrackData {
   filterEnvelopeSustain: number;
   filterEnvelopeRelease: number;
   filterEnvelopeAmount: number;
+  /** When true, an LFO offsets the filter cutoff, sampled at each note start. */
+  filterLfoEnabled: boolean;
+  /** Tempo-sync the filter LFO to BPM note divisions when true; otherwise use free Hz. */
+  filterLfoSync: boolean;
+  /** Free-running filter LFO rate in Hz (0.01–20). */
+  filterLfoRateHz: number;
+  /** Tempo-synced filter LFO rate as a note division (e.g. 1/4, 1/8T). */
+  filterLfoRate: ModulationRateValue;
+  /** Bipolar filter LFO depth in MIDI pitches applied to the cutoff. */
+  filterLfoAmount: number;
+  /** Filter LFO shape. */
+  filterLfoWaveform: SkewLfoWaveformValue;
+  /** Normalized filter LFO start phase in [0, 1). */
+  filterLfoInitPhase: number;
   limiterGain: number;
   echoEnabled: boolean;
   echoDelay: EchoDelayValue;
@@ -369,6 +383,13 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   filterEnvelopeSustain: 1,
   filterEnvelopeRelease: 0,
   filterEnvelopeAmount: 0,
+  filterLfoEnabled: false,
+  filterLfoSync: true,
+  filterLfoRateHz: 0.5,
+  filterLfoRate: '1/4',
+  filterLfoAmount: 12,
+  filterLfoWaveform: 'sine',
+  filterLfoInitPhase: 0,
   limiterGain: 0,
   echoEnabled: false,
   echoDelay: '1/4',
@@ -704,6 +725,13 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     filterEnvelopeSustain: track.filterEnvelopeSustain,
     filterEnvelopeRelease: track.filterEnvelopeRelease,
     filterEnvelopeAmount: track.filterEnvelopeAmount,
+    filterLfoEnabled: track.filterLfoEnabled,
+    filterLfoSync: track.filterLfoSync,
+    filterLfoRateHz: track.filterLfoRateHz,
+    filterLfoRate: track.filterLfoRate,
+    filterLfoAmount: track.filterLfoAmount,
+    filterLfoWaveform: track.filterLfoWaveform,
+    filterLfoInitPhase: track.filterLfoInitPhase,
     limiterGain: track.limiterGain,
     echoEnabled: track.echoEnabled,
     echoDelay: track.echoDelay,
@@ -801,6 +829,13 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     filterEnvelopeSustain: clamp(parseNumber(raw.filterEnvelopeSustain, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeSustain), 0, 1),
     filterEnvelopeRelease: clamp(parseNumber(raw.filterEnvelopeRelease, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeRelease), 0, 20),
     filterEnvelopeAmount: clamp(parseNumber(raw.filterEnvelopeAmount, DEFAULT_PRESET_TRACK_DATA.filterEnvelopeAmount), -127, 127),
+    filterLfoEnabled: Boolean(raw.filterLfoEnabled ?? DEFAULT_PRESET_TRACK_DATA.filterLfoEnabled),
+    filterLfoSync: Boolean(raw.filterLfoSync ?? DEFAULT_PRESET_TRACK_DATA.filterLfoSync),
+    filterLfoRateHz: clamp(parseNumber(raw.filterLfoRateHz, DEFAULT_PRESET_TRACK_DATA.filterLfoRateHz), 0.01, 20),
+    filterLfoRate: normalizeModulationRate(raw.filterLfoRate, DEFAULT_PRESET_TRACK_DATA.filterLfoRate),
+    filterLfoAmount: clamp(parseNumber(raw.filterLfoAmount, DEFAULT_PRESET_TRACK_DATA.filterLfoAmount), -48, 48),
+    filterLfoWaveform: normalizeSkewLfoWaveform(raw.filterLfoWaveform),
+    filterLfoInitPhase: clamp(parseNumber(raw.filterLfoInitPhase, DEFAULT_PRESET_TRACK_DATA.filterLfoInitPhase), 0, 0.999999),
     limiterGain: clamp(parseNumber(raw.limiterGain, DEFAULT_PRESET_TRACK_DATA.limiterGain), -48, 72),
     echoEnabled: Boolean(raw.echoEnabled ?? DEFAULT_PRESET_TRACK_DATA.echoEnabled),
     echoDelay: normalizeEchoDelay(raw.echoDelay),
@@ -964,6 +999,13 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.filterEnvelopeSustain !== rightTrack.filterEnvelopeSustain
       || leftTrack.filterEnvelopeRelease !== rightTrack.filterEnvelopeRelease
       || leftTrack.filterEnvelopeAmount !== rightTrack.filterEnvelopeAmount
+      || leftTrack.filterLfoEnabled !== rightTrack.filterLfoEnabled
+      || leftTrack.filterLfoSync !== rightTrack.filterLfoSync
+      || leftTrack.filterLfoRateHz !== rightTrack.filterLfoRateHz
+      || leftTrack.filterLfoRate !== rightTrack.filterLfoRate
+      || leftTrack.filterLfoAmount !== rightTrack.filterLfoAmount
+      || leftTrack.filterLfoWaveform !== rightTrack.filterLfoWaveform
+      || leftTrack.filterLfoInitPhase !== rightTrack.filterLfoInitPhase
       || leftTrack.limiterGain !== rightTrack.limiterGain
       || leftTrack.echoEnabled !== rightTrack.echoEnabled
       || leftTrack.echoDelay !== rightTrack.echoDelay

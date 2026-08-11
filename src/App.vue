@@ -375,6 +375,8 @@ const SKEW_LFO_CROSSFADE_SECONDS = 0.02;
 const SKEW_LFO_APPLY_LEAD_SECONDS = 0.006;
 const PHASE_DISTORTION_WAVETABLE_SIZE = 1024;
 const SKEW_LFO_PARTIAL_EPSILON = 0.004;
+/** Deterministic S&H seed for the filter-cutoff LFO (sampled per note start). */
+const FILTER_LFO_STATE = createSkewLfoState();
 
 interface FormantBand {
   frequency: number;
@@ -1737,6 +1739,25 @@ export default defineComponent({
     getTrackFilterFrequency(track: PresetTrackData, notes: number[] = []): number {
       return this.midiToFrequency(this.getTrackFilterMidi(track, notes));
     },
+    /** Bipolar cutoff offset in MIDI pitches from the filter LFO, sampled at an absolute time. */
+    getFilterLfoOffsetMidi(track: PresetTrackData, timeSeconds: number): number {
+      if (!track.filterLfoEnabled || track.filterLfoAmount === 0) {
+        return 0;
+      }
+      const frequencyHz = getLfoFrequencyHz({
+        sync: track.filterLfoSync,
+        rateHz: track.filterLfoRateHz,
+        syncRate: track.filterLfoRate,
+        bpm: this.bpm,
+      });
+      return sampleLfoAtTime(
+        FILTER_LFO_STATE,
+        timeSeconds,
+        frequencyHz,
+        track.filterLfoWaveform as LfoWaveform,
+        track.filterLfoInitPhase,
+      ) * track.filterLfoAmount;
+    },
     scheduleFilterEnvelope(
       track: PresetTrackData,
       notes: number[],
@@ -1745,7 +1766,8 @@ export default defineComponent({
       filter: Tone.Filter,
     ) {
       const startTime = typeof when === 'number' ? when : Tone.Time(when).toSeconds();
-      const baseMidi = this.getTrackFilterMidi(track, notes);
+      const baseMidi = Math.max(0, Math.min(127,
+        this.getTrackFilterMidi(track, notes) + this.getFilterLfoOffsetMidi(track, startTime)));
       const baseFrequency = this.midiToFrequency(baseMidi);
       filter.frequency.cancelAndHoldAtTime(startTime);
 

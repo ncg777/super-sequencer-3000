@@ -638,6 +638,75 @@
               <v-select v-model="draftTrack.filterRolloff" label="Rolloff" :items="[-12, -24, -48, -96]" hide-details density="comfortable" variant="outlined" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
+          <v-row>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.filterLfoEnabled" label="Cutoff LFO" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.filterLfoSync" label="Tempo Sync" hide-details density="compact" :disabled="!draftTrack.filterLfoEnabled" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <v-select
+                v-if="draftTrack.filterLfoSync"
+                v-model="draftTrack.filterLfoRate"
+                :label="'LFO Rate ' + formatModulationRate(draftTrack.filterLfoRate)"
+                :items="modulationRateOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                :disabled="!draftTrack.filterLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+              <EditableSlider
+                v-else
+                :label="'LFO Rate (' + Number(draftTrack.filterLfoRateHz).toFixed(2) + ' Hz)'"
+                :min="0.01"
+                :max="20"
+                :step="0.01"
+                v-model="draftTrack.filterLfoRateHz"
+                :disabled="!draftTrack.filterLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider
+                :label="'LFO Depth (' + Number(draftTrack.filterLfoAmount).toFixed(1) + ' MIDI)'"
+                :min="-48"
+                :max="48"
+                :step="0.1"
+                v-model="draftTrack.filterLfoAmount"
+                :disabled="!draftTrack.filterLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="draftTrack.filterLfoWaveform"
+                label="LFO Waveform"
+                :items="skewLfoWaveformOptions"
+                hide-details
+                density="comfortable"
+                variant="outlined"
+                :disabled="!draftTrack.filterLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <EditableSlider
+                :label="'LFO Init Phase (' + Number(draftTrack.filterLfoInitPhase).toFixed(2) + ')'"
+                :min="0"
+                :max="0.99"
+                :step="0.01"
+                v-model="draftTrack.filterLfoInitPhase"
+                :disabled="!draftTrack.filterLfoEnabled"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
           <v-row class="compact-row">
             <v-col cols="12" md="4">
               <EditableSlider :label="'Filter Env Amount (' + Number(draftTrack.filterEnvelopeAmount).toFixed(1) + ' MIDI)'" :min="-127" :max="127" :step="0.1" v-model="draftTrack.filterEnvelopeAmount" @update:modelValue="handleTrackDraftChange" />
