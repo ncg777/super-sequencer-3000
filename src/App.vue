@@ -285,6 +285,7 @@ import {
   type SkewLfoState,
 } from './audio/lfo';
 import { effectiveSkew, warpPhase } from './audio/phaseDistortion';
+import { getChoirFormantBandGainLinear } from './audio/choir';
 import { PitchEnvelopeSynth } from './audio/pitchEnvelopeSynth';
 import {
   quantizeNormalizedTime,
@@ -1435,7 +1436,7 @@ export default defineComponent({
           Q: Math.max(0.5, band.frequency / safeBandwidth),
           rolloff: -12,
         });
-        path.gain.gain.value = this.dbToGain(band.gainDb);
+        path.gain.gain.value = getChoirFormantBandGainLinear(band.gainDb);
       });
     },
     getWaveformPartialAmplitude(waveform: string, harmonic: number): number {
