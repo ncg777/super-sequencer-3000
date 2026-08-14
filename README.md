@@ -24,6 +24,24 @@ Preset files use JSON.
 - **Import JSON** accepts either file type and adds imported presets without overwriting existing ones.
 - If an imported preset name already exists, GateRunner keeps both presets by renaming the imported one.
 
+### Track Activation (B)
+
+GateRunner can optionally gate tracks across the full song loop with a song-level bitmask sequence `B`.
+
+- Enter `B` in the collapsible **Track Activation (B)** section above the track strip.
+- `B` is a whitespace-separated sequence of nonnegative decimal integer masks, for example `1 2 3 0`.
+- Blank input disables the feature; every track stays active for the whole loop.
+- When `B` has `N` values, the full longest-track loop duration is split into `N` equal wall-clock chunks.
+- Bit 0 controls the first track, bit 1 the second, and so on. Deleting or reordering tracks shifts later bit assignments.
+- A mask of `0` is valid and silences every track for that chunk.
+- Activation is decided by each note's final post-time-warp onset:
+  - Onsets in inactive chunks are omitted.
+  - Active notes keep ringing only until the first later chunk where that track becomes inactive.
+  - Adjacent active chunks stay continuous.
+- Live playback, browser MIDI/WAV export, and CLI MIDI/WAV generation all use the same gating rules.
+- The track strip darkens inactive chunks so the schedule stays visible.
+- URL sharing accepts `?b=1+2+3+0` (or space-encoded values). The CLI accepts the same syntax via `--b "1 2 3 0"`.
+
 ---
 
 ### How Notes Are Computed in the Encoding Scheme

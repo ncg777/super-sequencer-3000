@@ -22,6 +22,10 @@ import {
   TIME_WARP_QUANTIZE_OPTIONS,
   warpNormalizedTime,
 } from '../src/audio/timeWarp.js';
+import {
+  gateEventByActivation,
+  parseBitmaskSequenceInput,
+} from '../src/trackActivation.js';
 
 export interface GenerateTrackOptions {
   /** Optional display name for the track. */
@@ -176,6 +180,11 @@ export interface GenerateOptions {
   denominator?: number;
   /** Forte number (pitch-class set identifier), e.g. "5-35.05". Default: "5-35.05" */
   forte?: string;
+  /**
+   * Optional song-level track activation sequence B: whitespace-separated
+   * nonnegative decimal bitmasks. Blank disables gating. Bit 0 = first track.
+   */
+  bitmaskSequenceInput?: string;
   /** Legacy single-track sequence used when tracks is omitted. */
   sequence?: string;
   /** Legacy single-track octave used when tracks is omitted. */
@@ -228,6 +237,7 @@ interface TrackScheduledEvent {
 interface PreparedRenderData {
   bpm: number;
   a4: number;
+  activationMasks: bigint[];
   tracks: TrackRenderData[];
   reverb: NormalizedReverb;
 }
@@ -303,7 +313,13 @@ function getStepDuration(actualNotes: number[][], index: number): number {
   return 1;
 }
 
-function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration: number): TrackScheduledEvent[] {
+function buildTrackEvents(
+  entry: TrackRenderData,
+  bpm: number,
+  totalLoopDuration: number,
+  trackIndex: number,
+  activationMasks: readonly bigint[],
+): TrackScheduledEvent[] {
   if (entry.actualNotes.length === 0) {
     return [];
   }
@@ -362,9 +378,20 @@ function buildTrackEvents(entry: TrackRenderData, bpm: number, totalLoopDuration
         continue;
       }
 
-      events.push({
+      const gated = gateEventByActivation({
         time: eventTime,
         duration,
+        trackIndex,
+        loopDuration: totalLoopDuration,
+        masks: activationMasks,
+      });
+      if (!gated) {
+        continue;
+      }
+
+      events.push({
+        time: gated.time,
+        duration: gated.duration,
         velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
         notes,
         order,
@@ -596,6 +623,7 @@ async function prepareRenderData(options: GenerateOptions): Promise<PreparedRend
   return {
     bpm,
     a4,
+    activationMasks: parseBitmaskSequenceInput(options.bitmaskSequenceInput).masks,
     tracks: trackData,
     reverb: normalizeReverb(options),
   };
@@ -857,10 +885,16 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
   midi.header.setTempo(prepared.bpm);
   const totalLoopDuration = getLoopDurationSecondsFromTrackLengths(prepared);
 
-  for (const entry of prepared.tracks) {
-    const events = buildTrackEvents(entry, prepared.bpm, totalLoopDuration);
+  prepared.tracks.forEach((entry, trackIndex) => {
+    const events = buildTrackEvents(
+      entry,
+      prepared.bpm,
+      totalLoopDuration,
+      trackIndex,
+      prepared.activationMasks,
+    );
     if (events.length === 0) {
-      continue;
+      return;
     }
 
     const track = midi.addTrack();
@@ -876,7 +910,7 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
         });
       }
     }
-  }
+  });
 
   return midi.toArray();
 }
@@ -905,10 +939,16 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const reverbLeft = hasReverbSend ? new Float32Array(frameCount) : null;
   const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
 
-  for (const entry of prepared.tracks) {
-    const events = buildTrackEvents(entry, prepared.bpm, totalDuration);
+  prepared.tracks.forEach((entry, trackIndex) => {
+    const events = buildTrackEvents(
+      entry,
+      prepared.bpm,
+      totalDuration,
+      trackIndex,
+      prepared.activationMasks,
+    );
     if (events.length === 0) {
-      continue;
+      return;
     }
 
     const trackLeft = new Float32Array(frameCount);
@@ -1028,7 +1068,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
         reverbRight[frame] += trackRightSample * sendWet;
       }
     }
-  }
+  });
 
   if (reverbLeft && reverbRight) {
     applyReverbSend(left, right, reverbLeft, reverbRight, prepared.reverb, sampleRate);

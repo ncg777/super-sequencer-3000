@@ -167,6 +167,9 @@
             :tracks="tracks"
             :selected-track-id="selectedTrackId"
             :track-mix-states="trackMixStates"
+            :bitmask-sequence-input="bitmaskSequenceInput"
+            :loop-duration-seconds="loopDurationSeconds"
+            :bpm="bpm"
             @add-track="addTrack"
             @select-track="handleTrackSelection"
             @track-name-input="handleTrackNameInput"
@@ -174,6 +177,7 @@
             @toggle-muted="toggleTrackMuted"
             @toggle-soloed="toggleTrackSoloed"
             @remove-track="removeTrack"
+            @bitmask-sequence-input="handleBitmaskSequenceInput"
           />
         </div>
       </div>
@@ -313,6 +317,10 @@ import {
   type PresetReverbData,
   type PresetTrackData,
 } from './presets';
+import {
+  gateEventByActivation,
+  parseBitmaskSequenceInput,
+} from './trackActivation';
 
 interface ChoirFormantPath {
   filter: Tone.Filter;
@@ -452,6 +460,7 @@ export default defineComponent({
       bpm: initialState.draft.bpm,
       a4: initialState.draft.a4,
       forte: initialState.draft.forte,
+      bitmaskSequenceInput: initialState.draft.bitmaskSequenceInput,
       tracks: initialState.draft.tracks.map((track) => clonePresetTrackData(track)) as PresetTrackData[],
       trackMixStates: {} as Record<string, TrackMixState>,
       selectedTrackId: initialState.selectedTrackId as string | null,
@@ -547,11 +556,18 @@ export default defineComponent({
       o.sort((a, b) => a - b);
       return o; 
     },
-    allTrackActualNotes(): Array<{ track: PresetTrackData; notes: number[][] }> {
-      return this.tracks.map((track) => ({
+    allTrackActualNotes(): Array<{ track: PresetTrackData; notes: number[][]; trackIndex: number }> {
+      return this.tracks.map((track, trackIndex) => ({
         track,
+        trackIndex,
         notes: this.computeActualNotes(track),
       }));
+    },
+    activationMasks(): bigint[] {
+      return parseBitmaskSequenceInput(this.bitmaskSequenceInput).masks;
+    },
+    loopDurationSeconds(): number {
+      return this.getLoopDurationSecondsFromTrackLengths();
     },
   },
   methods: {
@@ -849,7 +865,12 @@ export default defineComponent({
       }
       return Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * velocityMultiplier);
     },
-    buildTrackEvents(track: PresetTrackData, trackNotes: number[][], totalLoopDuration: number): TrackScheduledEvent[] {
+    buildTrackEvents(
+      track: PresetTrackData,
+      trackNotes: number[][],
+      totalLoopDuration: number,
+      trackIndex = 0,
+    ): TrackScheduledEvent[] {
       if (trackNotes.length === 0) {
         return [];
       }
@@ -869,6 +890,7 @@ export default defineComponent({
       const quantizeDivisions = track.timeWarpQuantize > 0
         ? Math.max(1, Math.round((trackNotes.length / warpChunks) * track.timeWarpQuantize))
         : 0;
+      const activationMasks = this.activationMasks;
       const events: TrackScheduledEvent[] = [];
       let order = 0;
 
@@ -909,9 +931,20 @@ export default defineComponent({
             continue;
           }
 
-          events.push({
+          const gated = gateEventByActivation({
             time: eventTime,
             duration,
+            trackIndex,
+            loopDuration: totalLoopDuration,
+            masks: activationMasks,
+          });
+          if (!gated) {
+            continue;
+          }
+
+          events.push({
+            time: gated.time,
+            duration: gated.duration,
             velocity: this.getTrackVelocity(notes, track.velocityMultiplier),
             notes,
             step: i,
@@ -926,6 +959,13 @@ export default defineComponent({
       }
 
       return events;
+    },
+    handleBitmaskSequenceInput(nextValue: string) {
+      this.bitmaskSequenceInput = nextValue;
+      this.refreshDirtyState();
+      if (this.isRunning) {
+        this.scheduleTrackLoopRebuild();
+      }
     },
     midiToFrequency(midi: number): number {
       return this.a4 * Math.pow(2, (midi - 69) / 12);
@@ -1075,7 +1115,7 @@ export default defineComponent({
             'Scheduling tracks...',
           );
 
-          const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration);
+          const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration, entry.trackIndex);
           if (events.length === 0) {
             continue;
           }
@@ -1129,6 +1169,7 @@ export default defineComponent({
         bpm: this.bpm,
         a4: this.a4,
         forte: this.forte,
+        bitmaskSequenceInput: this.bitmaskSequenceInput,
         tracks: this.tracks.map((track) => clonePresetTrackData(track)),
         reverb: {
           enabled: this.reverbEnabled,
@@ -1146,6 +1187,7 @@ export default defineComponent({
       this.bpm = normalized.bpm;
       this.a4 = normalized.a4;
       this.forte = normalized.forte;
+      this.bitmaskSequenceInput = normalized.bitmaskSequenceInput;
       this.reverbEnabled = normalized.reverb.enabled;
       this.reverbDecay = normalized.reverb.decay;
       this.reverbPreDelay = normalized.reverb.preDelay;
@@ -2098,7 +2140,7 @@ export default defineComponent({
       const totalLoopDuration = this.getLoopDurationSecondsFromTrackLengths();
 
       for (const entry of this.allTrackActualNotes) {
-        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration);
+        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration, entry.trackIndex);
         if (events.length === 0) {
           continue;
         }
@@ -2167,7 +2209,7 @@ export default defineComponent({
           continue;
         }
 
-        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration);
+        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration, entry.trackIndex);
         if (events.length === 0) {
           continue;
         }

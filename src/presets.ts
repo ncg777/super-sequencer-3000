@@ -10,6 +10,7 @@ import {
   TIME_WARP_CURVE_VALUES,
   TIME_WARP_QUANTIZE_OPTIONS,
 } from './audio/timeWarp.js';
+import { normalizeBitmaskSequenceInput } from './trackActivation.js';
 
 export interface PresetTrackData {
   id: string;
@@ -231,6 +232,11 @@ export interface PresetData {
   /** Concert pitch frequency of A4 in Hz (default 440). */
   a4: number;
   forte: string;
+  /**
+   * Optional song-level track activation sequence B: whitespace-separated
+   * nonnegative decimal bitmasks. Blank disables gating. Bit 0 = first track.
+   */
+  bitmaskSequenceInput: string;
   tracks: PresetTrackData[];
   reverb: PresetReverbData;
 }
@@ -424,6 +430,7 @@ export const DEFAULT_PRESET_DATA: PresetData = {
   bpm: 90,
   a4: 440,
   forte: '5-35.05',
+  bitmaskSequenceInput: '',
   tracks: [DEFAULT_PRESET_TRACK_DATA],
   reverb: {
   enabled: true,
@@ -889,6 +896,7 @@ export function clonePresetData(data: PresetData): PresetData {
     bpm: data.bpm,
     a4: data.a4,
     forte: data.forte,
+    bitmaskSequenceInput: data.bitmaskSequenceInput,
     tracks: data.tracks.map((track) => clonePresetTrackData(track)),
     reverb: clonePresetReverbData(data.reverb),
   };
@@ -914,6 +922,9 @@ export function normalizePresetData(value: unknown): PresetData {
     bpm: clamp(parseInteger(raw.bpm?.toString(), DEFAULT_PRESET_DATA.bpm), 1, 499),
     a4: clamp(parseNumber(raw.a4, DEFAULT_PRESET_DATA.a4), 380, 500),
     forte: typeof raw.forte === 'string' && raw.forte.trim().length > 0 ? raw.forte : DEFAULT_PRESET_DATA.forte,
+    bitmaskSequenceInput: normalizeBitmaskSequenceInput(
+      raw.bitmaskSequenceInput ?? (raw as { b?: unknown }).b,
+    ),
     tracks: tracks.length > 0 ? tracks : [normalizeLegacyTrack(raw)],
     reverb: normalizePresetReverbData(raw.reverb),
   };
@@ -923,6 +934,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
   if (left.bpm !== right.bpm
     || left.a4 !== right.a4
     || left.forte !== right.forte
+    || left.bitmaskSequenceInput !== right.bitmaskSequenceInput
     || left.tracks.length !== right.tracks.length
     || left.reverb.enabled !== right.reverb.enabled
     || left.reverb.decay !== right.reverb.decay
@@ -1455,6 +1467,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
     bpm: params.get('bpm') ?? baseData.bpm,
     a4: params.get('a4') ?? baseData.a4,
     forte: params.get('forte') ?? baseData.forte,
+    bitmaskSequenceInput: params.get('b') ?? baseData.bitmaskSequenceInput,
     tracks: [
       {
         ...firstTrack,
@@ -1484,7 +1497,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
 export function hasUrlPresetOverrides(search: string): boolean {
   const params = new URLSearchParams(search);
 
-  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'lengthOffset', 'forte', 'delay', 'repeats', 'timeWarpEnabled', 'timeWarpCurve', 'timeWarpExpression', 'timeWarpRepeats', 'timeWarpAmount', 'timeWarpQuantize', 'timeWarpNoteLengths']
+  return ['bpm', 'a4', 'numerator', 'denominator', 'phase', 'waveform', 'sequence', 'octave', 'lengthFactor', 'lengthOffset', 'forte', 'delay', 'repeats', 'timeWarpEnabled', 'timeWarpCurve', 'timeWarpExpression', 'timeWarpRepeats', 'timeWarpAmount', 'timeWarpQuantize', 'timeWarpNoteLengths', 'b']
     .some((key) => params.has(key));
 }
 

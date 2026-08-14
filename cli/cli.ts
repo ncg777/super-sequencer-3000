@@ -11,6 +11,7 @@ function presetDataToGeneratorInput(data: PresetData) {
     bpm: data.bpm,
     a4: data.a4,
     forte: data.forte,
+    bitmaskSequenceInput: data.bitmaskSequenceInput,
     tracks: data.tracks.map((track) => ({
       name: track.name,
       numerator: track.numerator,
@@ -89,12 +90,20 @@ function presetDataToGeneratorInput(data: PresetData) {
     bpm: number;
     a4: number;
     forte: string;
+    bitmaskSequenceInput: string;
     tracks: GenerateTrackOptions[];
     reverb: GenerateReverbOptions;
   };
 }
 
-function parsePresetFile(value: string): { bpm: number; a4: number; forte: string; tracks: GenerateTrackOptions[]; reverb: GenerateReverbOptions } {
+function parsePresetFile(value: string): {
+  bpm: number;
+  a4: number;
+  forte: string;
+  bitmaskSequenceInput: string;
+  tracks: GenerateTrackOptions[];
+  reverb: GenerateReverbOptions;
+} {
   const text = readFileSync(value, 'utf8');
   const payload = parsePresetImportPayload(text);
 
@@ -181,6 +190,7 @@ program
   .option('--time-warp-amount <number>', 'Legacy single-track warp amount percent (0-100)')
   .option('--time-warp-quantize <number>', 'Legacy single-track warp quantize subdivisions per step (0,1,2,4,8)')
   .option('--time-warp-note-lengths <boolean>', 'Legacy single-track warped note lengths (true/false)')
+  .option('--b <string>', 'Optional song-level track activation masks (space-separated nonnegative decimals; blank disables)')
   .option('-p, --preset <file>', 'JSON preset file to load instead of individual generation parameters')
   .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echoDelay notation (1/1..1/16T), and reverb send controls', parseTracksJson)
   .option('--reverb <json>', 'JSON object with global reverb enabled, decay, preDelay, wet, lowCut, highCut', parseReverbJson)
@@ -194,6 +204,7 @@ program
             numerator: parseInt(options.numerator),
             denominator: parseInt(options.denominator),
             forte: options.forte,
+            bitmaskSequenceInput: options.b,
             sequence: options.sequence,
             octave: parseInt(options.octave),
             lengthFactor: parseInt(options.lengthFactor),
