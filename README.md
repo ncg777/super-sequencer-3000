@@ -1,6 +1,6 @@
 # GateRunner
 
-A browser-based MIDI step sequencer and tonewheel synthesizer with phase distortion and effects that generates MIDI and WAV files from binary-encoded note sequences using Forte number pitch-class sets.
+A browser-based MIDI step sequencer and tonewheel synthesizer with effects that generates MIDI and WAV files from binary-encoded note sequences using Forte number pitch-class sets.
 
 **Live app:** [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/)
 
@@ -80,4 +80,3 @@ To compute notes:
 - Map `1`s to their pitch classes.
 - Apply an octave offset for final pitches.
 - Combine active notes into a chord.
-

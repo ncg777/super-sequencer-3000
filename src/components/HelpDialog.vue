@@ -33,7 +33,6 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
           <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, amp/pitch envelopes, unison, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
           <li><strong>Waveform</strong>: Select from classic oscillator waves, choir vowels, colored noise, and other resonant spectra per track.</li>
-          <li><strong>Phase Distortion</strong>: Skew/tilt the oscillator phase before waveform lookup. Base Skew of 0.5 is linear; values toward 0 or 1 warp the shape. Optional free-rate or tempo-synced LFO (sine, triangle, saw, square, S&amp;H) modulates skew around the base, with Init Phase setting where the LFO starts in its cycle (0–1).</li>
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
           <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
           <li><strong>Track Gain</strong>: Sets each track's audio level in dB. Use the velocity multiplier to control MIDI note velocity independently.</li>

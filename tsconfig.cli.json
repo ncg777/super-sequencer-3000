@@ -1,6 +1,6 @@
 {
   "extends": "@tsconfig/node22/tsconfig.json",
-  "include": ["cli/**/*", "src/audio/lfo.ts", "src/audio/phaseDistortion.ts", "src/audio/timeWarp.ts", "src/trackActivation.ts"],
+  "include": ["cli/**/*", "src/audio/lfo.ts", "src/audio/timeWarp.ts", "src/trackActivation.ts"],
   "compilerOptions": {
     "outDir": "dist-cli",
     "rootDir": ".",

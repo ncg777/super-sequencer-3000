@@ -1,5 +1,5 @@
 /**
- * General-purpose tempo-syncable LFO used to modulate phase-distortion skew.
+ * General-purpose tempo-syncable LFO used for modulation controls.
  * Output range is always [-1, 1].
  */
 
