@@ -2,14 +2,6 @@ import ToneMidi from '@tonejs/midi';
 const { Midi } = ToneMidi;
 import { PCS12 } from 'ultra-mega-enumerator';
 import {
-  advanceSkewLfo,
-  createSkewLfoState,
-  getLfoFrequencyHz,
-  getLfoPhaseIncrement,
-  type LfoWaveform,
-} from '../src/audio/lfo.js';
-import { effectiveSkew, warpPhase } from '../src/audio/phaseDistortion.js';
-import {
   getPitchEnvelopeLevel,
   getPitchEnvelopeMidiOffset,
   normalizePitchEnvelopeShape,
@@ -78,16 +70,6 @@ export interface GenerateTrackOptions {
   unisonDetune?: number;
   /** Nine Hammond-style drawbar levels (0-8) used by the tonewheel waveform. */
   tonewheelDrawbars?: number[];
-  /** Phase-distortion warp amount (0.01–0.99). Default 0.5 (linear). */
-  skew?: number;
-  skewLfoEnabled?: boolean;
-  skewLfoSync?: boolean;
-  skewLfoRateHz?: number;
-  skewLfoRate?: string;
-  skewLfoAmount?: number;
-  skewLfoWaveform?: string;
-  /** Normalized LFO start phase in [0, 1). */
-  skewLfoInitPhase?: number;
   tremoloEnabled?: boolean;
   tremoloFrequency?: number;
   tremoloDepth?: number;
@@ -139,12 +121,7 @@ const ECHO_DELAY_OPTIONS = [
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
 const TONEWHEEL_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
-const SKEW_LFO_WAVEFORMS = new Set<string>(['sine', 'triangle', 'saw-up', 'saw-down', 'square', 'sample-hold']);
 const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
-
-function normalizeSkewLfoWaveform(value: string | undefined, fallback: LfoWaveform): LfoWaveform {
-  return value && SKEW_LFO_WAVEFORMS.has(value) ? value as LfoWaveform : fallback;
-}
 
 function normalizeTimeWarpCurve(value: string | undefined): string {
   return value && TIME_WARP_CURVE_VALUES.has(value) ? value : DEFAULT_TIME_WARP_CURVE;
@@ -450,14 +427,6 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     unisonVoices: 1,
     unisonDetune: 12,
     tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
-    skew: 0.5,
-    skewLfoEnabled: false,
-    skewLfoSync: true,
-    skewLfoRateHz: 0.5,
-    skewLfoRate: '1/4',
-    skewLfoAmount: 0.25,
-    skewLfoWaveform: 'sine',
-    skewLfoInitPhase: 0,
     tremoloEnabled: false,
     tremoloFrequency: 5,
     tremoloDepth: 0.35,
@@ -522,14 +491,6 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     unisonVoices: clamp(track.unisonVoices ?? fallbackTrack.unisonVoices, 1, 8),
     unisonDetune: clamp(track.unisonDetune ?? fallbackTrack.unisonDetune, 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(track.tonewheelDrawbars),
-    skew: clamp(track.skew ?? fallbackTrack.skew, 0.01, 0.99),
-    skewLfoEnabled: Boolean(track.skewLfoEnabled ?? fallbackTrack.skewLfoEnabled),
-    skewLfoSync: Boolean(track.skewLfoSync ?? fallbackTrack.skewLfoSync),
-    skewLfoRateHz: clamp(track.skewLfoRateHz ?? fallbackTrack.skewLfoRateHz, 0.01, 20),
-    skewLfoRate: track.skewLfoRate ?? fallbackTrack.skewLfoRate,
-    skewLfoAmount: clamp(track.skewLfoAmount ?? fallbackTrack.skewLfoAmount, -1, 1),
-    skewLfoWaveform: normalizeSkewLfoWaveform(track.skewLfoWaveform, fallbackTrack.skewLfoWaveform as LfoWaveform),
-    skewLfoInitPhase: clamp(track.skewLfoInitPhase ?? fallbackTrack.skewLfoInitPhase, 0, 0.999999),
     tremoloEnabled: Boolean(track.tremoloEnabled ?? fallbackTrack.tremoloEnabled),
     tremoloFrequency: clamp(track.tremoloFrequency ?? fallbackTrack.tremoloFrequency, 0.01, 40),
     tremoloDepth: clamp(track.tremoloDepth ?? fallbackTrack.tremoloDepth, 0, 1),
@@ -977,21 +938,6 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             const rightPan = Math.sin(voicePan * Math.PI / 2);
             const filterState = { low: 0, high: 0, band: 0 };
             let phase = 0;
-            const skewLfoEnabled = entry.track.skewLfoEnabled && entry.track.skewLfoAmount !== 0;
-            const skewLfoWaveform = normalizeSkewLfoWaveform(entry.track.skewLfoWaveform, 'sine');
-            const skewLfoState = createSkewLfoState(
-              (midiNote * 131 + voice * 17 + event.order * 13) >>> 0,
-              entry.track.skewLfoInitPhase,
-            );
-            const skewLfoFrequencyHz = getLfoFrequencyHz({
-              sync: entry.track.skewLfoSync,
-              rateHz: entry.track.skewLfoRateHz,
-              syncRate: entry.track.skewLfoRate,
-              bpm: prepared.bpm,
-            });
-            const skewLfoPhaseIncrement = getLfoPhaseIncrement(skewLfoFrequencyHz, sampleRate);
-            const baseSkew = entry.track.skew;
-
             for (let frame = startFrame; frame < endFrame; frame += 1) {
               const t = (frame - startFrame) / sampleRate;
               const releaseTime = duration - t;
@@ -1030,13 +976,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
               const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel, prepared.a4);
 
-              let skew = baseSkew;
-              if (skewLfoEnabled) {
-                const lfoSample = advanceSkewLfo(skewLfoState, skewLfoPhaseIncrement, skewLfoWaveform);
-                skew = effectiveSkew(baseSkew, lfoSample, entry.track.skewLfoAmount);
-              }
-              const warpedPhase = warpPhase(phase, skew);
-              const oscillatorSample = sampleTonewheel(warpedPhase, entry.track.waveform, tonewheel);
+              const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, tonewheel);
               const sample = applySimpleFilter(
                 oscillatorSample * voiceGain * env * tremolo,
                 filterState,

@@ -286,9 +286,7 @@ import {
   getLfoFrequencyHz,
   sampleLfoAtTime,
   type LfoWaveform,
-  type SkewLfoState,
 } from './audio/lfo';
-import { effectiveSkew, warpPhase } from './audio/phaseDistortion';
 import { getChoirFormantBandGainLinear } from './audio/choir';
 import { PitchEnvelopeSynth } from './audio/pitchEnvelopeSynth';
 import {
@@ -328,16 +326,8 @@ interface ChoirFormantPath {
 }
 
 interface TrackAudioChain {
-  /** Primary oscillator bank (crossfaded with synthAlt when skew LFO moves). */
   synth: Tone.PolySynth<PitchEnvelopeSynth>;
-  /** Alternate oscillator bank used for click-free partial morphing. */
-  synthAlt: Tone.PolySynth<PitchEnvelopeSynth>;
   synthGain: Tone.Gain;
-  synthAltGain: Tone.Gain;
-  /** When true, synth/synthGain are the audible bank; otherwise synthAlt is. */
-  activeSynthIsPrimary: boolean;
-  /** Transport/audio time until the in-flight skew crossfade completes. */
-  skewCrossfadeUntil: number;
   noiseSynth: Tone.NoiseSynth;
   filter: Tone.Filter;
   choirInput: Tone.Gain;
@@ -361,29 +351,12 @@ interface TrackAudioChain {
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
   mixGain: Tone.Gain;
-  /** Disposes control-rate skew LFO automation for this chain. */
-  disposeSkewLfo?: () => void;
-  skewLfoState: SkewLfoState;
-  /** Last skew baked into oscillator partials (skip tiny LFO steps). */
-  lastAppliedSkew: number;
 }
 
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
 const CHOIR_FORMANT_FILTER_COUNT = 5;
 /** Upper bound for the flanger delay line; the sweep never exceeds twice the 20 ms maximum base delay. */
 const FLANGER_MAX_DELAY_SECONDS = 0.05;
-/** Control-rate refresh for skew LFO → wavetable partials (live + offline). */
-const SKEW_LFO_UPDATE_INTERVAL_SECONDS = 1 / 30;
-/** Equal-power-ish linear crossfade when swapping baked PD spectra. */
-const SKEW_LFO_CROSSFADE_SECONDS = 0.02;
-/**
- * Gap between rewriting a silent bank (which hits the audio graph immediately) and the start
- * of its fade-in. Keep lead + crossfade below the update interval so a bank is always fully
- * silent by the time the next rewrite lands on it.
- */
-const SKEW_LFO_APPLY_LEAD_SECONDS = 0.006;
-const PHASE_DISTORTION_WAVETABLE_SIZE = 1024;
-const SKEW_LFO_PARTIAL_EPSILON = 0.004;
 /** Deterministic S&H seed for the filter-cutoff LFO (sampled per note start). */
 const FILTER_LFO_STATE = createSkewLfoState();
 
@@ -1102,7 +1075,6 @@ export default defineComponent({
         this.trackSynths = {};
         this.getOrCreateReverbChain();
 
-        // Drive control-rate skew LFO automation during the offline render clock.
         const offlineTransport = Tone.getTransport();
         offlineTransport.stop();
         offlineTransport.seconds = 0;
@@ -1328,9 +1300,7 @@ export default defineComponent({
       const phaserStages = options.phaserStages ?? DEFAULT_PRESET_TRACK_DATA.phaserStages;
       const phaserCenterFrequency = options.phaserCenterFrequency ?? this.midiToFrequency(DEFAULT_PRESET_TRACK_DATA.phaserCenter);
       const synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
-      const synthAlt = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
       const synthGain = markRaw(new Tone.Gain(1));
-      const synthAltGain = markRaw(new Tone.Gain(0));
       const noiseSynth = markRaw(new Tone.NoiseSynth({
         noise: { type: 'pink' },
         envelope: {
@@ -1388,11 +1358,7 @@ export default defineComponent({
 
       return {
         synth,
-        synthAlt,
         synthGain,
-        synthAltGain,
-        activeSynthIsPrimary: true,
-        skewCrossfadeUntil: Number.NEGATIVE_INFINITY,
         noiseSynth,
         filter,
         choirInput,
@@ -1416,8 +1382,6 @@ export default defineComponent({
         reverbSend,
         outputGain,
         mixGain,
-        skewLfoState: createSkewLfoState(),
-        lastAppliedSkew: Number.NaN,
       };
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
@@ -1561,194 +1525,8 @@ export default defineComponent({
       const normalizer = Math.max(1, Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
       return partials.map((amplitude) => amplitude / normalizer);
     },
-    evaluatePartialsAtPhase(partials: number[], phase: number): number {
-      let sample = 0;
-      for (let index = 0; index < partials.length; index += 1) {
-        const amplitude = partials[index];
-        if (amplitude === 0) {
-          continue;
-        }
-        sample += amplitude * Math.sin(2 * Math.PI * (index + 1) * phase);
-      }
-      return sample;
-    },
-    /**
-     * Project a wavetable onto Tone's sine-partial basis (a partial is the amplitude of
-     * sin(2*pi*n*t)), i.e. the Fourier sine coefficients of the table. Taking the true signed
-     * coefficient instead of a magnitude with a heuristic sign keeps every partial a continuous
-     * function of the wavetable, which is what stops a modulated skew from flipping partial
-     * polarity (and therefore clicking) mid-note.
-     * The result is rescaled to `targetNorm` so the perceived level stays constant while the
-     * warp moves energy between harmonics.
-     */
-    wavetableToPartials(table: Float32Array, maximumPartial = 64, targetNorm?: number): number[] {
-      const size = table.length;
-      const partials = Array.from({ length: maximumPartial }, () => 0);
-      for (let harmonic = 1; harmonic <= maximumPartial; harmonic += 1) {
-        let imag = 0;
-        for (let n = 0; n < size; n += 1) {
-          imag += table[n] * Math.sin((2 * Math.PI * harmonic * n) / size);
-        }
-        partials[harmonic - 1] = imag * (2 / size);
-      }
-      if (targetNorm === undefined) {
-        return partials;
-      }
-      const norm = Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0));
-      if (norm < 1e-12) {
-        return partials;
-      }
-      const gain = targetNorm / norm;
-      return partials.map((amplitude) => amplitude * gain);
-    },
-    /**
-     * Tonewheel partials with optional phase-distortion warp applied in the time domain.
-     * skew = 0.5 keeps the analytical linear spectrum for exact compatibility.
-     */
-    getTonewheelPartials(track: PresetTrackData, skew: number = track.skew): number[] {
-      const linearPartials = this.getLinearTonewheelPartials(track);
-      if (this.isNoiseWaveform(track.waveform) || Math.abs(skew - 0.5) < 1e-6) {
-        return linearPartials;
-      }
-
-      const table = new Float32Array(PHASE_DISTORTION_WAVETABLE_SIZE);
-      for (let index = 0; index < PHASE_DISTORTION_WAVETABLE_SIZE; index += 1) {
-        const phase = index / PHASE_DISTORTION_WAVETABLE_SIZE;
-        table[index] = this.evaluatePartialsAtPhase(linearPartials, warpPhase(phase, skew));
-      }
-      const linearNorm = Math.sqrt(linearPartials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0));
-      return this.wavetableToPartials(table, linearPartials.length, linearNorm);
-    },
-    getSkewLfoFrequencyHz(track: PresetTrackData): number {
-      return getLfoFrequencyHz({
-        sync: track.skewLfoSync,
-        rateHz: track.skewLfoRateHz,
-        syncRate: track.skewLfoRate,
-        bpm: this.bpm,
-      });
-    },
-    getEffectiveTrackSkew(track: PresetTrackData, chain: TrackAudioChain, timeSeconds = 0): number {
-      if (!track.skewLfoEnabled || track.skewLfoAmount === 0) {
-        return track.skew;
-      }
-      const lfoSample = sampleLfoAtTime(
-        chain.skewLfoState,
-        timeSeconds,
-        this.getSkewLfoFrequencyHz(track),
-        track.skewLfoWaveform as LfoWaveform,
-        track.skewLfoInitPhase,
-      );
-      return effectiveSkew(track.skew, lfoSample, track.skewLfoAmount);
-    },
-    buildTrackOscillatorOptions(track: PresetTrackData, skew: number) {
-      return {
-        type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
-        count: track.unisonVoices,
-        spread: track.unisonDetune,
-        partials: this.getTonewheelPartials(track, skew),
-      } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
-    },
-    /**
-     * Bake PD skew into oscillator partials. Hard-replacing partials on a sounding
-     * oscillator clicks, so LFO moves crossfade onto the silent bank after updating it.
-     */
-    applyTrackOscillatorPartials(
-      track: PresetTrackData,
-      chain: TrackAudioChain,
-      skew: number,
-      force = false,
-    ) {
-      if (this.isNoiseWaveform(track.waveform)) {
-        return;
-      }
-
-      // set() rewrites the periodic wave of every live voice at context.currentTime, so the
-      // bank being rewritten must be silent *now* rather than at some lookahead-advanced time.
-      const currentTime = Tone.getContext().currentTime;
-      const now = currentTime + SKEW_LFO_APPLY_LEAD_SECONDS;
-      if (!force && currentTime < chain.skewCrossfadeUntil) {
-        return;
-      }
-      if (!force && Number.isFinite(chain.lastAppliedSkew) && Math.abs(chain.lastAppliedSkew - skew) < SKEW_LFO_PARTIAL_EPSILON) {
-        return;
-      }
-
-      const oscillatorOptions = this.buildTrackOscillatorOptions(track, skew);
-
-      if (force || !track.skewLfoEnabled || track.skewLfoAmount === 0) {
-        chain.synth.set({ oscillator: oscillatorOptions });
-        chain.synthAlt.set({ oscillator: oscillatorOptions });
-        chain.synthGain.gain.cancelScheduledValues(now);
-        chain.synthAltGain.gain.cancelScheduledValues(now);
-        chain.synthGain.gain.setValueAtTime(1, now);
-        chain.synthAltGain.gain.setValueAtTime(0, now);
-        chain.activeSynthIsPrimary = true;
-        chain.skewCrossfadeUntil = Number.NEGATIVE_INFINITY;
-        chain.lastAppliedSkew = skew;
-        return;
-      }
-
-      const inactiveSynth = chain.activeSynthIsPrimary ? chain.synthAlt : chain.synth;
-      const activeGain = chain.activeSynthIsPrimary ? chain.synthGain : chain.synthAltGain;
-      const inactiveGain = chain.activeSynthIsPrimary ? chain.synthAltGain : chain.synthGain;
-
-      // Update the silent bank, then crossfade so the partial jump stays inaudible.
-      inactiveSynth.set({ oscillator: oscillatorOptions });
-      activeGain.gain.cancelScheduledValues(now);
-      inactiveGain.gain.cancelScheduledValues(now);
-      activeGain.gain.setValueAtTime(activeGain.gain.getValueAtTime(now), now);
-      inactiveGain.gain.setValueAtTime(inactiveGain.gain.getValueAtTime(now), now);
-      activeGain.gain.linearRampToValueAtTime(0, now + SKEW_LFO_CROSSFADE_SECONDS);
-      inactiveGain.gain.linearRampToValueAtTime(1, now + SKEW_LFO_CROSSFADE_SECONDS);
-      chain.activeSynthIsPrimary = !chain.activeSynthIsPrimary;
-      chain.skewCrossfadeUntil = now + SKEW_LFO_CROSSFADE_SECONDS;
-      chain.lastAppliedSkew = skew;
-    },
-    clearSkewLfoAutomation(chain: TrackAudioChain) {
-      if (chain.disposeSkewLfo) {
-        chain.disposeSkewLfo();
-        chain.disposeSkewLfo = undefined;
-      }
-    },
-    /**
-     * Control-rate skew LFO: morph oscillator partials as the effective warp amount moves.
-     * Works for live Transport and Tone.Offline when the transport is started.
-     */
-    setupSkewLfoAutomation(track: PresetTrackData, chain: TrackAudioChain) {
-      this.clearSkewLfoAutomation(chain);
-      if (!track.skewLfoEnabled || track.skewLfoAmount === 0 || this.isNoiseWaveform(track.waveform)) {
-        return;
-      }
-
-      const transport = Tone.getTransport();
-      const tick = (lfoTimeSeconds: number) => {
-        const skew = this.getEffectiveTrackSkew(track, chain, lfoTimeSeconds);
-        this.applyTrackOscillatorPartials(track, chain, skew);
-      };
-
-      if (Tone.getContext().isOffline) {
-        // Offline renders have no lookahead, so the render clock is already real time.
-        const eventId = transport.scheduleRepeat((time) => tick(time), SKEW_LFO_UPDATE_INTERVAL_SECONDS, 0);
-        chain.disposeSkewLfo = () => {
-          transport.clear(eventId);
-        };
-        return;
-      }
-
-      // Live, the Transport dispatches events up to context.lookAhead (100 ms) early. Driving
-      // the swap from those callbacks rewrote a bank that was still audible, which is what
-      // clicked once the LFO was fast enough to change the spectrum on every tick. Run the
-      // control rate off the real audio clock instead.
-      const timerId = window.setInterval(() => {
-        if (transport.state !== 'started') {
-          return;
-        }
-        tick(transport.seconds);
-      }, SKEW_LFO_UPDATE_INTERVAL_SECONDS * 1000);
-
-      chain.disposeSkewLfo = () => {
-        window.clearInterval(timerId);
-      };
+    getTonewheelPartials(track: PresetTrackData): number[] {
+      return this.getLinearTonewheelPartials(track);
     },
     triggerTrackVoice(
       track: PresetTrackData,
@@ -1763,10 +1541,8 @@ export default defineComponent({
         return;
       }
 
-      // Keep both banks in lockstep so crossfades never reveal a silent/untriggered voice.
       const frequencies = this.getTrackPlaybackFrequencies(track, notes);
       chain.synth.triggerAttackRelease(frequencies, duration, when, velocity);
-      chain.synthAlt.triggerAttackRelease(frequencies, duration, when, velocity);
     },
     getTrackPlaybackFrequencies(track: PresetTrackData, notes: number[]): number[] {
       return notes.map((note) => this.midiToFrequency(note - 12));
@@ -1868,11 +1644,8 @@ export default defineComponent({
       return 1 / Math.max(0.001, this.getModulationRateSeconds(rate));
     },
     disposeTrackChain(chain: TrackAudioChain) {
-      this.clearSkewLfoAutomation(chain);
       chain.synth.dispose();
-      chain.synthAlt.dispose();
       chain.synthGain.dispose();
-      chain.synthAltGain.dispose();
       chain.noiseSynth.dispose();
       chain.filter.dispose();
       chain.choirFormants.forEach((path) => {
@@ -1907,9 +1680,7 @@ export default defineComponent({
     },
     routeTrackAudioChain(track: PresetTrackData, chain: TrackAudioChain) {
       chain.synth.disconnect();
-      chain.synthAlt.disconnect();
       chain.synthGain.disconnect();
-      chain.synthAltGain.disconnect();
       chain.noiseSynth.disconnect();
       chain.choirInput.disconnect();
       chain.choirOutput.disconnect();
@@ -1941,9 +1712,7 @@ export default defineComponent({
       } else {
         const oscillatorTarget = this.isChoirWaveform(track.waveform) ? chain.choirInput : chain.sourceBus;
         chain.synth.connect(chain.synthGain);
-        chain.synthAlt.connect(chain.synthAltGain);
         chain.synthGain.connect(oscillatorTarget);
-        chain.synthAltGain.connect(oscillatorTarget);
         if (this.isChoirWaveform(track.waveform)) {
           chain.choirOutput.connect(chain.sourceBus);
         }
@@ -1990,8 +1759,12 @@ export default defineComponent({
         sustain: track.pitchEnvelopeSustain,
         release: Math.max(track.pitchEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS),
       };
-      const initialSkew = this.getEffectiveTrackSkew(track, chain, Tone.getTransport().seconds);
-      const oscillatorOptions = this.buildTrackOscillatorOptions(track, initialSkew);
+      const oscillatorOptions = {
+        type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
+        count: track.unisonVoices,
+        spread: track.unisonDetune,
+        partials: this.getTonewheelPartials(track),
+      } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
       const now = Tone.now();
       // PolySynth.set typings only expose base SynthOptions; PitchEnvelopeSynth accepts the extras.
       const voiceSettings = {
@@ -2003,14 +1776,8 @@ export default defineComponent({
       };
 
       chain.synth.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
-      chain.synthAlt.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
       chain.synthGain.gain.cancelScheduledValues(now);
-      chain.synthAltGain.gain.cancelScheduledValues(now);
       chain.synthGain.gain.setValueAtTime(1, now);
-      chain.synthAltGain.gain.setValueAtTime(0, now);
-      chain.activeSynthIsPrimary = true;
-      chain.skewCrossfadeUntil = Number.NEGATIVE_INFINITY;
-      chain.lastAppliedSkew = initialSkew;
 
       chain.noiseSynth.set({
         envelope,
@@ -2018,9 +1785,8 @@ export default defineComponent({
           type: this.getNoiseType(track.waveform),
         },
       });
-
       this.updateChoirFormantBank(track.waveform, chain.choirFormants);
-      this.setupSkewLfoAutomation(track, chain);
+      this.updateChoirFormantBank(track.waveform, chain.choirFormants);
 
       chain.filter.set({
         type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',
@@ -2078,7 +1844,6 @@ export default defineComponent({
       chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
-      chain.synthAlt.context.lookAhead = 0.05;
       chain.noiseSynth.context.lookAhead = 0.05;
       this.routeTrackAudioChain(track, chain);
       // Tone modulation sources can end up stopped after graph rewires / param sets

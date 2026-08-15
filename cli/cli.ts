@@ -46,14 +46,6 @@ function presetDataToGeneratorInput(data: PresetData) {
       unisonVoices: track.unisonVoices,
       unisonDetune: track.unisonDetune,
       tonewheelDrawbars: track.tonewheelDrawbars,
-      skew: track.skew,
-      skewLfoEnabled: track.skewLfoEnabled,
-      skewLfoSync: track.skewLfoSync,
-      skewLfoRateHz: track.skewLfoRateHz,
-      skewLfoRate: track.skewLfoRate,
-      skewLfoAmount: track.skewLfoAmount,
-      skewLfoWaveform: track.skewLfoWaveform,
-      skewLfoInitPhase: track.skewLfoInitPhase,
       tremoloEnabled: track.tremoloEnabled,
       tremoloFrequency: track.tremoloFrequency,
       tremoloDepth: track.tremoloDepth,
@@ -166,7 +158,7 @@ function parseReverbJson(value: string): GenerateReverbOptions {
 program
   .name('gaterunner')
   .description('Generate a MIDI/WAV file from a GateRunner sequence')
-  .version('2026.8.14')
+  .version('2026.8.15')
   .requiredOption('-o, --output <file>', 'Output file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')

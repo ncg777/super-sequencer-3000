@@ -59,22 +59,6 @@ export interface PresetTrackData {
   unisonVoices: number;
   unisonDetune: number;
   tonewheelDrawbars: number[];
-  /** Phase-distortion inflection point in [0.01, 0.99]; 0.5 is linear/neutral. */
-  skew: number;
-  /** When true, a dedicated LFO modulates skew each sample/control block. */
-  skewLfoEnabled: boolean;
-  /** Tempo-sync the skew LFO to BPM note divisions when true; otherwise use free Hz. */
-  skewLfoSync: boolean;
-  /** Free-running skew LFO rate in Hz (0.01–20). */
-  skewLfoRateHz: number;
-  /** Tempo-synced skew LFO rate as a note division (e.g. 1/4, 1/8T). */
-  skewLfoRate: ModulationRateValue;
-  /** Bipolar modulation depth applied as baseSkew + lfo * amount. */
-  skewLfoAmount: number;
-  /** Skew LFO shape. */
-  skewLfoWaveform: SkewLfoWaveformValue;
-  /** Normalized LFO start phase in [0, 1). */
-  skewLfoInitPhase: number;
   tremoloEnabled: boolean;
   tremoloFrequency: number;
   tremoloDepth: number;
@@ -362,14 +346,6 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   unisonVoices: 1,
   unisonDetune: 0,
   tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
-  skew: 0.5,
-  skewLfoEnabled: false,
-  skewLfoSync: true,
-  skewLfoRateHz: 0.5,
-  skewLfoRate: '1/4',
-  skewLfoAmount: 0.25,
-  skewLfoWaveform: 'sine',
-  skewLfoInitPhase: 0,
   tremoloEnabled: false,
   tremoloFrequency: 5,
   tremoloDepth: 0.35,
@@ -563,7 +539,7 @@ function normalizeModulationRate(value: unknown, fallback: ModulationRateValue):
 function normalizeSkewLfoWaveform(value: unknown): SkewLfoWaveformValue {
   return typeof value === 'string' && SKEW_LFO_WAVEFORM_VALUES.has(value)
     ? value as SkewLfoWaveformValue
-    : DEFAULT_PRESET_TRACK_DATA.skewLfoWaveform;
+    : 'sine';
 }
 
 function normalizePhaserStages(value: unknown): number {
@@ -705,14 +681,6 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
     tonewheelDrawbars: track.tonewheelDrawbars.slice(),
-    skew: track.skew,
-    skewLfoEnabled: track.skewLfoEnabled,
-    skewLfoSync: track.skewLfoSync,
-    skewLfoRateHz: track.skewLfoRateHz,
-    skewLfoRate: track.skewLfoRate,
-    skewLfoAmount: track.skewLfoAmount,
-    skewLfoWaveform: track.skewLfoWaveform,
-    skewLfoInitPhase: track.skewLfoInitPhase,
     tremoloEnabled: track.tremoloEnabled,
     tremoloFrequency: track.tremoloFrequency,
     tremoloDepth: track.tremoloDepth,
@@ -809,14 +777,6 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
-    skew: clamp(parseNumber(raw.skew, DEFAULT_PRESET_TRACK_DATA.skew), 0.01, 0.99),
-    skewLfoEnabled: Boolean(raw.skewLfoEnabled ?? DEFAULT_PRESET_TRACK_DATA.skewLfoEnabled),
-    skewLfoSync: Boolean(raw.skewLfoSync ?? DEFAULT_PRESET_TRACK_DATA.skewLfoSync),
-    skewLfoRateHz: clamp(parseNumber(raw.skewLfoRateHz, DEFAULT_PRESET_TRACK_DATA.skewLfoRateHz), 0.01, 20),
-    skewLfoRate: normalizeModulationRate(raw.skewLfoRate, DEFAULT_PRESET_TRACK_DATA.skewLfoRate),
-    skewLfoAmount: clamp(parseNumber(raw.skewLfoAmount, DEFAULT_PRESET_TRACK_DATA.skewLfoAmount), -1, 1),
-    skewLfoWaveform: normalizeSkewLfoWaveform(raw.skewLfoWaveform),
-    skewLfoInitPhase: clamp(parseNumber(raw.skewLfoInitPhase, DEFAULT_PRESET_TRACK_DATA.skewLfoInitPhase), 0, 0.999999),
     tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
     tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
     tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
@@ -984,14 +944,6 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.unisonVoices !== rightTrack.unisonVoices
       || leftTrack.unisonDetune !== rightTrack.unisonDetune
       || leftTrack.tonewheelDrawbars.some((drawbar, drawbarIndex) => drawbar !== rightTrack.tonewheelDrawbars[drawbarIndex])
-      || leftTrack.skew !== rightTrack.skew
-      || leftTrack.skewLfoEnabled !== rightTrack.skewLfoEnabled
-      || leftTrack.skewLfoSync !== rightTrack.skewLfoSync
-      || leftTrack.skewLfoRateHz !== rightTrack.skewLfoRateHz
-      || leftTrack.skewLfoRate !== rightTrack.skewLfoRate
-      || leftTrack.skewLfoAmount !== rightTrack.skewLfoAmount
-      || leftTrack.skewLfoWaveform !== rightTrack.skewLfoWaveform
-      || leftTrack.skewLfoInitPhase !== rightTrack.skewLfoInitPhase
       || leftTrack.tremoloEnabled !== rightTrack.tremoloEnabled
       || leftTrack.tremoloFrequency !== rightTrack.tremoloFrequency
       || leftTrack.tremoloDepth !== rightTrack.tremoloDepth
