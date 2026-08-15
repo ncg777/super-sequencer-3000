@@ -1786,7 +1786,6 @@ export default defineComponent({
         },
       });
       this.updateChoirFormantBank(track.waveform, chain.choirFormants);
-      this.updateChoirFormantBank(track.waveform, chain.choirFormants);
 
       chain.filter.set({
         type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',
