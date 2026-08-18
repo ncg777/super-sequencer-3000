@@ -10,11 +10,22 @@ import {
   TIME_WARP_CURVE_VALUES,
   TIME_WARP_QUANTIZE_OPTIONS,
 } from './audio/timeWarp.js';
+import {
+  cloneDrumLanes,
+  normalizeDrumLanes,
+  normalizeDrumVelocityBits,
+  type DrumLane,
+} from './domain/rhythmTrack.js';
 import { normalizeBitmaskSequenceInput } from './trackActivation.js';
+
+export type TrackKind = 'melodic' | 'rhythmic';
 
 export interface PresetTrackData {
   id: string;
   name: string;
+  trackKind: TrackKind;
+  drumLanes: DrumLane[];
+  drumVelocityBits: number;
   numerator: number;
   denominator: number;
   phase: number;
@@ -313,6 +324,9 @@ export interface DeletePresetResult {
 export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   id: 'track-1',
   name: 'Track 1',
+  trackKind: 'melodic',
+  drumLanes: [],
+  drumVelocityBits: 1,
   numerator: 4,
   denominator: 4,
   phase: 0,
@@ -648,6 +662,9 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
   return {
     id: track.id,
     name: track.name,
+    trackKind: track.trackKind,
+    drumLanes: cloneDrumLanes(track.drumLanes),
+    drumVelocityBits: track.drumVelocityBits,
     numerator: track.numerator,
     denominator: track.denominator,
     phase: track.phase,
@@ -744,6 +761,9 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
   return {
     id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : createTrackId(index),
     name: sanitizeTrackName(raw.name, index),
+    trackKind: raw.trackKind === 'rhythmic' ? 'rhythmic' : DEFAULT_PRESET_TRACK_DATA.trackKind,
+    drumLanes: raw.trackKind === 'rhythmic' ? normalizeDrumLanes(raw.drumLanes) : [],
+    drumVelocityBits: normalizeDrumVelocityBits(raw.drumVelocityBits, DEFAULT_PRESET_TRACK_DATA.drumVelocityBits),
     numerator: clamp(parseInteger(raw.numerator?.toString(), DEFAULT_PRESET_TRACK_DATA.numerator), 1, 16),
     denominator: clamp(parseInteger(raw.denominator?.toString(), DEFAULT_PRESET_TRACK_DATA.denominator), 1, 16),
     phase: clamp(parseNumber(raw.phase, DEFAULT_PRESET_TRACK_DATA.phase), 0, 1),
@@ -834,6 +854,26 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
   };
 }
 
+function areDrumLanesEqual(left: readonly DrumLane[], right: readonly DrumLane[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((leftLane, laneIndex) => {
+    const rightLane = right[laneIndex];
+    if (leftLane.voiceId !== rightLane.voiceId) {
+      return false;
+    }
+
+    const leftParameters = leftLane.parameters;
+    const rightParameters = rightLane.parameters;
+    const leftNames = Object.keys(leftParameters);
+    const rightNames = Object.keys(rightParameters);
+    return leftNames.length === rightNames.length
+      && leftNames.every((name) => leftParameters[name] === rightParameters[name]);
+  });
+}
+
 function normalizeLegacyTrack(value: LegacyTrackFields): PresetTrackData {
   return normalizePresetTrackData({
     id: 'track-1',
@@ -911,6 +951,9 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
     const rightTrack = right.tracks[index];
     if (leftTrack.id !== rightTrack.id
       || leftTrack.name !== rightTrack.name
+      || leftTrack.trackKind !== rightTrack.trackKind
+      || leftTrack.drumVelocityBits !== rightTrack.drumVelocityBits
+      || !areDrumLanesEqual(leftTrack.drumLanes, rightTrack.drumLanes)
       || leftTrack.numerator !== rightTrack.numerator
       || leftTrack.denominator !== rightTrack.denominator
       || leftTrack.phase !== rightTrack.phase

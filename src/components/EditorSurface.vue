@@ -3,11 +3,12 @@
     <div class="control-tabs-layout">
       <v-tabs v-model="activeControlTab" :direction="$vuetify.display.xs ? 'horizontal' : 'vertical'" class="control-tabs" color="primary">
         <v-tab value="sequence" prepend-icon="mdi-format-list-numbered">Sequence</v-tab>
+        <v-tab v-if="draftTrack.trackKind === 'rhythmic'" value="drum-sounds" prepend-icon="mdi-album">Drum Sounds</v-tab>
         <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
         <v-tab value="time-warp" prepend-icon="mdi-chart-sankey">Time Warp</v-tab>
-        <v-tab value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
-        <v-tab value="envelopes" prepend-icon="mdi-chart-bell-curve-cumulative">Envelopes</v-tab>
-        <v-tab value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
+        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
+        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="envelopes" prepend-icon="mdi-chart-bell-curve-cumulative">Envelopes</v-tab>
+        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Tremolo/Vibrato</v-tab>
         <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
         <v-tab value="chorus" prepend-icon="mdi-blur">Chorus</v-tab>
@@ -20,7 +21,12 @@
 
       <v-window v-model="activeControlTab" :touch="false" class="control-tab-content">
         <v-window-item value="sequence" class="control-tab-panel">
-          <v-row>
+          <RhythmTrackControls
+            v-if="draftTrack.trackKind === 'rhythmic'"
+            :track="draftTrack"
+            @update:track="draftTrack = $event; handleTrackDraftChange()"
+          />
+          <v-row v-else>
             <v-col cols="12">
               <v-text-field
                 :label="`Sequence (${selectedTrackSequenceLength})`"
@@ -33,6 +39,13 @@
               />
             </v-col>
           </v-row>
+        </v-window-item>
+
+        <v-window-item v-if="draftTrack.trackKind === 'rhythmic'" value="drum-sounds" class="control-tab-panel">
+          <RhythmSoundControls
+            :track="draftTrack"
+            @update:track="draftTrack = $event; handleTrackDraftChange()"
+          />
         </v-window-item>
 
         <v-window-item value="playback" class="control-tab-panel">
@@ -291,7 +304,7 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item value="tonewheel" class="control-tab-panel">
+        <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="tonewheel" class="control-tab-panel">
           <v-row>
             <v-col cols="12">
               <v-select
@@ -312,7 +325,7 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item value="envelopes" class="control-tab-panel">
+        <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="envelopes" class="control-tab-panel">
           <div class="envelope-section-label">Amp Envelope</div>
           <v-row class="compact-row">
             <v-col cols="12" md="6">
@@ -358,7 +371,7 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item value="unison" class="control-tab-panel">
+        <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="unison" class="control-tab-panel">
           <v-row class="compact-row">
             <v-col cols="12" md="6">
               <EditableSlider :label="'Unison Voices (' + draftTrack.unisonVoices + ')'" :min="1" :max="8" :step="1" v-model="draftTrack.unisonVoices" @update:modelValue="handleTrackDraftChange" />
@@ -691,6 +704,8 @@
 import { defineComponent, type PropType } from 'vue';
 import EditableSlider from './EditableSlider.vue';
 import ReverbControls from './ReverbControls.vue';
+import RhythmTrackControls from './RhythmTrackControls.vue';
+import RhythmSoundControls from './RhythmSoundControls.vue';
 import TimeWarpPreview from './TimeWarpPreview.vue';
 import {
   CUSTOM_TIME_WARP_CURVE,
@@ -719,6 +734,8 @@ export default defineComponent({
   components: {
     EditableSlider,
     ReverbControls,
+    RhythmTrackControls,
+    RhythmSoundControls,
     TimeWarpPreview,
   },
   props: {
@@ -782,7 +799,11 @@ export default defineComponent({
       immediate: true,
       handler(nextTrack: PresetTrackData | null) {
         if (nextTrack) {
+          const trackKindChanged = nextTrack.trackKind !== this.draftTrack.trackKind;
           this.draftTrack = clonePresetTrackData(nextTrack);
+          if (trackKindChanged) {
+            this.activeControlTab = 'sequence';
+          }
         }
       },
     },

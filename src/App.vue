@@ -289,6 +289,7 @@ import {
 } from './audio/lfo';
 import { getChoirFormantBandGainLinear } from './audio/choir';
 import { PitchEnvelopeSynth } from './audio/pitchEnvelopeSynth';
+import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
 import {
   quantizeNormalizedTime,
   resolveTimeWarpFunction,
@@ -314,7 +315,13 @@ import {
   type PresetLibrary,
   type PresetReverbData,
   type PresetTrackData,
+  type TrackKind,
 } from './presets';
+import {
+  decodeRhythmSequence,
+  type DrumVoiceId,
+  type RhythmHit,
+} from './domain/rhythmTrack';
 import {
   gateEventByActivation,
   parseBitmaskSequenceInput,
@@ -351,6 +358,11 @@ interface TrackAudioChain {
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
   mixGain: Tone.Gain;
+  drumInstruments: Record<string, DrumInstrument>;
+  drumSignature: string;
+  drumParameterSignature: string;
+  drumRebuildTimer: number | null;
+  routingSignature: string;
 }
 
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
@@ -397,6 +409,8 @@ interface TrackScheduledEvent {
   duration: number;
   velocity: number;
   notes: number[];
+  noteVelocities?: number[];
+  drumVoiceIds?: DrumVoiceId[];
   step: number;
   order: number;
 }
@@ -530,12 +544,25 @@ export default defineComponent({
       o.sort((a, b) => a - b);
       return o; 
     },
-    allTrackActualNotes(): Array<{ track: PresetTrackData; notes: number[][]; trackIndex: number }> {
-      return this.tracks.map((track, trackIndex) => ({
-        track,
-        trackIndex,
-        notes: this.computeActualNotes(track),
-      }));
+    allTrackActualNotes(): Array<{ track: PresetTrackData; notes: number[][]; noteVelocities?: number[][]; drumVoiceIds?: DrumVoiceId[][]; trackIndex: number }> {
+      return this.tracks.map((track, trackIndex) => {
+        if (track.trackKind === 'rhythmic') {
+          const rhythmSteps = this.getRhythmSteps(track);
+          return {
+            track,
+            trackIndex,
+            notes: rhythmSteps.map((step) => step.map((hit) => hit.midi)),
+            noteVelocities: rhythmSteps.map((step) => step.map((hit) => hit.velocity)),
+            drumVoiceIds: rhythmSteps.map((step) => step.map((hit) => hit.voiceId)),
+          };
+        }
+
+        return {
+          track,
+          trackIndex,
+          notes: this.computeActualNotes(track),
+        };
+      });
     },
     activationMasks(): bigint[] {
       return parseBitmaskSequenceInput(this.bitmaskSequenceInput).masks;
@@ -579,7 +606,14 @@ export default defineComponent({
         .map((n: string) => Number.parseInt(n.trim(), 10))
         .filter((n: number) => !Number.isNaN(n));
     },
+    getRhythmSteps(track: PresetTrackData): RhythmHit[][] {
+      return decodeRhythmSequence(track.sequenceInput, track.drumLanes, track.drumVelocityBits);
+    },
     computeActualNotes(track: PresetTrackData): number[][] {
+      if (track.trackKind === 'rhythmic') {
+        return this.getRhythmSteps(track).map((step) => step.map((hit) => hit.midi));
+      }
+
       const s = PCS12.parseForte(this.forte);
       if (!s) {
         return [];
@@ -632,13 +666,14 @@ export default defineComponent({
       }
       return 1;
     },
-    addTrack() {
+    addTrack(trackKind: TrackKind = 'melodic') {
       const nextTrack = normalizePresetTrackData({
         ...DEFAULT_PRESET_TRACK_DATA,
         id: undefined,
-        name: this.buildUniqueTrackName(`Track ${this.tracks.length + 1}`),
+        trackKind,
+        name: this.buildUniqueTrackName(trackKind === 'rhythmic' ? `Rhythm ${this.tracks.length + 1}` : `Track ${this.tracks.length + 1}`),
         sequenceInput: '',
-        midiChannel: this.nextTrackChannel(),
+        midiChannel: trackKind === 'rhythmic' ? 10 : this.nextTrackChannel(),
       }, this.tracks.length);
 
       this.tracks = [...this.tracks, nextTrack];
@@ -844,6 +879,8 @@ export default defineComponent({
       trackNotes: number[][],
       totalLoopDuration: number,
       trackIndex = 0,
+      noteVelocities?: number[][],
+      drumVoiceIds?: DrumVoiceId[][],
     ): TrackScheduledEvent[] {
       if (trackNotes.length === 0) {
         return [];
@@ -921,6 +958,8 @@ export default defineComponent({
             duration: gated.duration,
             velocity: this.getTrackVelocity(notes, track.velocityMultiplier),
             notes,
+            noteVelocities: noteVelocities?.[i]?.map((velocity) => Math.min(1, velocity * track.velocityMultiplier)),
+            drumVoiceIds: drumVoiceIds?.[i],
             step: i,
             order,
           });
@@ -967,7 +1006,10 @@ export default defineComponent({
         || previous.timeWarpRepeats !== next.timeWarpRepeats
         || previous.timeWarpAmount !== next.timeWarpAmount
         || previous.timeWarpQuantize !== next.timeWarpQuantize
-        || previous.timeWarpNoteLengths !== next.timeWarpNoteLengths;
+        || previous.timeWarpNoteLengths !== next.timeWarpNoteLengths
+        || previous.trackKind !== next.trackKind
+        || previous.drumVelocityBits !== next.drumVelocityBits
+        || previous.drumLanes.map((lane) => lane.voiceId).join(',') !== next.drumLanes.map((lane) => lane.voiceId).join(',');
     },
     dbToWetMix(db: number): number {
       return this.clampNormalRange(this.dbToGain(db));
@@ -1098,7 +1140,7 @@ export default defineComponent({
             'Scheduling tracks...',
           );
 
-          const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration, entry.trackIndex);
+          const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration, entry.trackIndex, entry.noteVelocities, entry.drumVoiceIds);
           if (events.length === 0) {
             continue;
           }
@@ -1114,7 +1156,16 @@ export default defineComponent({
 
           for (const event of events) {
             this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain.filter);
-            this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity);
+            if (entry.track.trackKind === 'rhythmic') {
+              const noteVelocities = event.noteVelocities ?? event.notes.map(() => event.velocity);
+              for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
+                const voiceId = event.drumVoiceIds?.[noteIndex];
+                const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
+                instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
+              }
+            } else {
+              this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity);
+            }
           }
         }
 
@@ -1393,7 +1444,86 @@ export default defineComponent({
         reverbSend,
         outputGain,
         mixGain,
+        drumInstruments: {},
+        drumSignature: '',
+        drumParameterSignature: '',
+        drumRebuildTimer: null,
+        routingSignature: '',
       };
+    },
+    scheduleDrumInstrumentRebuild(track: PresetTrackData, chain: TrackAudioChain) {
+      if (chain.drumRebuildTimer !== null) {
+        window.clearTimeout(chain.drumRebuildTimer);
+      }
+
+      chain.drumRebuildTimer = window.setTimeout(() => {
+        chain.drumRebuildTimer = null;
+        const currentTrack = this.tracks.find((entry) => entry.id === track.id) ?? track;
+        this.rebuildDrumInstruments(currentTrack, chain, true);
+      }, 120);
+    },
+    rebuildDrumInstruments(track: PresetTrackData, chain: TrackAudioChain, force = false) {
+      if (track.trackKind !== 'rhythmic') {
+        if (chain.drumRebuildTimer !== null) {
+          window.clearTimeout(chain.drumRebuildTimer);
+          chain.drumRebuildTimer = null;
+        }
+        Object.values(chain.drumInstruments).forEach((instrument) => instrument.dispose());
+        chain.drumInstruments = {};
+        chain.drumSignature = '';
+        chain.drumParameterSignature = '';
+        return;
+      }
+
+      const signature = JSON.stringify({
+        lanes: track.drumLanes.map((lane) => lane.voiceId),
+        velocityBits: track.drumVelocityBits,
+      });
+      const parameterSignature = JSON.stringify(track.drumLanes);
+      if (!force && signature === chain.drumSignature) {
+        let requiresRebuild = false;
+        for (const lane of track.drumLanes) {
+          const updated = chain.drumInstruments[lane.voiceId]?.update?.(lane.parameters);
+          if (updated !== true) {
+            requiresRebuild = true;
+          }
+        }
+        if (requiresRebuild && parameterSignature !== chain.drumParameterSignature) {
+          this.scheduleDrumInstrumentRebuild(track, chain);
+        }
+        chain.drumParameterSignature = parameterSignature;
+        return;
+      }
+
+      if (chain.drumRebuildTimer !== null) {
+        window.clearTimeout(chain.drumRebuildTimer);
+        chain.drumRebuildTimer = null;
+      }
+      Object.values(chain.drumInstruments).forEach((instrument) => instrument.dispose());
+      chain.drumInstruments = {};
+      for (const lane of track.drumLanes) {
+        // markRaw is required: Vue would otherwise deep-proxy the Tone/Web Audio nodes,
+        // and standardized-audio-context rejects proxied nodes with InvalidStateError on connect().
+        chain.drumInstruments[lane.voiceId] = markRaw(createDrumInstrument(lane.voiceId, lane.parameters));
+      }
+      if (chain.routingSignature) {
+        Object.values(chain.drumInstruments).forEach((instrument) => instrument.node.connect(chain.sourceBus));
+      }
+      chain.drumSignature = signature;
+      chain.drumParameterSignature = parameterSignature;
+    },
+    getTrackRoutingSignature(track: PresetTrackData): string {
+      return [
+        track.trackKind,
+        track.waveform,
+        track.vibratoEnabled,
+        track.tremoloEnabled,
+        track.chorusEnabled,
+        track.flangerEnabled,
+        track.phaserEnabled,
+        track.echoEnabled,
+        track.filterEnabled,
+      ].join('|');
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
       const maxDelay = this.getTrackEchoMaxDelay(track);
@@ -1655,6 +1785,11 @@ export default defineComponent({
       return 1 / Math.max(0.001, this.getModulationRateSeconds(rate));
     },
     disposeTrackChain(chain: TrackAudioChain) {
+      if (chain.drumRebuildTimer !== null) {
+        window.clearTimeout(chain.drumRebuildTimer);
+        chain.drumRebuildTimer = null;
+      }
+      Object.values(chain.drumInstruments).forEach((instrument) => instrument.dispose());
       chain.synth.dispose();
       chain.synthGain.dispose();
       chain.noiseSynth.dispose();
@@ -1718,7 +1853,12 @@ export default defineComponent({
         path.gain.connect(chain.choirOutput);
       });
 
-      if (this.isNoiseWaveform(track.waveform)) {
+      if (track.trackKind === 'rhythmic') {
+        Object.values(chain.drumInstruments).forEach((instrument) => {
+          instrument.node.disconnect();
+          instrument.node.connect(chain.sourceBus);
+        });
+      } else if (this.isNoiseWaveform(track.waveform)) {
         chain.noiseSynth.connect(chain.sourceBus);
       } else {
         const oscillatorTarget = this.isChoirWaveform(track.waveform) ? chain.choirInput : chain.sourceBus;
@@ -1755,6 +1895,9 @@ export default defineComponent({
       Tone.connectSeries(...signalChain);
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
+      this.rebuildDrumInstruments(track, chain);
+      const routingSignature = this.getTrackRoutingSignature(track);
+      const routingChanged = routingSignature !== chain.routingSignature;
       const envelope = {
         attackCurve: 'exponential' as const,
         attack: Math.max(track.attack, ENVELOPE_SMOOTHING_SECONDS),
@@ -1786,17 +1929,19 @@ export default defineComponent({
         pitchEnvelopeShape: track.pitchEnvelopeShape,
       };
 
-      chain.synth.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
-      chain.synthGain.gain.cancelScheduledValues(now);
-      chain.synthGain.gain.setValueAtTime(1, now);
+      if (track.trackKind !== 'rhythmic') {
+        chain.synth.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
+        chain.synthGain.gain.cancelScheduledValues(now);
+        chain.synthGain.gain.setValueAtTime(1, now);
 
-      chain.noiseSynth.set({
-        envelope,
-        noise: {
-          type: this.getNoiseType(track.waveform),
-        },
-      });
-      this.updateChoirFormantBank(track.waveform, chain.choirFormants);
+        chain.noiseSynth.set({
+          envelope,
+          noise: {
+            type: this.getNoiseType(track.waveform),
+          },
+        });
+        this.updateChoirFormantBank(track.waveform, chain.choirFormants);
+      }
 
       chain.filter.set({
         type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',
@@ -1855,11 +2000,14 @@ export default defineComponent({
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
       chain.synth.context.lookAhead = 0.05;
       chain.noiseSynth.context.lookAhead = 0.05;
-      this.routeTrackAudioChain(track, chain);
-      // Tone modulation sources can end up stopped after graph rewires / param sets
-      // (especially on the first chain build before Transport starts). Restart them so
-      // tremolo, vibrato, chorus, flanger, and phaser keep modulating the signal.
-      this.ensureTrackModulationRunning(chain);
+      if (routingChanged) {
+        this.routeTrackAudioChain(track, chain);
+        chain.routingSignature = routingSignature;
+        // Tone modulation sources can end up stopped after graph rewires / param sets
+        // (especially on the first chain build before Transport starts). Restart them so
+        // tremolo, vibrato, chorus, flanger, and phaser keep modulating the signal.
+        this.ensureTrackModulationRunning(chain);
+      }
     },
     /**
      * Force-restart every free-running modulator on the track chain.
@@ -1915,7 +2063,7 @@ export default defineComponent({
       const totalLoopDuration = this.getLoopDurationSecondsFromTrackLengths();
 
       for (const entry of this.allTrackActualNotes) {
-        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration, entry.trackIndex);
+        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration, entry.trackIndex, entry.noteVelocities, entry.drumVoiceIds);
         if (events.length === 0) {
           continue;
         }
@@ -1924,12 +2072,13 @@ export default defineComponent({
         track.channel = entry.track.midiChannel - 1;
 
         for (const event of events) {
-          for (const note of event.notes) {
+          for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
+            const note = event.notes[noteIndex];
             track.addNote({
               midi: note,
               time: event.time,
               duration: event.duration,
-              velocity: event.velocity,
+              velocity: event.noteVelocities?.[noteIndex] ?? event.velocity,
             });
           }
         }
@@ -1984,7 +2133,7 @@ export default defineComponent({
           continue;
         }
 
-        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration, entry.trackIndex);
+        const events = this.buildTrackEvents(entry.track, entry.notes, totalLoopDuration, entry.trackIndex, entry.noteVelocities, entry.drumVoiceIds);
         if (events.length === 0) {
           continue;
         }
@@ -2071,7 +2220,12 @@ export default defineComponent({
         return;
       }
 
-      const arr = event.notes;
+      const currentRhythmStep = track.trackKind === 'rhythmic'
+        ? this.getRhythmSteps(track)[event.step] ?? []
+        : null;
+      const arr = currentRhythmStep
+        ? currentRhythmStep.map((hit) => hit.midi)
+        : event.notes;
       this.activeNotes = Array.from(new Set([...this.activeNotes, ...arr])).sort((left, right) => left - right);
 
       if (arr.length === 0) {
@@ -2080,22 +2234,27 @@ export default defineComponent({
 
       const vel = event.velocity;
       const noteDuration = event.duration;
+      const noteVelocities = currentRhythmStep
+        ? currentRhythmStep.map((hit) => Math.min(1, hit.velocity * track.velocityMultiplier))
+        : event.noteVelocities ?? arr.map(() => vel);
+      const drumVoiceIds = currentRhythmStep?.map((hit) => hit.voiceId) ?? event.drumVoiceIds;
 
       if (this.useMidiOutput) {
-        for (const note of arr) {
-          this.playNoteWithMidi(note, vel, noteDuration, when, track.midiChannel);
+        for (let index = 0; index < arr.length; index += 1) {
+          this.playNoteWithMidi(arr[index], noteVelocities[index] ?? vel, noteDuration, when, track.midiChannel);
         }
       } else {
         const chain = this.getOrCreateTrackChain(track);
         this.scheduleFilterEnvelope(track, arr, when, noteDuration, chain.filter);
-        this.triggerTrackVoice(
-          track,
-          chain,
-          arr,
-          `${noteDuration}s`,
-          when,
-          vel,
-        );
+        if (track.trackKind === 'rhythmic') {
+          for (let index = 0; index < arr.length; index += 1) {
+            const voiceId = drumVoiceIds?.[index];
+            const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
+            instrument?.trigger(when, noteVelocities[index] ?? vel, noteDuration);
+          }
+        } else {
+          this.triggerTrackVoice(track, chain, arr, `${noteDuration}s`, when, vel);
+        }
       }
 
       window.setTimeout(() => {

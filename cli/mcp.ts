@@ -127,11 +127,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             tracks: {
               type: 'array',
               description:
-                'Optional multi-track configuration. Each track may include name, numerator, denominator, waveform, sequence, octave, lengthFactor, lengthOffset, midiChannel, gain, delay, repeats, and time warp fields.',
+                'Optional multi-track configuration. Rhythmic tracks use ordered GM drumLanes and BigInt-safe decimal velocity masks; omitted trackKind remains melodic.',
               items: {
                 type: 'object',
                 properties: {
                   name: { type: 'string' },
+                  trackKind: { type: 'string', enum: ['melodic', 'rhythmic'] },
+                  drumVelocityBits: { type: 'number', description: '1-7 velocity bits per rhythmic lane.' },
+                  drumLanes: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        voiceId: { type: 'string', description: 'GM voice ID, for example kick, snare, hat, or crash.' },
+                        parameters: { type: 'object', additionalProperties: true },
+                      },
+                    },
+                  },
                   numerator: { type: 'number' },
                   denominator: { type: 'number' },
                   waveform: { type: 'string' },

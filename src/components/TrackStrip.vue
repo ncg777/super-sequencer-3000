@@ -5,18 +5,26 @@
         <v-icon size="16">mdi-timeline-clock-outline</v-icon>
         <span>Tracks</span>
       </div>
-      <v-btn
-        class="track-add-btn"
-        icon
-        size="x-small"
-        variant="flat"
-        color="secondary"
-        title="Add blank track"
-        style="min-width:0; min-height:0; width:20px; height:20px; padding:0;"
-        @click="$emit('add-track')"
-      >
-        <v-icon size="16">mdi-plus</v-icon>
-      </v-btn>
+      <v-menu location="bottom end">
+        <template #activator="{ props }">
+          <v-btn
+            v-bind="props"
+            class="track-add-btn"
+            icon
+            size="x-small"
+            variant="flat"
+            color="secondary"
+            title="Add track"
+            style="min-width:0; min-height:0; width:20px; height:20px; padding:0;"
+          >
+            <v-icon size="16">mdi-plus</v-icon>
+          </v-btn>
+        </template>
+        <v-list density="compact">
+          <v-list-item title="Add melodic track" prepend-icon="mdi-sine-wave" @click="$emit('add-track', 'melodic')" />
+          <v-list-item title="Add rhythmic track" prepend-icon="mdi-drum" @click="$emit('add-track', 'rhythmic')" />
+        </v-list>
+      </v-menu>
     </div>
 
     <div class="track-activation">

@@ -18,10 +18,24 @@ import {
   gateEventByActivation,
   parseBitmaskSequenceInput,
 } from '../src/trackActivation.js';
+import {
+  decodeRhythmSequence,
+  normalizeDrumLanes,
+  normalizeDrumVelocityBits,
+  type DrumLane,
+  type DrumVoiceId,
+} from '../src/domain/rhythmTrack.js';
+import { renderDrumHitIntoBuffers } from './drumWav.js';
 
 export interface GenerateTrackOptions {
   /** Optional display name for the track. */
   name?: string;
+  /** Track encoding and playback kind. Legacy and omitted values are melodic. */
+  trackKind?: 'melodic' | 'rhythmic';
+  /** Ordered GM drum lanes used when trackKind is rhythmic. */
+  drumLanes?: DrumLane[];
+  /** Super Beatbox-style velocity bits assigned to each rhythmic lane. */
+  drumVelocityBits?: number;
   /** Time signature numerator (1-16). Kept for parity with app presets. */
   numerator?: number;
   /** Time signature denominator (1-16). Controls this track quantization step size. */
@@ -202,6 +216,8 @@ interface TrackRenderData {
   track: NormalizedTrack;
   quant: number;
   actualNotes: number[][];
+  noteVelocities?: number[][];
+  drumVoiceIds?: DrumVoiceId[][];
 }
 
 interface TrackScheduledEvent {
@@ -209,6 +225,8 @@ interface TrackScheduledEvent {
   duration: number;
   velocity: number;
   notes: number[];
+  noteVelocities?: number[];
+  drumVoiceIds?: DrumVoiceId[];
   order: number;
 }
 
@@ -372,6 +390,8 @@ function buildTrackEvents(
         duration: gated.duration,
         velocity: Math.min(1, 0.5 * Math.sqrt(1.0 / notes.length) * entry.track.velocityMultiplier),
         notes,
+        noteVelocities: entry.noteVelocities?.[i]?.map((velocity) => Math.min(1, velocity * entry.track.velocityMultiplier)),
+        drumVoiceIds: entry.drumVoiceIds?.[i],
         order,
       });
       order += 1;
@@ -396,6 +416,9 @@ function normalizeTonewheelDrawbars(value: unknown): number[] {
 function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrackOptions>> {
   const fallbackTrack: Required<GenerateTrackOptions> = {
     name: 'Track 1',
+    trackKind: 'melodic',
+    drumLanes: [],
+    drumVelocityBits: 1,
     numerator: clamp(options.numerator ?? 4, 1, 16),
     denominator: clamp(options.denominator ?? 5, 1, 16),
     waveform: options.waveform ?? 'sine',
@@ -460,6 +483,9 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
 
   return incoming.map((track, index) => ({
     name: track.name?.trim() ? track.name.trim() : `Track ${index + 1}`,
+    trackKind: track.trackKind === 'rhythmic' ? 'rhythmic' : 'melodic',
+    drumLanes: track.trackKind === 'rhythmic' ? normalizeDrumLanes(track.drumLanes) : [],
+    drumVelocityBits: normalizeDrumVelocityBits(track.drumVelocityBits, fallbackTrack.drumVelocityBits),
     numerator: clamp(track.numerator ?? fallbackTrack.numerator, 1, 16),
     denominator: clamp(track.denominator ?? fallbackTrack.denominator, 1, 16),
     waveform: track.waveform ?? fallbackTrack.waveform,
@@ -467,7 +493,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     octave: clamp(track.octave ?? fallbackTrack.octave, 0, 10),
     lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 0, 400),
     lengthOffset: clamp(track.lengthOffset ?? fallbackTrack.lengthOffset, 0, 64),
-    midiChannel: clamp(track.midiChannel ?? clamp(index + 1, 1, 16), 1, 16),
+    midiChannel: clamp(track.midiChannel ?? (track.trackKind === 'rhythmic' ? 10 : clamp(index + 1, 1, 16)), 1, 16),
     gain: clamp(track.gain ?? fallbackTrack.gain, -96, 24),
     velocityMultiplier: clamp(track.velocityMultiplier ?? fallbackTrack.velocityMultiplier, 0, 4),
     delay: clamp(track.delay ?? fallbackTrack.delay, 0, 64),
@@ -565,6 +591,17 @@ async function prepareRenderData(options: GenerateOptions): Promise<PreparedRend
 
   const pitchClassCount: number = pitchClassSet.getK() ?? 0;
   const trackData: TrackRenderData[] = tracks.map((track) => {
+    if (track.trackKind === 'rhythmic') {
+      const rhythmSteps = decodeRhythmSequence(track.sequence, track.drumLanes, track.drumVelocityBits);
+      return {
+        track,
+        quant: 60.0 / (bpm * track.denominator),
+        actualNotes: rhythmSteps.map((step) => step.map((hit) => hit.midi)),
+        noteVelocities: rhythmSteps.map((step) => step.map((hit) => hit.velocity)),
+        drumVoiceIds: rhythmSteps.map((step) => step.map((hit) => hit.voiceId)),
+      };
+    }
+
     const sequence = parseSequence(track.sequence);
     const actualNotes: number[][] = sequence.map((n: number) => {
       const bits = Math.abs(n).toString(2).split('').reverse();
@@ -866,12 +903,13 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
     track.channel = entry.track.midiChannel - 1;
 
     for (const event of events) {
-      for (const note of event.notes) {
+      for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
+        const note = event.notes[noteIndex];
         track.addNote({
           midi: note,
           time: event.time,
           duration: event.duration,
-          velocity: event.velocity,
+          velocity: event.noteVelocities?.[noteIndex] ?? event.velocity,
         });
       }
     }
@@ -919,12 +957,45 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     const trackLeft = new Float32Array(frameCount);
     const trackRight = new Float32Array(frameCount);
     const tonewheel = prepareTonewheel(entry.track.tonewheelDrawbars);
+    const drumParameters = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.parameters]));
+    const drumFilterState = { low: 0, high: 0, band: 0 };
 
     for (const event of events) {
       const start = event.time;
       const duration = event.duration;
       const notes = event.notes;
       const noteAmplitude = event.velocity * 0.12 * dbToGain(entry.track.gain);
+
+      if (entry.track.trackKind === 'rhythmic') {
+        const startFrame = Math.max(0, Math.floor(start * sampleRate));
+        const noteVelocities = event.noteVelocities ?? notes.map(() => event.velocity);
+        for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
+          const voiceId = event.drumVoiceIds?.[noteIndex];
+          const parameters = voiceId ? drumParameters.get(voiceId) : undefined;
+          if (!voiceId || !parameters) {
+            continue;
+          }
+
+          renderDrumHitIntoBuffers({
+            left: trackLeft,
+            right: trackRight,
+            startFrame,
+            sampleRate,
+            duration,
+            velocity: noteVelocities[noteIndex] ?? event.velocity,
+            voiceId,
+            parameters,
+            transform: (sample, elapsed) => applySimpleFilter(
+              sample * dbToGain(entry.track.gain),
+              drumFilterState,
+              entry.track,
+              getFilterFrequency(entry.track, notes, getFilterEnvelopeLevel(entry.track, elapsed, duration), prepared.a4),
+              sampleRate,
+            ),
+          });
+        }
+        continue;
+      }
 
       const startFrame = Math.max(0, Math.floor(start * sampleRate));
       const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));

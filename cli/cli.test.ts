@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import ToneMidi from '@tonejs/midi';
-import { generateMidi } from './generate.js';
+import { generateMidi, generateWav } from './generate.js';
 
 const { Midi } = ToneMidi;
 
@@ -232,4 +232,62 @@ test('cli --preset JSON carries bitmaskSequenceInput into MIDI output', () => {
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+test('rhythmic tracks export GM notes with BigInt-safe per-lane velocities', async () => {
+  const midiBytes = await generateMidi({
+    bpm: 60,
+    forte: '5-35.05',
+    tracks: [{
+      name: 'GM Kit',
+      trackKind: 'rhythmic',
+      drumLanes: [
+        { voiceId: 'kick', parameters: {} },
+        { voiceId: 'snare', parameters: {} },
+        { voiceId: 'hat', parameters: {} },
+      ],
+      drumVelocityBits: 2,
+      numerator: 1,
+      denominator: 1,
+      sequence: '1 4 16 5 18446744073709551617',
+      lengthFactor: 100,
+      lengthOffset: 0,
+      midiChannel: 10,
+      repeats: 1,
+      delay: 0,
+      timeWarpEnabled: false,
+    }],
+  });
+
+  const midi = new Midi(midiBytes);
+  assert.equal(midi.tracks.length, 1);
+  assert.equal(midi.tracks[0].channel, 9);
+  assert.deepEqual(midi.tracks[0].notes.map((note) => note.midi), [36, 38, 42, 36, 38, 36]);
+  assert.deepEqual(midi.tracks[0].notes.slice(0, 3).map((note) => Number(note.velocity.toFixed(6))), [42 / 127, 42 / 127, 42 / 127].map((velocity) => Number(velocity.toFixed(6))));
+});
+
+test('rhythmic tracks render synthesized audio in CLI WAV output', async () => {
+  const wavBytes = await generateWav({
+    bpm: 60,
+    tracks: [{
+      name: 'WAV Kit',
+      trackKind: 'rhythmic',
+      drumLanes: [{ voiceId: 'kick', parameters: { tune: 55, decay: 0.25 } }],
+      drumVelocityBits: 1,
+      numerator: 1,
+      denominator: 1,
+      sequence: '1',
+      lengthFactor: 100,
+      lengthOffset: 0,
+      midiChannel: 10,
+      repeats: 1,
+      delay: 0,
+      timeWarpEnabled: false,
+    }],
+    reverb: { enabled: false },
+  });
+
+  assert.equal(Buffer.from(wavBytes.subarray(0, 4)).toString('ascii'), 'RIFF');
+  assert.ok(wavBytes.length > 44);
+  assert.ok(wavBytes.subarray(44).some((value) => value !== 0));
 });

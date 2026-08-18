@@ -14,6 +14,9 @@ function presetDataToGeneratorInput(data: PresetData) {
     bitmaskSequenceInput: data.bitmaskSequenceInput,
     tracks: data.tracks.map((track) => ({
       name: track.name,
+      trackKind: track.trackKind,
+      drumLanes: track.drumLanes,
+      drumVelocityBits: track.drumVelocityBits,
       numerator: track.numerator,
       denominator: track.denominator,
       waveform: track.waveform,
