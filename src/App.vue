@@ -2018,8 +2018,8 @@ export default defineComponent({
       this.applyTrackMixState(track, chain);
       chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
-      chain.synth.context.lookAhead = 0.05;
-      chain.noiseSynth.context.lookAhead = 0.05;
+      chain.synth.context.lookAhead = 0.4;
+      chain.noiseSynth.context.lookAhead = 0.4;
       if (routingChanged) {
         this.routeTrackAudioChain(track, chain);
         chain.routingSignature = routingSignature;
