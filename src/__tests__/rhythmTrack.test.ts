@@ -23,6 +23,10 @@ test('uses the standard GM note mapping for the default lanes', () => {
   assert.ok(getDrumParameterDefinitions('snare').some((definition) => definition.name === 'noiseType'));
   assert.ok(getDrumParameterDefinitions('snare').some((definition) => definition.name === 'toneDecay'));
   assert.equal(getDrumParameterDefinitions('kick').find((definition) => definition.name === 'tune')?.max, 400);
+  assert.deepEqual(
+    getDrumParameterDefinitions('snare').find((definition) => definition.name === 'tune'),
+    { name: 'tune', label: 'Tune', min: 80, max: 400, step: 1 },
+  );
 });
 
 test('normalizes lanes to unique known voices with complete defaults', () => {
@@ -36,6 +40,9 @@ test('normalizes lanes to unique known voices with complete defaults', () => {
   assert.equal(lanes[0].voiceId, 'snare');
   assert.equal(lanes[0].parameters.tune, 220);
   assert.equal(lanes[0].parameters.noiseType, 'white');
+
+  const constrained = normalizeDrumLanes([{ voiceId: 'snare', parameters: { tune: 1200 } }]);
+  assert.equal(constrained[0].parameters.tune, 400);
 });
 
 test('parses decimal masks without losing arbitrary-width values', () => {

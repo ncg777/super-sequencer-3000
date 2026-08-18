@@ -22,7 +22,7 @@
         </template>
         <v-list density="compact">
           <v-list-item title="Add melodic track" prepend-icon="mdi-sine-wave" @click="$emit('add-track', 'melodic')" />
-          <v-list-item title="Add rhythmic track" prepend-icon="mdi-drum" @click="$emit('add-track', 'rhythmic')" />
+          <v-list-item title="Add rhythmic track" prepend-icon="mdi-metronome" @click="$emit('add-track', 'rhythmic')" />
         </v-list>
       </v-menu>
     </div>

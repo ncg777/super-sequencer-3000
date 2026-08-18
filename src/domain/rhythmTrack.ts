@@ -272,6 +272,9 @@ export function getDrumParameterDefinitions(voiceId: DrumVoiceId): readonly Drum
       if (definition?.name === 'tune' && voiceId === 'kick') {
         return { ...definition, max: 400 };
       }
+      if (definition?.name === 'tune' && voiceId === 'snare') {
+        return { ...definition, min: 80, max: 400 };
+      }
       return definition;
     })
     .filter((definition): definition is DrumParameterDefinition => definition !== undefined);
@@ -302,8 +305,8 @@ export function normalizeDrumParameters(voiceId: DrumVoiceId, value: unknown): D
     const candidate = raw[name];
     if (typeof defaultValue === 'number') {
       if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-        const definition = PARAMETER_DEFINITIONS[name];
-        const maximum = name === 'tune' && voiceId === 'kick' ? 400 : definition?.max;
+        const definition = getDrumParameterDefinitions(voiceId).find((entry) => entry.name === name);
+        const maximum = definition?.max;
         normalized[name] = definition?.min !== undefined && maximum !== undefined
           ? Math.min(maximum, Math.max(definition.min, candidate))
           : candidate;

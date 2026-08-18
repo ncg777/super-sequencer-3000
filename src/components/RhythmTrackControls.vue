@@ -6,6 +6,7 @@ import {
   drumVoiceIcon,
   normalizeDrumLanes,
   normalizeDrumVelocityBits,
+  parseRhythmSequenceInput,
   type DrumVoiceId,
 } from '../domain/rhythmTrack';
 import { clonePresetTrackData, type PresetTrackData } from '../presets';
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 
 const selectedLaneIndex = ref(0);
 const addVoice = ref<DrumVoiceId | null>(null);
+const sequenceLength = computed(() => parseRhythmSequenceInput(props.track.sequenceInput).masks.length);
 
 const availableVoices = computed(() => {
   const used = new Set(props.track.drumLanes.map((lane) => lane.voiceId));
@@ -110,7 +112,7 @@ function updateVelocityBits(value: number | null): void {
       <v-col cols="12" md="6">
         <v-text-field
           :model-value="track.sequenceInput"
-          label="Rhythm mask sequence"
+          :label="`Rhythm mask sequence (${sequenceLength})`"
           placeholder="e.g. 1 4 16 5"
           hint="Lane 1 uses the lowest bits of each decimal value."
           persistent-hint

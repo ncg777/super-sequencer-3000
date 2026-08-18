@@ -8,6 +8,7 @@ import {
   type DrumParameterDefinition,
 } from '../domain/rhythmTrack';
 import { clonePresetTrackData, type PresetTrackData } from '../presets';
+import EditableSlider from './EditableSlider.vue';
 
 const props = defineProps<{
   track: PresetTrackData;
@@ -88,15 +89,13 @@ function voiceLabel(voiceId: string): string {
           hide-details="auto"
           @update:model-value="updateParameter(definition, $event)"
         />
-        <v-slider
+        <EditableSlider
           v-else
           :model-value="Number(parameterValue(definition))"
           :label="definition.label"
-          :min="definition.min"
-          :max="definition.max"
-          :step="definition.step"
-          thumb-label
-          hide-details="auto"
+          :min="definition.min ?? 0"
+          :max="definition.max ?? 1"
+          :step="definition.step ?? 1"
           @update:model-value="updateParameter(definition, $event)"
         />
       </v-col>
