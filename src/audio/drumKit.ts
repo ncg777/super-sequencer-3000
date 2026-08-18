@@ -84,6 +84,27 @@ function register(owned: any[], ...nodes: any[]): void {
   owned.push(...nodes.filter(Boolean));
 }
 
+/**
+ * Tone stops and restarts the twelve oscillator nodes behind a MetalSynth on every hit,
+ * and the discarded nodes are only released once `onended` fires - which never happens
+ * while an offline render is still being scheduled. The stale nodes stay wired to the
+ * shared frequency signals, so each further hit walks an ever larger graph during cycle
+ * detection and a long WAV export grows quadratically. Holding the oscillators open
+ * keeps that cost linear; the envelope alone shapes each hit, as it already did.
+ */
+function keepMetalOscillatorsRunning(metal: Tone.MetalSynth): void {
+  const internals = metal as unknown as {
+    envelope: Tone.Envelope;
+    _triggerEnvelopeRelease: (time: number) => unknown;
+  };
+  // A non-zero sustain is what stops the attack from scheduling a matching oscillator stop.
+  internals.envelope.sustain = 1e-6;
+  internals._triggerEnvelopeRelease = (time: number) => {
+    internals.envelope.triggerRelease(time);
+    return metal;
+  };
+}
+
 export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumParameterBag = {}): DrumInstrument {
   const parameters = normalizeDrumParameters(voiceId, {
     ...getDefaultDrumParameters(voiceId),
@@ -314,6 +335,7 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
         octaves: 1.5,
       });
       metal.frequency.value = tune;
+      keepMetalOscillatorsRunning(metal);
       register(owned, metal);
       metal.connect(inputGain);
       const live = { tune };
@@ -342,6 +364,7 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
         octaves: 2,
       });
       metal.frequency.value = tune;
+      keepMetalOscillatorsRunning(metal);
       const washNoise = new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.002, decay: Math.max(0.3, decay * 1.15), sustain: 0, release: Math.max(0.12, decay * 0.45) } });
       const noiseFilter = new Tone.Filter({ type: 'highpass', frequency: Math.max(2200, brightness * 0.35), Q: 0.8 });
       const noiseGain = new Tone.Gain(wash);
@@ -521,6 +544,7 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const wash = clamp(Number(parameters.wash ?? 0.38), 0.12, 0.75);
       const bow = new Tone.MetalSynth({ envelope: { attack: 0.0007, decay, release: decay * 0.72 }, harmonicity: Number(parameters.harmonicity ?? 2.8), modulationIndex: Number(parameters.modIndex ?? 42), resonance: Number(parameters.brightness ?? 11000), octaves: 1.35 });
       bow.frequency.value = tune;
+      keepMetalOscillatorsRunning(bow);
       const washNoise = new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.001, decay: decay * 0.95, sustain: 0, release: decay * 0.5 } });
       const noiseFilter = new Tone.Filter({ type: 'bandpass', frequency: 7200, Q: 0.38 });
       const noiseGain = new Tone.Gain(wash);
