@@ -861,7 +861,7 @@ function areDrumLanesEqual(left: readonly DrumLane[], right: readonly DrumLane[]
 
   return left.every((leftLane, laneIndex) => {
     const rightLane = right[laneIndex];
-    if (leftLane.voiceId !== rightLane.voiceId) {
+    if (leftLane.voiceId !== rightLane.voiceId || leftLane.xorGroup !== rightLane.xorGroup) {
       return false;
     }
 

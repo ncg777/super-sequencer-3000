@@ -45,9 +45,16 @@ export interface DrumParameterDefinition {
   options?: readonly string[];
 }
 
+/** 0 means no exclusive group; 1-8 choke other members of the same group. */
+export type DrumXorGroupId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+export const DRUM_XOR_GROUP_NONE = 0;
+export const DRUM_XOR_GROUP_MAX = 8;
+
 export interface DrumLane {
   voiceId: DrumVoiceId;
   parameters: DrumParameterBag;
+  xorGroup: DrumXorGroupId;
 }
 
 export interface RhythmHit {
@@ -280,11 +287,47 @@ export function getDrumParameterDefinitions(voiceId: DrumVoiceId): readonly Drum
     .filter((definition): definition is DrumParameterDefinition => definition !== undefined);
 }
 
+export function normalizeDrumXorGroup(value: unknown): DrumXorGroupId {
+  const candidate = typeof value === 'number' && Number.isFinite(value)
+    ? Math.trunc(value)
+    : DRUM_XOR_GROUP_NONE;
+  if (candidate < DRUM_XOR_GROUP_NONE || candidate > DRUM_XOR_GROUP_MAX) {
+    return DRUM_XOR_GROUP_NONE;
+  }
+  return candidate as DrumXorGroupId;
+}
+
+export const DRUM_XOR_GROUP_OPTIONS: readonly { title: string; value: DrumXorGroupId }[] = [
+  { title: '×0', value: 0 },
+  { title: '×1', value: 1 },
+  { title: '×2', value: 2 },
+  { title: '×3', value: 3 },
+  { title: '×4', value: 4 },
+  { title: '×5', value: 5 },
+  { title: '×6', value: 6 },
+  { title: '×7', value: 7 },
+  { title: '×8', value: 8 },
+];
+
 export function createDefaultDrumLane(voiceId: DrumVoiceId): DrumLane {
   return {
     voiceId,
     parameters: getDefaultDrumParameters(voiceId),
+    xorGroup: DRUM_XOR_GROUP_NONE,
   };
+}
+
+export function getDrumXorGroupMembers(
+  lanes: readonly DrumLane[],
+  group: DrumXorGroupId,
+  exceptVoiceId?: DrumVoiceId,
+): DrumVoiceId[] {
+  if (group === DRUM_XOR_GROUP_NONE) {
+    return [];
+  }
+  return lanes
+    .filter((lane) => lane.xorGroup === group && lane.voiceId !== exceptVoiceId)
+    .map((lane) => lane.voiceId);
 }
 
 export function createDefaultRhythmLanes(): DrumLane[] {
@@ -329,7 +372,7 @@ export function normalizeDrumLanes(value: unknown): DrumLane[] {
     if (!rawLane || typeof rawLane !== 'object') {
       continue;
     }
-    const candidate = rawLane as { voiceId?: unknown; parameters?: unknown };
+    const candidate = rawLane as { voiceId?: unknown; parameters?: unknown; xorGroup?: unknown };
     if (!isDrumVoiceId(candidate.voiceId) || usedVoices.has(candidate.voiceId)) {
       continue;
     }
@@ -337,6 +380,7 @@ export function normalizeDrumLanes(value: unknown): DrumLane[] {
     lanes.push({
       voiceId: candidate.voiceId,
       parameters: normalizeDrumParameters(candidate.voiceId, candidate.parameters),
+      xorGroup: normalizeDrumXorGroup(candidate.xorGroup),
     });
   }
 
@@ -347,6 +391,7 @@ export function cloneDrumLanes(lanes: readonly DrumLane[]): DrumLane[] {
   return lanes.map((lane) => ({
     voiceId: lane.voiceId,
     parameters: { ...lane.parameters },
+    xorGroup: normalizeDrumXorGroup(lane.xorGroup),
   }));
 }
 
@@ -381,6 +426,7 @@ export function decodeRhythmMasks(
 
   return masks.map((mask) => {
     const hits: RhythmHit[] = [];
+    const exclusiveWinners = new Map<DrumXorGroupId, number>();
     lanes.forEach((lane, laneIndex) => {
       const value = (mask >> BigInt(laneIndex * bits)) & maxValue;
       if (value === 0n) {
@@ -392,8 +438,18 @@ export function decodeRhythmMasks(
         midi: drumVoiceMidiNote(lane.voiceId),
         velocity: Number(value) / Number(maxValue),
       });
+      const group = normalizeDrumXorGroup(lane.xorGroup);
+      if (group !== DRUM_XOR_GROUP_NONE) {
+        exclusiveWinners.set(group, laneIndex);
+      }
     });
-    return hits;
+    if (exclusiveWinners.size === 0) {
+      return hits;
+    }
+    return hits.filter((hit) => {
+      const group = normalizeDrumXorGroup(lanes[hit.laneIndex]?.xorGroup);
+      return group === DRUM_XOR_GROUP_NONE || exclusiveWinners.get(group) === hit.laneIndex;
+    });
   });
 }
 

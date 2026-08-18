@@ -958,6 +958,19 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     const trackRight = new Float32Array(frameCount);
     const tonewheel = prepareTonewheel(entry.track.tonewheelDrawbars);
     const drumParameters = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.parameters]));
+    const drumXorGroups = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.xorGroup]));
+    const nextGroupHitTimes = new Map<number, number[]>();
+    for (const scheduled of events) {
+      for (const voiceId of scheduled.drumVoiceIds ?? []) {
+        const group = drumXorGroups.get(voiceId) ?? 0;
+        if (group === 0) {
+          continue;
+        }
+        const times = nextGroupHitTimes.get(group) ?? [];
+        times.push(scheduled.time);
+        nextGroupHitTimes.set(group, times);
+      }
+    }
     const drumFilterState = { low: 0, high: 0, band: 0 };
 
     for (const event of events) {
@@ -976,6 +989,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             continue;
           }
 
+          const group = drumXorGroups.get(voiceId) ?? 0;
+          const laterGroupHit = group === 0
+            ? undefined
+            : nextGroupHitTimes.get(group)?.find((time) => time > start + 1e-9);
           renderDrumHitIntoBuffers({
             left: trackLeft,
             right: trackRight,
@@ -985,6 +1002,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             velocity: noteVelocities[noteIndex] ?? event.velocity,
             voiceId,
             parameters,
+            chokeUntil: laterGroupHit === undefined ? undefined : laterGroupHit - start,
             transform: (sample, elapsed) => applySimpleFilter(
               sample * dbToGain(entry.track.gain),
               drumFilterState,

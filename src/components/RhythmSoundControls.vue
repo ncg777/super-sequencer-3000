@@ -40,7 +40,7 @@ function updateParameter(definition: DrumParameterDefinition, value: unknown): v
 
   const nextTrack = clonePresetTrackData(props.track);
   nextTrack.drumLanes = normalizeDrumLanes(props.track.drumLanes.map((entry, laneIndex) => laneIndex === selectedLaneIndex.value
-    ? { voiceId: entry.voiceId, parameters: { ...entry.parameters, [definition.name]: value } }
+    ? { voiceId: entry.voiceId, xorGroup: entry.xorGroup, parameters: { ...entry.parameters, [definition.name]: value } }
     : entry));
   emit('update:track', nextTrack);
 }

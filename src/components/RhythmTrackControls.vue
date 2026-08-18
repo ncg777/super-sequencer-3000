@@ -2,12 +2,16 @@
 import { computed, ref, watch } from 'vue';
 import {
   DRUM_VOICE_OPTIONS,
+  DRUM_XOR_GROUP_OPTIONS,
+  cloneDrumLanes,
   createDefaultDrumLane,
   drumVoiceIcon,
   normalizeDrumLanes,
   normalizeDrumVelocityBits,
+  normalizeDrumXorGroup,
   parseRhythmSequenceInput,
   type DrumVoiceId,
+  type DrumXorGroupId,
 } from '../domain/rhythmTrack';
 import { clonePresetTrackData, type PresetTrackData } from '../presets';
 
@@ -49,10 +53,7 @@ function addLane(): void {
   if (!addVoice.value) {
     return;
   }
-  const nextLanes = props.track.drumLanes.map((lane) => ({
-    voiceId: lane.voiceId,
-    parameters: { ...lane.parameters },
-  }));
+  const nextLanes = cloneDrumLanes(props.track.drumLanes);
   nextLanes.push(createDefaultDrumLane(addVoice.value));
   selectedLaneIndex.value = nextLanes.length - 1;
   updateLanes(nextLanes);
@@ -73,10 +74,7 @@ function moveLane(index: number, direction: -1 | 1): void {
   if (targetIndex < 0 || targetIndex >= props.track.drumLanes.length) {
     return;
   }
-  const nextLanes = props.track.drumLanes.map((lane) => ({
-    voiceId: lane.voiceId,
-    parameters: { ...lane.parameters },
-  }));
+  const nextLanes = cloneDrumLanes(props.track.drumLanes);
   [nextLanes[index], nextLanes[targetIndex]] = [nextLanes[targetIndex], nextLanes[index]];
   selectedLaneIndex.value = targetIndex;
   updateLanes(nextLanes);
@@ -86,6 +84,18 @@ function updateVelocityBits(value: number | null): void {
   const nextTrack = clonePresetTrackData(props.track);
   nextTrack.drumVelocityBits = normalizeDrumVelocityBits(value);
   emitTrack(nextTrack);
+}
+
+function updateLaneXorGroup(index: number, value: DrumXorGroupId | null): void {
+  const nextLanes = cloneDrumLanes(props.track.drumLanes);
+  if (!nextLanes[index]) {
+    return;
+  }
+  nextLanes[index] = {
+    ...nextLanes[index],
+    xorGroup: normalizeDrumXorGroup(value),
+  };
+  updateLanes(nextLanes);
 }
 
 </script>
@@ -166,6 +176,20 @@ function updateVelocityBits(value: number | null): void {
         <v-icon size="18" class="lane-icon">{{ drumVoiceIcon(lane.voiceId) }}</v-icon>
         <span class="lane-name">{{ DRUM_VOICE_OPTIONS.find((option) => option.value === lane.voiceId)?.title }}</span>
         <span class="lane-midi">GM {{ DRUM_VOICE_OPTIONS.find((option) => option.value === lane.voiceId)?.midi }}</span>
+        <v-select
+          :model-value="lane.xorGroup"
+          :items="DRUM_XOR_GROUP_OPTIONS"
+          item-title="title"
+          item-value="value"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="lane-xor-select"
+          title="XOR exclusion group"
+          menu-icon=""
+          @click.stop
+          @update:model-value="(value) => updateLaneXorGroup(laneIndex, value)"
+        />
         <v-btn icon size="x-small" variant="text" title="Move lane up" :disabled="laneIndex === 0" @click.stop="moveLane(laneIndex, -1)">
           <v-icon size="16">mdi-arrow-up-circle-outline</v-icon>
         </v-btn>
@@ -226,7 +250,7 @@ function updateVelocityBits(value: number | null): void {
 
 .lane-row {
   display: grid;
-  grid-template-columns: 24px 20px minmax(0, 1fr) auto repeat(3, 28px);
+  grid-template-columns: 24px 20px minmax(0, 1fr) auto 52px repeat(3, 28px);
   align-items: center;
   gap: 5px;
   min-height: 34px;
@@ -255,6 +279,34 @@ function updateVelocityBits(value: number | null): void {
   font-weight: 700;
 }
 
+.lane-xor-select {
+  min-width: 0;
+  width: 52px;
+}
+
+.lane-xor-select :deep(.v-input__control),
+.lane-xor-select :deep(.v-field) {
+  min-width: 0;
+  padding-inline: 4px;
+}
+
+.lane-xor-select :deep(.v-field__append-inner) {
+  display: none;
+}
+
+.lane-xor-select :deep(.v-field__input) {
+  min-height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-inline: 4px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.lane-xor-select :deep(.v-select__selection-text) {
+  overflow: visible;
+}
+
 @media (max-width: 680px) {
   .lane-toolbar {
     flex-wrap: wrap;
@@ -266,7 +318,7 @@ function updateVelocityBits(value: number | null): void {
   }
 
   .lane-row {
-    grid-template-columns: 22px 20px minmax(0, 1fr) auto 28px 28px 28px;
+    grid-template-columns: 22px 20px minmax(0, 1fr) auto 52px 28px 28px 28px;
   }
 }
 </style>

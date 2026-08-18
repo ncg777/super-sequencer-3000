@@ -15,6 +15,7 @@ export interface DrumInstrument {
   voice3?: any;
   live?: Record<string, number>;
   trigger(time: number, velocity: number, duration?: number): void;
+  choke(time: number): void;
   update?(parameters: DrumParameterBag): boolean;
   dispose(): void;
 }
@@ -128,8 +129,26 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     }
   };
 
-  const finish = (instrument: Omit<DrumInstrument, 'dispose'>): DrumInstrument => ({
+  const finish = (instrument: Omit<DrumInstrument, 'dispose' | 'choke'>): DrumInstrument => ({
     ...instrument,
+    choke(time) {
+      try {
+        const gain = (postVca as any).gain;
+        const current = typeof gain?.value === 'number' ? gain.value : 1;
+        gain.cancelScheduledValues?.(time);
+        gain.setValueAtTime?.(current, time);
+        gain.linearRampToValueAtTime?.(0, time + 0.008);
+      } catch {
+        // Ignore scheduling failures during context shutdown.
+      }
+      for (const voice of [instrument.voice, instrument.voice2, instrument.voice3]) {
+        try {
+          voice?.triggerRelease?.(time);
+        } catch {
+          // A source may already be released or disposed.
+        }
+      }
+    },
     dispose() {
       for (const node of [...owned].reverse()) {
         safeDispose(node);

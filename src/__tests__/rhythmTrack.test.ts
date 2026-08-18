@@ -9,8 +9,10 @@ import {
   getDrumParameterDefinitions,
   createDefaultDrumLane,
   decodeRhythmSequence,
+  getDrumXorGroupMembers,
   normalizeDrumLanes,
   normalizeDrumVelocityBits,
+  normalizeDrumXorGroup,
   parseRhythmSequenceInput,
 } from '../domain/rhythmTrack.js';
 
@@ -90,4 +92,39 @@ test('clamps velocity bit counts to the supported Beatbox range', () => {
   assert.equal(normalizeDrumVelocityBits(4.9), 4);
   assert.equal(normalizeDrumVelocityBits(99), 7);
   assert.equal(normalizeDrumVelocityBits('4'), 1);
+});
+
+test('defaults new lanes to no XOR group and normalizes invalid groups to none', () => {
+  assert.equal(createDefaultDrumLane('hat').xorGroup, 0);
+  assert.equal(normalizeDrumXorGroup(undefined), 0);
+  assert.equal(normalizeDrumXorGroup(3), 3);
+  assert.equal(normalizeDrumXorGroup(9), 0);
+  assert.equal(normalizeDrumXorGroup(-1), 0);
+  assert.equal(normalizeDrumXorGroup('2'), 0);
+
+  const lanes = normalizeDrumLanes([
+    { voiceId: 'hat', xorGroup: 1 },
+    { voiceId: 'hatOpen', xorGroup: 99 },
+  ]);
+  assert.equal(lanes[0].xorGroup, 1);
+  assert.equal(lanes[1].xorGroup, 0);
+  assert.deepEqual(getDrumXorGroupMembers(lanes, 1), ['hat']);
+});
+
+test('keeps ungrouped same-step hits polyphonic', () => {
+  const lanes = [createDefaultDrumLane('hat'), createDefaultDrumLane('hatOpen')];
+  const steps = decodeRhythmMasks([3n], lanes, 1);
+
+  assert.deepEqual(steps[0].map((hit) => hit.voiceId), ['hat', 'hatOpen']);
+});
+
+test('keeps only the highest grouped lane when two XOR members fire on the same step', () => {
+  const hat = createDefaultDrumLane('hat');
+  const hatOpen = createDefaultDrumLane('hatOpen');
+  hat.xorGroup = 1;
+  hatOpen.xorGroup = 1;
+  const steps = decodeRhythmMasks([3n], [hat, hatOpen], 1);
+
+  assert.deepEqual(steps[0].map((hit) => hit.voiceId), ['hatOpen']);
+  assert.equal(steps[0][0].laneIndex, 1);
 });

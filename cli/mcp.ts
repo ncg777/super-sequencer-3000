@@ -140,6 +140,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                       type: 'object',
                       properties: {
                         voiceId: { type: 'string', description: 'GM voice ID, for example kick, snare, hat, or crash.' },
+                        xorGroup: { type: 'number', description: 'Exclusive XOR group 1-8. 0 or omitted means no group; only one member of a group can sound at once.' },
                         parameters: { type: 'object', additionalProperties: true },
                       },
                     },

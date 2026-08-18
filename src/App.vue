@@ -319,6 +319,7 @@ import {
 } from './presets';
 import {
   decodeRhythmSequence,
+  getDrumXorGroupMembers,
   type DrumVoiceId,
   type RhythmHit,
 } from './domain/rhythmTrack';
@@ -1009,7 +1010,25 @@ export default defineComponent({
         || previous.timeWarpNoteLengths !== next.timeWarpNoteLengths
         || previous.trackKind !== next.trackKind
         || previous.drumVelocityBits !== next.drumVelocityBits
-        || previous.drumLanes.map((lane) => lane.voiceId).join(',') !== next.drumLanes.map((lane) => lane.voiceId).join(',');
+        || previous.drumLanes.map((lane) => `${lane.voiceId}:${lane.xorGroup}`).join(',')
+          !== next.drumLanes.map((lane) => `${lane.voiceId}:${lane.xorGroup}`).join(',');
+    },
+    chokeDrumXorGroup(
+      track: PresetTrackData,
+      chain: TrackAudioChain,
+      voiceId: DrumVoiceId | undefined,
+      time: number,
+    ) {
+      if (!voiceId) {
+        return;
+      }
+      const lane = track.drumLanes.find((entry) => entry.voiceId === voiceId);
+      if (!lane || lane.xorGroup === 0) {
+        return;
+      }
+      for (const otherVoiceId of getDrumXorGroupMembers(track.drumLanes, lane.xorGroup, voiceId)) {
+        chain.drumInstruments[otherVoiceId]?.choke(time);
+      }
     },
     dbToWetMix(db: number): number {
       return this.clampNormalRange(this.dbToGain(db));
@@ -1161,6 +1180,7 @@ export default defineComponent({
               for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
                 const voiceId = event.drumVoiceIds?.[noteIndex];
                 const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
+                this.chokeDrumXorGroup(entry.track, chain, voiceId, event.time);
                 instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
               }
             } else {
@@ -2250,6 +2270,7 @@ export default defineComponent({
           for (let index = 0; index < arr.length; index += 1) {
             const voiceId = drumVoiceIds?.[index];
             const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
+            this.chokeDrumXorGroup(track, chain, voiceId, when);
             instrument?.trigger(when, noteVelocities[index] ?? vel, noteDuration);
           }
         } else {

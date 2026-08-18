@@ -168,17 +168,26 @@ export function renderDrumHitIntoBuffers(options: {
   velocity: number;
   voiceId: DrumVoiceId;
   parameters: DrumParameterBag;
+  /** Seconds after the hit start when another exclusive-group member cuts this tail off. */
+  chokeUntil?: number;
   transform?: (sample: number, elapsed: number) => number;
 }): void {
-  const { left, right, startFrame, sampleRate, duration, velocity, voiceId, parameters, transform } = options;
+  const { left, right, startFrame, sampleRate, duration, velocity, voiceId, parameters, chokeUntil, transform } = options;
   const tailSeconds = getDrumVoiceTailSeconds(voiceId, parameters, duration);
-  const endFrame = Math.min(left.length, startFrame + Math.ceil(tailSeconds * sampleRate));
+  const fadeSeconds = 0.008;
+  const audibleSeconds = chokeUntil === undefined
+    ? tailSeconds
+    : Math.min(tailSeconds, Math.max(0, chokeUntil) + fadeSeconds);
+  const endFrame = Math.min(left.length, startFrame + Math.ceil(audibleSeconds * sampleRate));
   const panGain = Math.SQRT1_2;
 
   for (let frame = Math.max(0, startFrame); frame < endFrame; frame += 1) {
     const elapsed = (frame - startFrame) / sampleRate;
     const rawSample = sampleDrumVoice(voiceId, parameters, elapsed, velocity, frame, sampleRate);
-    const sample = transform ? transform(rawSample, elapsed) : rawSample;
+    let sample = transform ? transform(rawSample, elapsed) : rawSample;
+    if (chokeUntil !== undefined && elapsed >= chokeUntil) {
+      sample *= clamp(1 - ((elapsed - chokeUntil) / fadeSeconds), 0, 1);
+    }
     left[frame] += sample * panGain;
     right[frame] += sample * panGain;
   }
