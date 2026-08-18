@@ -122,6 +122,7 @@ const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
 const TONEWHEEL_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
+const WAV_EXPORT_SAMPLE_RATE = 48000;
 
 function normalizeTimeWarpCurve(value: string | undefined): string {
   return value && TIME_WARP_CURVE_VALUES.has(value) ? value : DEFAULT_TIME_WARP_CURVE;
@@ -781,12 +782,13 @@ function applyReverbSend(left: Float32Array, right: Float32Array, sendLeft: Floa
 function encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
   const numChannels = channels.length;
   const frameCount = channels[0]?.length ?? 0;
-  const bitDepth = 16;
+  const bitDepth = 24;
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
   const dataLength = frameCount * blockAlign;
   const buffer = new ArrayBuffer(44 + dataLength);
   const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
 
   let offset = 0;
   const writeString = (value: string) => {
@@ -822,9 +824,11 @@ function encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Ui
   for (let i = 0; i < frameCount; i += 1) {
     for (let channel = 0; channel < numChannels; channel += 1) {
       const sample = clamp(channels[channel][i], -1, 1);
-      const intSample = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
-      view.setInt16(offset, intSample, true);
-      offset += 2;
+      const intSample = sample < 0 ? Math.round(sample * 0x800000) : Math.round(sample * 0x7FFFFF);
+      bytes[offset] = intSample & 0xff;
+      bytes[offset + 1] = (intSample >>> 8) & 0xff;
+      bytes[offset + 2] = (intSample >>> 16) & 0xff;
+      offset += 3;
     }
   }
 
@@ -884,10 +888,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const prepared = await prepareRenderData(options);
   const hasNotes = prepared.tracks.some((entry) => entry.actualNotes.some((notes) => notes.length > 0));
   if (!hasNotes) {
-    return encodeWavFromChannels([new Float32Array(1), new Float32Array(1)], 44100);
+    return encodeWavFromChannels([new Float32Array(1), new Float32Array(1)], WAV_EXPORT_SAMPLE_RATE);
   }
 
-  const sampleRate = 44100;
+  const sampleRate = WAV_EXPORT_SAMPLE_RATE;
   const totalDuration = getLoopDurationSecondsFromTrackLengths(prepared);
   const renderDuration = totalDuration + getRenderTrailSeconds(prepared);
 

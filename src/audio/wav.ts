@@ -1,25 +1,30 @@
-const isLittleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+function nextXorshift32(state: number): number {
+  state ^= state << 13;
+  state ^= state >>> 17;
+  state ^= state << 5;
+  return state >>> 0;
+}
 
 export interface EncodeWavOptions {  /**
    * Invoked with a 0..1 ratio while the PCM data is being interleaved.
    */
   onProgress?: (ratio: number) => void;
   /**
-   * Applies TPDF dither at 1 LSB before 16-bit quantization. Enabled by default;
+    * Applies TPDF dither at 1 LSB before 24-bit quantization. Enabled by default;
    * dithering decorrelates quantization error from the signal, trading a tiny
    * noise floor increase for the removal of harmonic distortion at low levels.
    */
   dither?: boolean;
 }
 
-export function encodeWavFromChannels(
+export async function encodeWavFromChannels(
   channels: Float32Array[],
   sampleRate: number,
   options: EncodeWavOptions = {},
-): Uint8Array {
+): Promise<Uint8Array> {
   const numChannels = channels.length;
   const frameCount = channels[0]?.length ?? 0;
-  const bitDepth = 16;
+  const bitDepth = 24;
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
   const dataLength = frameCount * blockAlign;
@@ -58,33 +63,41 @@ export function encodeWavFromChannels(
   view.setUint32(offset, dataLength, true);
   offset += 4;
 
-  // Interleave straight into an Int16Array view over the data chunk. This avoids
-  // the per-sample DataView call overhead of the previous implementation, which
-  // dominated export time for long mixes.
-  const samples = new Int16Array(wavBuffer, offset, frameCount * numChannels);
-  const reportEvery = Math.max(1, Math.floor(frameCount / 20));
+  // WAV PCM has no Int24Array, so pack each signed sample into three little-endian bytes.
+  const chunkSize = 65536;
   const dither = options.dither !== false;
-  // One LSB of 16-bit audio. TPDF dither is the difference of two independent
+  // One LSB of 24-bit audio. TPDF dither is the difference of two independent
   // uniform random values in [0, 1 LSB), giving triangular noise of ±1 LSB.
-  const lsb = 1 / 0x8000;
+  const lsb = 1 / 0x800000;
+  let ditherStateA = 0x9e3779b9;
+  let ditherStateB = 0x243f6a88;
   let writeIndex = 0;
 
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    for (let channel = 0; channel < numChannels; channel += 1) {
-      const raw = channels[channel][frame];
-      const dithered = dither ? raw + (Math.random() - Math.random()) * lsb : raw;
-      const sample = dithered > 1 ? 1 : dithered < -1 ? -1 : dithered;
-      const intSample = Math.round(sample < 0 ? sample * 0x8000 : sample * 0x7fff);
-      if (isLittleEndian) {
-        samples[writeIndex] = intSample;
-      } else {
-        view.setInt16(offset + writeIndex * 2, intSample, true);
+  for (let chunkStart = 0; chunkStart < frameCount; chunkStart += chunkSize) {
+    const chunkEnd = Math.min(frameCount, chunkStart + chunkSize);
+    for (let frame = chunkStart; frame < chunkEnd; frame += 1) {
+      for (let channel = 0; channel < numChannels; channel += 1) {
+        const raw = channels[channel][frame];
+        if (dither) {
+          ditherStateA = nextXorshift32(ditherStateA);
+          ditherStateB = nextXorshift32(ditherStateB);
+        }
+        const dithered = dither
+          ? raw + ((ditherStateA - ditherStateB) / 0x100000000) * lsb
+          : raw;
+        const sample = dithered > 1 ? 1 : dithered < -1 ? -1 : dithered;
+        const intSample = Math.round(sample < 0 ? sample * 0x800000 : sample * 0x7fffff);
+        const sampleOffset = offset + writeIndex * bytesPerSample;
+        bytes[sampleOffset] = intSample & 0xff;
+        bytes[sampleOffset + 1] = (intSample >>> 8) & 0xff;
+        bytes[sampleOffset + 2] = (intSample >>> 16) & 0xff;
+        writeIndex += 1;
       }
-      writeIndex += 1;
     }
 
-    if (options.onProgress && frame % reportEvery === 0) {
-      options.onProgress(frame / frameCount);
+    options.onProgress?.(chunkEnd / frameCount);
+    if (chunkEnd < frameCount) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }
 

@@ -357,6 +357,7 @@ const ENVELOPE_SMOOTHING_SECONDS = 0.005;
 const CHOIR_FORMANT_FILTER_COUNT = 5;
 /** Upper bound for the flanger delay line; the sweep never exceeds twice the 20 ms maximum base delay. */
 const FLANGER_MAX_DELAY_SECONDS = 0.05;
+const WAV_EXPORT_SAMPLE_RATE = 48000;
 /** Deterministic S&H seed for the filter-cutoff LFO (sampled per note start). */
 const FILTER_LFO_STATE = createSkewLfoState();
 
@@ -1014,10 +1015,17 @@ export default defineComponent({
     trackOfflineRenderProgress(
       offlineContext: Tone.OfflineContext,
       renderDuration: number,
-      onProgress: (ratio: number) => void,
+      onProgress: (ratio: number) => void | Promise<void>,
     ) {
-      const rawContext = offlineContext.rawContext as unknown as OfflineAudioContext;
-      if (typeof rawContext?.suspend !== 'function' || typeof rawContext?.resume !== 'function') {
+      const contextProxy = offlineContext.rawContext as unknown as {
+        suspend?: (when: number) => Promise<void>;
+        resume?: () => Promise<void>;
+        _nativeOfflineAudioContext?: OfflineAudioContext;
+      };
+      const rawContext = contextProxy._nativeOfflineAudioContext ?? contextProxy;
+      const suspend = rawContext.suspend;
+      const resume = rawContext.resume;
+      if (typeof suspend !== 'function' || typeof resume !== 'function') {
         return;
       }
 
@@ -1035,9 +1043,12 @@ export default defineComponent({
         }
 
         const ratio = step / steps;
-        rawContext.suspend(quantumIndex * quantum).then(() => {
+        suspend.call(rawContext, quantumIndex * quantum).then(async () => {
           onProgress(ratio);
-          return rawContext.resume();
+          await this.$nextTick();
+          await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          return resume.call(rawContext);
         }).catch(() => {
           // Ignore checkpoints the browser refuses to schedule.
         });
@@ -1110,7 +1121,7 @@ export default defineComponent({
         offlineTransport.start(0);
         this.reverbChain = liveReverbChain;
         this.trackSynths = liveTrackSynths;
-      }, renderDuration, 2, 44100);
+      }, renderDuration, 2, WAV_EXPORT_SAMPLE_RATE);
 
       this.setWavExportProgress(ENCODE_PROGRESS_START, 'Encoding WAV...');
       await this.$nextTick();
