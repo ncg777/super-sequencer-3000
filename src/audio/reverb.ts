@@ -6,6 +6,8 @@ export interface ReverbAudioChain {
   highCut: Tone.Filter;
   convolver: Tone.Convolver;
   impulseKey: string;
+  /** Whether the convolver tail is currently plugged into the destination. */
+  outputConnected: boolean;
 }
 
 export interface ReverbSettings {
@@ -82,7 +84,26 @@ export function createReverbAudioChain(settings: ReverbSettings): ReverbAudioCha
     highCut,
     convolver,
     impulseKey: getImpulseKey(settings),
+    outputConnected: true,
   };
+}
+
+/**
+ * Convolution reverb costs the same CPU whether or not anything is being sent into it,
+ * so the tail is unplugged from the destination while the reverb bus is switched off.
+ */
+export function setReverbOutputEnabled(chain: ReverbAudioChain, enabled: boolean) {
+  if (chain.outputConnected === enabled) {
+    return;
+  }
+
+  if (enabled) {
+    chain.convolver.toDestination();
+  } else {
+    // Only the destination edge is severed; the convolver keeps any other wiring intact.
+    chain.convolver.disconnect(chain.convolver.context.destination);
+  }
+  chain.outputConnected = enabled;
 }
 
 export function updateReverbAudioChain(chain: ReverbAudioChain, settings: ReverbSettings) {
