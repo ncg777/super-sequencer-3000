@@ -100,7 +100,8 @@ export function setReverbOutputEnabled(chain: ReverbAudioChain, enabled: boolean
   if (enabled) {
     chain.convolver.toDestination();
   } else {
-    chain.convolver.disconnect();
+    // Only the destination edge is severed; the convolver keeps any other wiring intact.
+    chain.convolver.disconnect(chain.convolver.context.destination);
   }
   chain.outputConnected = enabled;
 }
