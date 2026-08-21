@@ -115,7 +115,7 @@
           ref="presetManager"
           :initial-library="initialPresetLibrary"
           :initial-dirty="isDirty"
-          :draft-data="getDraftData()"
+          :draft-data="draftData"
           :apply-draft-data="applyDraftData"
           :confirm-discard-changes="confirmDiscardChanges"
           :ask-for-confirmation="askForConfirmation"
@@ -277,6 +277,7 @@ import {
   createReverbAudioChain,
   disposeReverbAudioChain,
   updateReverbAudioChain,
+  setReverbOutputEnabled,
   type ReverbAudioChain,
 } from './audio/reverb';
 import { encodeWavFromChannels } from './audio/wav';
@@ -289,6 +290,7 @@ import {
 } from './audio/lfo';
 import { getChoirFormantBandGainLinear } from './audio/choir';
 import { PitchEnvelopeSynth } from './audio/pitchEnvelopeSynth';
+import { retainVoicePool } from './audio/voicePool';
 import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
 import {
   quantizeNormalizedTime,
@@ -319,7 +321,7 @@ import {
 } from './presets';
 import {
   decodeRhythmSequence,
-  getDrumXorGroupMembers,
+  buildDrumChokeMap,
   type DrumVoiceId,
   type RhythmHit,
 } from './domain/rhythmTrack';
@@ -333,26 +335,36 @@ interface ChoirFormantPath {
   gain: Tone.Gain;
 }
 
+interface ChoirFormantBank {
+  input: Tone.Gain;
+  output: Tone.Gain;
+  formants: ChoirFormantPath[];
+}
+
+/**
+ * Per-track audio graph. Everything that is not always in the signal path is created
+ * lazily the first time the track needs it, so a plain track (and every rhythm track)
+ * only pays for the handful of nodes it actually uses instead of allocating the full
+ * effect rack up front.
+ */
 interface TrackAudioChain {
-  synth: Tone.PolySynth<PitchEnvelopeSynth>;
-  synthGain: Tone.Gain;
-  noiseSynth: Tone.NoiseSynth;
-  filter: Tone.Filter;
-  choirInput: Tone.Gain;
-  choirFormants: ChoirFormantPath[];
-  choirOutput: Tone.Gain;
+  synth: Tone.PolySynth<PitchEnvelopeSynth> | null;
+  synthGain: Tone.Gain | null;
+  noiseSynth: Tone.NoiseSynth | null;
+  filter: Tone.Filter | null;
+  choir: ChoirFormantBank | null;
   sourceBus: Tone.Gain;
   limiterGain: Tone.Gain;
   limiter: Tone.WaveShaper;
-  tremolo: Tone.Tremolo;
-  vibrato: Tone.Vibrato;
-  chorus: Tone.Chorus;
-  flanger: Tone.FeedbackDelay;
-  flangerLfo: Tone.LFO;
-  phaser: Phaser;
+  tremolo: Tone.Tremolo | null;
+  vibrato: Tone.Vibrato | null;
+  chorus: Tone.Chorus | null;
+  flanger: Tone.FeedbackDelay | null;
+  flangerLfo: Tone.LFO | null;
+  phaser: Phaser | null;
   phaserStages: number;
   phaserCenterFrequency: number;
-  echo: Tone.FeedbackDelay | Tone.PingPongDelay;
+  echo: Tone.FeedbackDelay | Tone.PingPongDelay | null;
   echoPingPong: boolean;
   maxDelay: number;
   dryGain: Tone.Gain;
@@ -362,8 +374,16 @@ interface TrackAudioChain {
   drumInstruments: Record<string, DrumInstrument>;
   drumSignature: string;
   drumParameterSignature: string;
+  drumChokeMap: Map<DrumVoiceId, DrumVoiceId[]>;
   drumRebuildTimer: number | null;
   routingSignature: string;
+  voiceSignature: string;
+}
+
+/** Scheduling data resolved once per loop rebuild and reused by every event callback. */
+interface TrackLoopRuntime {
+  trackId: string;
+  fallbackTrack: PresetTrackData;
 }
 
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
@@ -373,6 +393,10 @@ const FLANGER_MAX_DELAY_SECONDS = 0.05;
 const WAV_EXPORT_SAMPLE_RATE = 48000;
 /** Deterministic S&H seed for the filter-cutoff LFO (sampled per note start). */
 const FILTER_LFO_STATE = createSkewLfoState();
+
+/** Reusable tonewheel spectra, keyed by waveform and drawbar registration. */
+const tonewheelPartialCache = new Map<string, number[]>();
+const TONEWHEEL_PARTIAL_CACHE_LIMIT = 64;
 
 interface FormantBand {
   frequency: number;
@@ -466,9 +490,9 @@ export default defineComponent({
       playbackErrorMessage: '',
       showPlaybackError: false,
       audioContextResumeHandler: null as (() => void) | null,
-      trackLoops: {} as Record<string, Tone.Part<TrackScheduledEvent>>,
+      trackLoops: markRaw({}) as Record<string, Tone.Part<TrackScheduledEvent>>,
       showHelp: false,
-      trackSynths: {} as Record<string, TrackAudioChain>,
+      trackSynths: markRaw({}) as Record<string, TrackAudioChain>,
       reverbChain: null as ReverbAudioChain | null,
       useMidiOutput: false,
       midiDevices: [] as string[],
@@ -476,7 +500,6 @@ export default defineComponent({
       midiAccess: null as MIDIAccess | null,
       midiOutput: null as MIDIOutput | null,
       appVersion: appVersion,
-      activeNotes: [] as number[],
       initialPresetLibrary: initialState.presetLibrary as PresetLibrary,
       isDirty: initialState.isDirty,
       showConfirmDialog: false,
@@ -565,8 +588,34 @@ export default defineComponent({
         };
       });
     },
+    /**
+     * Deep-clones + normalizes the whole preset, so it is cached instead of being
+     * rebuilt on every render of the template that passes it to the preset manager.
+     */
+    draftData(): PresetData {
+      return this.getDraftData();
+    },
     activationMasks(): bigint[] {
       return parseBitmaskSequenceInput(this.bitmaskSequenceInput).masks;
+    },
+    /** Scheduled parts resolve their live track per event; a map keeps that O(1). */
+    trackById(): Map<string, PresetTrackData> {
+      return new Map(this.tracks.map((track) => [track.id, track]));
+    },
+    /**
+     * Solo/mute resolution is consulted for every scheduled event, so it is resolved
+     * once per mix-state change instead of rescanning every track per note.
+     */
+    audibleTrackIds(): Set<string> {
+      const anySoloed = this.tracks.some((track) => this.trackMixStates[track.id]?.soloed);
+      const audible = new Set<string>();
+      for (const track of this.tracks) {
+        const state = this.trackMixStates[track.id];
+        if (!state?.muted && (!anySoloed || state?.soloed)) {
+          audible.add(track.id);
+        }
+      }
+      return audible;
     },
     loopDurationSeconds(): number {
       return this.getLoopDurationSecondsFromTrackLengths();
@@ -736,8 +785,7 @@ export default defineComponent({
       return this.getTrackMixState(trackId).soloed;
     },
     isTrackAudible(trackId: string): boolean {
-      const state = this.getTrackMixState(trackId);
-      return !state.muted && (!this.tracks.some((track) => this.isTrackSoloed(track.id)) || state.soloed);
+      return this.audibleTrackIds.has(trackId);
     },
     applyTrackMixState(track: PresetTrackData, chain: TrackAudioChain) {
       chain.mixGain.gain.value = this.isTrackAudible(track.id) ? 1 : 0;
@@ -1014,7 +1062,6 @@ export default defineComponent({
           !== next.drumLanes.map((lane) => `${lane.voiceId}:${lane.xorGroup}`).join(',');
     },
     chokeDrumXorGroup(
-      track: PresetTrackData,
       chain: TrackAudioChain,
       voiceId: DrumVoiceId | undefined,
       time: number,
@@ -1022,11 +1069,11 @@ export default defineComponent({
       if (!voiceId) {
         return;
       }
-      const lane = track.drumLanes.find((entry) => entry.voiceId === voiceId);
-      if (!lane || lane.xorGroup === 0) {
+      const members = chain.drumChokeMap.get(voiceId);
+      if (!members) {
         return;
       }
-      for (const otherVoiceId of getDrumXorGroupMembers(track.drumLanes, lane.xorGroup, voiceId)) {
+      for (const otherVoiceId of members) {
         chain.drumInstruments[otherVoiceId]?.choke(time);
       }
     },
@@ -1144,7 +1191,7 @@ export default defineComponent({
         });
 
         this.reverbChain = null;
-        this.trackSynths = {};
+        this.trackSynths = markRaw({});
         this.getOrCreateReverbChain();
 
         const offlineTransport = Tone.getTransport();
@@ -1174,13 +1221,13 @@ export default defineComponent({
           this.updateTrackChainSettings(entry.track, chain);
 
           for (const event of events) {
-            this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain.filter);
+            this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain);
             if (entry.track.trackKind === 'rhythmic') {
               const noteVelocities = event.noteVelocities ?? event.notes.map(() => event.velocity);
               for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
                 const voiceId = event.drumVoiceIds?.[noteIndex];
                 const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
-                this.chokeDrumXorGroup(entry.track, chain, voiceId, event.time);
+                this.chokeDrumXorGroup(chain, voiceId, event.time);
                 instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
               }
             } else {
@@ -1381,83 +1428,40 @@ export default defineComponent({
       const maxDelay = options.maxDelay ?? 1;
       const phaserStages = options.phaserStages ?? DEFAULT_PRESET_TRACK_DATA.phaserStages;
       const phaserCenterFrequency = options.phaserCenterFrequency ?? this.midiToFrequency(DEFAULT_PRESET_TRACK_DATA.phaserCenter);
-      const synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
-      const synthGain = markRaw(new Tone.Gain(1));
-      const noiseSynth = markRaw(new Tone.NoiseSynth({
-        noise: { type: 'pink' },
-        envelope: {
-          attack: ENVELOPE_SMOOTHING_SECONDS,
-          decay: ENVELOPE_SMOOTHING_SECONDS,
-          sustain: 1,
-          release: ENVELOPE_SMOOTHING_SECONDS,
-        },
-      }));
-      const filter = markRaw(new Tone.Filter());
-      const choirInput = markRaw(new Tone.Gain(1));
-      const choirOutput = markRaw(new Tone.Gain(1));
-      const choirFormants = Array.from({ length: CHOIR_FORMANT_FILTER_COUNT }, () => {
-        const formantFilter = markRaw(new Tone.Filter({
-          type: 'bandpass',
-          frequency: 1000,
-          Q: 8,
-          rolloff: -12,
-        }));
-        const formantGain = markRaw(new Tone.Gain(0));
-        choirInput.connect(formantFilter);
-        formantFilter.connect(formantGain);
-        formantGain.connect(choirOutput);
-        return { filter: formantFilter, gain: formantGain } satisfies ChoirFormantPath;
-      });
       const sourceBus = markRaw(new Tone.Gain(1));
       const limiterGain = markRaw(new Tone.Gain(1));
       const limiter = markRaw(new Tone.WaveShaper((value) => Math.tanh(value)));
-      const vibrato = markRaw(new Tone.Vibrato());
-      const tremolo = markRaw(new Tone.Tremolo());
-      const chorus = markRaw(new Tone.Chorus());
-      const flanger = markRaw(new Tone.FeedbackDelay({
-        maxDelay: FLANGER_MAX_DELAY_SECONDS,
-        delayTime: DEFAULT_PRESET_TRACK_DATA.flangerDelay / 1000,
-        feedback: 0,
-      }));
-      const flangerLfo = markRaw(new Tone.LFO());
-      const phaser = markRaw(new Phaser({ stages: phaserStages, centerFrequency: phaserCenterFrequency }));
-      const echo = markRaw(echoPingPong ? new Tone.PingPongDelay({ maxDelay }) : new Tone.FeedbackDelay({ maxDelay }));
       const outputGain = markRaw(new Tone.Gain(1));
       const mixGain = markRaw(new Tone.Gain(1));
       const dryGain = markRaw(new Tone.Gain(1).toDestination());
       const reverbSend = markRaw(new Tone.Gain(0));
 
-      tremolo.start();
-      chorus.start();
-      // The LFO drives the delay line directly, so its output range is the absolute sweep in seconds.
-      flangerLfo.connect(flanger.delayTime);
-      flangerLfo.start();
-      sourceBus.chain(limiterGain, limiter, outputGain, vibrato, tremolo, chorus, flanger, phaser, echo, filter);
-      filter.connect(mixGain);
+      // Only the always-on backbone is wired here; sources and effects join the chain
+      // when routeTrackAudioChain runs for the track's current settings.
       mixGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
       mixGain.connect(reverbSend);
 
-      return {
-        synth,
-        synthGain,
-        noiseSynth,
-        filter,
-        choirInput,
-        choirFormants,
-        choirOutput,
+      // markRaw keeps Vue from deep-proxying the chain: the scheduler touches it on every
+      // note, and standardized-audio-context also rejects proxied nodes on connect().
+      return markRaw({
+        synth: null,
+        synthGain: null,
+        noiseSynth: null,
+        filter: null,
+        choir: null,
         sourceBus,
         limiterGain,
         limiter,
-        tremolo,
-        vibrato,
-        chorus,
-        flanger,
-        flangerLfo,
-        phaser,
+        tremolo: null,
+        vibrato: null,
+        chorus: null,
+        flanger: null,
+        flangerLfo: null,
+        phaser: null,
         phaserStages,
         phaserCenterFrequency,
-        echo,
+        echo: null,
         echoPingPong,
         maxDelay,
         dryGain,
@@ -1467,10 +1471,127 @@ export default defineComponent({
         drumInstruments: {},
         drumSignature: '',
         drumParameterSignature: '',
+        drumChokeMap: new Map<DrumVoiceId, DrumVoiceId[]>(),
         drumRebuildTimer: null,
         routingSignature: '',
-      };
+        voiceSignature: '',
+      });
     },
+    ensureTrackSynth(chain: TrackAudioChain): Tone.PolySynth<PitchEnvelopeSynth> {
+      if (!chain.synth) {
+        const synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
+        // Reuse voices instead of letting Tone dispose and rebuild them every second.
+        retainVoicePool(synth as unknown as Tone.PolySynth);
+        chain.synth = synth;
+        chain.synthGain = markRaw(new Tone.Gain(1));
+        chain.routingSignature = '';
+      }
+      return chain.synth;
+    },
+    ensureTrackNoiseSynth(chain: TrackAudioChain): Tone.NoiseSynth {
+      if (!chain.noiseSynth) {
+        chain.noiseSynth = markRaw(new Tone.NoiseSynth({
+          noise: { type: 'pink' },
+          envelope: {
+            attack: ENVELOPE_SMOOTHING_SECONDS,
+            decay: ENVELOPE_SMOOTHING_SECONDS,
+            sustain: 1,
+            release: ENVELOPE_SMOOTHING_SECONDS,
+          },
+        }));
+        chain.routingSignature = '';
+      }
+      return chain.noiseSynth;
+    },
+    ensureTrackFilter(chain: TrackAudioChain): Tone.Filter {
+      if (!chain.filter) {
+        chain.filter = markRaw(new Tone.Filter());
+        chain.routingSignature = '';
+      }
+      return chain.filter;
+    },
+    ensureTrackChoirBank(chain: TrackAudioChain): ChoirFormantBank {
+      if (!chain.choir) {
+        const input = markRaw(new Tone.Gain(1));
+        const output = markRaw(new Tone.Gain(1));
+        const formants = Array.from({ length: CHOIR_FORMANT_FILTER_COUNT }, () => {
+          const formantFilter = markRaw(new Tone.Filter({
+            type: 'bandpass',
+            frequency: 1000,
+            Q: 8,
+            rolloff: -12,
+          }));
+          const formantGain = markRaw(new Tone.Gain(0));
+          input.connect(formantFilter);
+          formantFilter.connect(formantGain);
+          formantGain.connect(output);
+          return { filter: formantFilter, gain: formantGain } satisfies ChoirFormantPath;
+        });
+        chain.choir = markRaw({ input, output, formants });
+        chain.routingSignature = '';
+      }
+      return chain.choir;
+    },
+    ensureTrackVibrato(chain: TrackAudioChain): Tone.Vibrato {
+      if (!chain.vibrato) {
+        chain.vibrato = markRaw(new Tone.Vibrato());
+        chain.routingSignature = '';
+      }
+      return chain.vibrato;
+    },
+    ensureTrackTremolo(chain: TrackAudioChain): Tone.Tremolo {
+      if (!chain.tremolo) {
+        chain.tremolo = markRaw(new Tone.Tremolo());
+        chain.tremolo.start();
+        chain.routingSignature = '';
+      }
+      return chain.tremolo;
+    },
+    ensureTrackChorus(chain: TrackAudioChain): Tone.Chorus {
+      if (!chain.chorus) {
+        chain.chorus = markRaw(new Tone.Chorus());
+        chain.chorus.start();
+        chain.routingSignature = '';
+      }
+      return chain.chorus;
+    },
+    ensureTrackFlanger(chain: TrackAudioChain): Tone.FeedbackDelay {
+      if (!chain.flanger) {
+        const flanger = markRaw(new Tone.FeedbackDelay({
+          maxDelay: FLANGER_MAX_DELAY_SECONDS,
+          delayTime: DEFAULT_PRESET_TRACK_DATA.flangerDelay / 1000,
+          feedback: 0,
+        }));
+        const flangerLfo = markRaw(new Tone.LFO());
+        // The LFO drives the delay line directly, so its output range is the absolute sweep in seconds.
+        flangerLfo.connect(flanger.delayTime);
+        flangerLfo.start();
+        chain.flanger = flanger;
+        chain.flangerLfo = flangerLfo;
+        chain.routingSignature = '';
+      }
+      return chain.flanger;
+    },
+    ensureTrackPhaser(chain: TrackAudioChain): Phaser {
+      if (!chain.phaser) {
+        chain.phaser = markRaw(new Phaser({
+          stages: chain.phaserStages,
+          centerFrequency: chain.phaserCenterFrequency,
+        }));
+        chain.routingSignature = '';
+      }
+      return chain.phaser;
+    },
+    ensureTrackEcho(chain: TrackAudioChain): Tone.FeedbackDelay | Tone.PingPongDelay {
+      if (!chain.echo) {
+        chain.echo = markRaw(chain.echoPingPong
+          ? new Tone.PingPongDelay({ maxDelay: chain.maxDelay })
+          : new Tone.FeedbackDelay({ maxDelay: chain.maxDelay }));
+        chain.routingSignature = '';
+      }
+      return chain.echo;
+    },
+
     scheduleDrumInstrumentRebuild(track: PresetTrackData, chain: TrackAudioChain) {
       if (chain.drumRebuildTimer !== null) {
         window.clearTimeout(chain.drumRebuildTimer);
@@ -1490,6 +1611,7 @@ export default defineComponent({
         }
         Object.values(chain.drumInstruments).forEach((instrument) => instrument.dispose());
         chain.drumInstruments = {};
+        chain.drumChokeMap = new Map();
         chain.drumSignature = '';
         chain.drumParameterSignature = '';
         return;
@@ -1501,6 +1623,7 @@ export default defineComponent({
       });
       const parameterSignature = JSON.stringify(track.drumLanes);
       if (!force && signature === chain.drumSignature) {
+        chain.drumChokeMap = buildDrumChokeMap(track.drumLanes);
         let requiresRebuild = false;
         for (const lane of track.drumLanes) {
           const updated = chain.drumInstruments[lane.voiceId]?.update?.(lane.parameters);
@@ -1526,6 +1649,7 @@ export default defineComponent({
         // and standardized-audio-context rejects proxied nodes with InvalidStateError on connect().
         chain.drumInstruments[lane.voiceId] = markRaw(createDrumInstrument(lane.voiceId, lane.parameters));
       }
+      chain.drumChokeMap = buildDrumChokeMap(track.drumLanes);
       if (chain.routingSignature) {
         Object.values(chain.drumInstruments).forEach((instrument) => instrument.node.connect(chain.sourceBus));
       }
@@ -1546,25 +1670,49 @@ export default defineComponent({
       ].join('|');
     },
     getOrCreateTrackChain(track: PresetTrackData): TrackAudioChain {
-      const maxDelay = this.getTrackEchoMaxDelay(track);
-      const phaserCenterFrequency = this.midiToFrequency(track.phaserCenter);
       const existing = this.trackSynths[track.id];
       if (existing) {
-        if (existing.echoPingPong !== track.echoPingPong
-          || existing.maxDelay < maxDelay
-          || existing.phaserStages !== track.phaserStages
-          || existing.phaserCenterFrequency !== phaserCenterFrequency) {
-          this.disposeTrackChain(existing);
-          delete this.trackSynths[track.id];
-        } else {
-          return existing;
-        }
+        return existing;
       }
 
-      const chain = this.createTrackAudioChain({ echoPingPong: track.echoPingPong, maxDelay, phaserStages: track.phaserStages, phaserCenterFrequency });
+      const chain = this.createTrackAudioChain({
+        echoPingPong: track.echoPingPong,
+        maxDelay: this.getTrackEchoMaxDelay(track),
+        phaserStages: track.phaserStages,
+        phaserCenterFrequency: this.midiToFrequency(track.phaserCenter),
+      });
       this.trackSynths[track.id] = chain;
       this.updateTrackChainSettings(track, chain);
       return chain;
+    },
+    /**
+     * Echo and phaser bake a few options into their constructor, so only those nodes are
+     * rebuilt when the options change instead of tearing down the whole track chain.
+     */
+    syncTrackChainNodeOptions(track: PresetTrackData, chain: TrackAudioChain) {
+      const maxDelay = this.getTrackEchoMaxDelay(track);
+      if (chain.echoPingPong !== track.echoPingPong || chain.maxDelay < maxDelay) {
+        chain.echoPingPong = track.echoPingPong;
+        chain.maxDelay = Math.max(chain.maxDelay, maxDelay);
+        if (chain.echo) {
+          chain.echo.disconnect();
+          chain.echo.dispose();
+          chain.echo = null;
+          chain.routingSignature = '';
+        }
+      }
+
+      const phaserCenterFrequency = this.midiToFrequency(track.phaserCenter);
+      if (chain.phaserStages !== track.phaserStages || chain.phaserCenterFrequency !== phaserCenterFrequency) {
+        chain.phaserStages = track.phaserStages;
+        chain.phaserCenterFrequency = phaserCenterFrequency;
+        if (chain.phaser) {
+          chain.phaser.disconnect();
+          chain.phaser.dispose();
+          chain.phaser = null;
+          chain.routingSignature = '';
+        }
+      }
     },
     gaussian(harmonic: number, center: number, width: number): number {
       const safeWidth = Math.max(0.001, width);
@@ -1687,7 +1835,27 @@ export default defineComponent({
       return partials.map((amplitude) => amplitude / normalizer);
     },
     getTonewheelPartials(track: PresetTrackData): number[] {
-      return this.getLinearTonewheelPartials(track);
+      // The spectrum only depends on the waveform and the drawbars, and Tone rescans its
+      // periodic-wave cache with a deep compare for every partial array it is handed, so
+      // the same array instance is reused for identical settings.
+      const key = `${track.waveform}|${track.tonewheelDrawbars.join(',')}`;
+      const cached = tonewheelPartialCache.get(key);
+      if (cached) {
+        return cached;
+      }
+
+      const partials = this.getLinearTonewheelPartials(track);
+      // Trailing silent partials only make the periodic wave more expensive to build.
+      let length = partials.length;
+      while (length > 1 && partials[length - 1] === 0) {
+        length -= 1;
+      }
+      const trimmed = length === partials.length ? partials : partials.slice(0, length);
+      if (tonewheelPartialCache.size > TONEWHEEL_PARTIAL_CACHE_LIMIT) {
+        tonewheelPartialCache.clear();
+      }
+      tonewheelPartialCache.set(key, trimmed);
+      return trimmed;
     },
     triggerTrackVoice(
       track: PresetTrackData,
@@ -1698,12 +1866,12 @@ export default defineComponent({
       velocity: number,
     ) {
       if (this.isNoiseWaveform(track.waveform)) {
-        chain.noiseSynth.triggerAttackRelease(duration, when, velocity);
+        this.ensureTrackNoiseSynth(chain).triggerAttackRelease(duration, when, velocity);
         return;
       }
 
       const frequencies = this.getTrackPlaybackFrequencies(track, notes);
-      chain.synth.triggerAttackRelease(frequencies, duration, when, velocity);
+      this.ensureTrackSynth(chain).triggerAttackRelease(frequencies, duration, when, velocity);
     },
     getTrackPlaybackFrequencies(track: PresetTrackData, notes: number[]): number[] {
       return notes.map((note) => this.midiToFrequency(note - 12));
@@ -1743,15 +1911,21 @@ export default defineComponent({
       notes: number[],
       when: Tone.Unit.Seconds,
       noteDuration: number,
-      filter: Tone.Filter,
+      chain: TrackAudioChain,
     ) {
+      // A disabled filter is not part of the signal path, so there is nothing to automate.
+      if (!track.filterEnabled) {
+        return;
+      }
+
+      const filter = this.ensureTrackFilter(chain);
       const startTime = typeof when === 'number' ? when : Tone.Time(when).toSeconds();
       const baseMidi = Math.max(0, Math.min(127,
         this.getTrackFilterMidi(track, notes) + this.getFilterLfoOffsetMidi(track, startTime)));
       const baseFrequency = this.midiToFrequency(baseMidi);
       filter.frequency.cancelAndHoldAtTime(startTime);
 
-      if (!track.filterEnabled || track.filterEnvelopeAmount === 0) {
+      if (track.filterEnvelopeAmount === 0) {
         filter.frequency.linearRampToValueAtTime(baseFrequency, startTime + ENVELOPE_SMOOTHING_SECONDS);
         return;
       }
@@ -1810,26 +1984,30 @@ export default defineComponent({
         chain.drumRebuildTimer = null;
       }
       Object.values(chain.drumInstruments).forEach((instrument) => instrument.dispose());
-      chain.synth.dispose();
-      chain.synthGain.dispose();
-      chain.noiseSynth.dispose();
-      chain.filter.dispose();
-      chain.choirFormants.forEach((path) => {
-        path.filter.dispose();
-        path.gain.dispose();
-      });
-      chain.choirInput.dispose();
-      chain.choirOutput.dispose();
+      chain.drumInstruments = {};
+      chain.drumChokeMap = new Map();
+      chain.synth?.dispose();
+      chain.synthGain?.dispose();
+      chain.noiseSynth?.dispose();
+      chain.filter?.dispose();
+      if (chain.choir) {
+        chain.choir.formants.forEach((path) => {
+          path.filter.dispose();
+          path.gain.dispose();
+        });
+        chain.choir.input.dispose();
+        chain.choir.output.dispose();
+      }
       chain.sourceBus.dispose();
       chain.limiterGain.dispose();
       chain.limiter.dispose();
-      chain.tremolo.dispose();
-      chain.vibrato.dispose();
-      chain.flangerLfo.dispose();
-      chain.chorus.dispose();
-      chain.flanger.dispose();
-      chain.phaser.dispose();
-      chain.echo.dispose();
+      chain.tremolo?.dispose();
+      chain.vibrato?.dispose();
+      chain.flangerLfo?.dispose();
+      chain.chorus?.dispose();
+      chain.flanger?.dispose();
+      chain.phaser?.dispose();
+      chain.echo?.dispose();
       chain.dryGain.dispose();
       chain.reverbSend.dispose();
       chain.outputGain.dispose();
@@ -1843,81 +2021,91 @@ export default defineComponent({
         lowCutFrequency: this.midiToFrequency(this.reverbLowCut),
         highCutFrequency: this.midiToFrequency(this.reverbHighCut),
       });
+      // A convolver keeps burning CPU on silence, so the tail is unplugged from the
+      // destination whenever the reverb bus is switched off.
+      setReverbOutputEnabled(chain, this.reverbEnabled);
     },
     routeTrackAudioChain(track: PresetTrackData, chain: TrackAudioChain) {
-      chain.synth.disconnect();
-      chain.synthGain.disconnect();
-      chain.noiseSynth.disconnect();
-      chain.choirInput.disconnect();
-      chain.choirOutput.disconnect();
-      chain.choirFormants.forEach((path) => {
-        path.filter.disconnect();
-        path.gain.disconnect();
-      });
+      const isNoise = this.isNoiseWaveform(track.waveform);
+      const isChoir = this.isChoirWaveform(track.waveform);
+
+      chain.synth?.disconnect();
+      chain.synthGain?.disconnect();
+      chain.noiseSynth?.disconnect();
+      if (chain.choir) {
+        chain.choir.input.disconnect();
+        chain.choir.output.disconnect();
+        chain.choir.formants.forEach((path) => {
+          path.filter.disconnect();
+          path.gain.disconnect();
+        });
+        // Rebuild the parallel choir bank graph so choir mode can fan out cleanly.
+        chain.choir.formants.forEach((path) => {
+          chain.choir!.input.connect(path.filter);
+          path.filter.connect(path.gain);
+          path.gain.connect(chain.choir!.output);
+        });
+      }
       chain.sourceBus.disconnect();
       chain.limiterGain.disconnect();
       chain.limiter.disconnect();
       chain.outputGain.disconnect();
-      chain.vibrato.disconnect();
-      chain.tremolo.disconnect();
-      chain.chorus.disconnect();
-      chain.flanger.disconnect();
-      chain.phaser.disconnect();
-      chain.echo.disconnect();
-      chain.filter.disconnect();
-
-      // Rebuild the parallel choir bank graph first so choir mode can fan out cleanly.
-      chain.choirFormants.forEach((path) => {
-        chain.choirInput.connect(path.filter);
-        path.filter.connect(path.gain);
-        path.gain.connect(chain.choirOutput);
-      });
+      chain.vibrato?.disconnect();
+      chain.tremolo?.disconnect();
+      chain.chorus?.disconnect();
+      chain.flanger?.disconnect();
+      chain.phaser?.disconnect();
+      chain.echo?.disconnect();
+      chain.filter?.disconnect();
 
       if (track.trackKind === 'rhythmic') {
         Object.values(chain.drumInstruments).forEach((instrument) => {
           instrument.node.disconnect();
           instrument.node.connect(chain.sourceBus);
         });
-      } else if (this.isNoiseWaveform(track.waveform)) {
-        chain.noiseSynth.connect(chain.sourceBus);
+      } else if (isNoise) {
+        this.ensureTrackNoiseSynth(chain).connect(chain.sourceBus);
       } else {
-        const oscillatorTarget = this.isChoirWaveform(track.waveform) ? chain.choirInput : chain.sourceBus;
-        chain.synth.connect(chain.synthGain);
-        chain.synthGain.connect(oscillatorTarget);
-        if (this.isChoirWaveform(track.waveform)) {
-          chain.choirOutput.connect(chain.sourceBus);
+        const synth = this.ensureTrackSynth(chain);
+        const synthGain = chain.synthGain!;
+        const oscillatorTarget = isChoir ? this.ensureTrackChoirBank(chain).input : chain.sourceBus;
+        synth.connect(synthGain);
+        synthGain.connect(oscillatorTarget);
+        if (isChoir) {
+          chain.choir!.output.connect(chain.sourceBus);
         }
       }
 
       const signalChain: Tone.ToneAudioNode[] = [chain.sourceBus, chain.limiterGain, chain.limiter, chain.outputGain];
-      if (track.vibratoEnabled && !this.isNoiseWaveform(track.waveform)) {
-        signalChain.push(chain.vibrato);
+      if (track.vibratoEnabled && !isNoise) {
+        signalChain.push(this.ensureTrackVibrato(chain));
       }
       if (track.tremoloEnabled) {
-        signalChain.push(chain.tremolo);
+        signalChain.push(this.ensureTrackTremolo(chain));
       }
       if (track.chorusEnabled) {
-        signalChain.push(chain.chorus);
+        signalChain.push(this.ensureTrackChorus(chain));
       }
       if (track.flangerEnabled) {
-        signalChain.push(chain.flanger);
+        signalChain.push(this.ensureTrackFlanger(chain));
       }
       if (track.phaserEnabled) {
-        signalChain.push(chain.phaser);
+        signalChain.push(this.ensureTrackPhaser(chain));
       }
       if (track.echoEnabled) {
-        signalChain.push(chain.echo);
+        signalChain.push(this.ensureTrackEcho(chain));
       }
       if (track.filterEnabled) {
-        signalChain.push(chain.filter);
+        signalChain.push(this.ensureTrackFilter(chain));
       }
       signalChain.push(chain.mixGain);
       Tone.connectSeries(...signalChain);
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
       this.rebuildDrumInstruments(track, chain);
+      this.syncTrackChainNodeOptions(track, chain);
       const routingSignature = this.getTrackRoutingSignature(track);
-      const routingChanged = routingSignature !== chain.routingSignature;
+      const isNoise = this.isNoiseWaveform(track.waveform);
       const envelope = {
         attackCurve: 'exponential' as const,
         attack: Math.max(track.attack, ENVELOPE_SMOOTHING_SECONDS),
@@ -1927,100 +2115,127 @@ export default defineComponent({
         release: Math.max(track.release, ENVELOPE_SMOOTHING_SECONDS),
         sustain: track.sustain,
       };
-      const pitchEnvelope = {
-        attack: Math.max(track.pitchEnvelopeAttack, ENVELOPE_SMOOTHING_SECONDS),
-        decay: Math.max(track.pitchEnvelopeDecay, ENVELOPE_SMOOTHING_SECONDS),
-        sustain: track.pitchEnvelopeSustain,
-        release: Math.max(track.pitchEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS),
-      };
-      const oscillatorOptions = {
-        type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
-        count: track.unisonVoices,
-        spread: track.unisonDetune,
-        partials: this.getTonewheelPartials(track),
-      } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
-      const now = Tone.now();
-      // PolySynth.set typings only expose base SynthOptions; PitchEnvelopeSynth accepts the extras.
-      const voiceSettings = {
-        envelope,
-        oscillator: oscillatorOptions,
-        pitchEnvelope,
-        pitchEnvelopeAmount: track.pitchEnvelopeAmount,
-        pitchEnvelopeShape: track.pitchEnvelopeShape,
-      };
 
       if (track.trackKind !== 'rhythmic') {
-        chain.synth.set(voiceSettings as Parameters<PitchEnvelopeSynth['set']>[0]);
-        chain.synthGain.gain.cancelScheduledValues(now);
-        chain.synthGain.gain.setValueAtTime(1, now);
-
-        chain.noiseSynth.set({
-          envelope,
-          noise: {
-            type: this.getNoiseType(track.waveform),
-          },
-        });
-        this.updateChoirFormantBank(track.waveform, chain.choirFormants);
+        // Applying voice settings walks every pooled voice, so it is skipped whenever
+        // nothing that feeds those settings actually changed.
+        const voiceSignature = this.getTrackVoiceSignature(track);
+        if (voiceSignature !== chain.voiceSignature) {
+          chain.voiceSignature = voiceSignature;
+          if (isNoise) {
+            this.ensureTrackNoiseSynth(chain).set({
+              envelope,
+              noise: {
+                type: this.getNoiseType(track.waveform),
+              },
+            });
+          } else {
+            const oscillatorOptions = {
+              type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
+              count: track.unisonVoices,
+              spread: track.unisonDetune,
+              partials: this.getTonewheelPartials(track),
+            } as unknown as Tone.PolySynthOptions<Tone.Synth<Tone.SynthOptions>>['options']['oscillator'];
+            // PolySynth.set typings only expose base SynthOptions; PitchEnvelopeSynth accepts the extras.
+            this.ensureTrackSynth(chain).set({
+              envelope,
+              oscillator: oscillatorOptions,
+              pitchEnvelope: {
+                attack: Math.max(track.pitchEnvelopeAttack, ENVELOPE_SMOOTHING_SECONDS),
+                decay: Math.max(track.pitchEnvelopeDecay, ENVELOPE_SMOOTHING_SECONDS),
+                sustain: track.pitchEnvelopeSustain,
+                release: Math.max(track.pitchEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS),
+              },
+              pitchEnvelopeAmount: track.pitchEnvelopeAmount,
+              pitchEnvelopeShape: track.pitchEnvelopeShape,
+            } as Parameters<PitchEnvelopeSynth['set']>[0]);
+            if (this.isChoirWaveform(track.waveform)) {
+              this.updateChoirFormantBank(track.waveform, this.ensureTrackChoirBank(chain).formants);
+            }
+          }
+        }
+        if (chain.synthGain) {
+          const now = Tone.now();
+          chain.synthGain.gain.cancelScheduledValues(now);
+          chain.synthGain.gain.setValueAtTime(1, now);
+        }
       }
 
-      chain.filter.set({
-        type: track.filterEnabled ? track.filterType as BiquadFilterType : 'allpass',
-        frequency: track.filterEnabled ? this.midiToFrequency(track.filterFrequency) : this.midiToFrequency(127),
-        rolloff: track.filterRolloff as -12 | -24 | -48 | -96,
-        Q: track.filterQ,
-        gain: track.filterGain,
-      });
+      if (track.filterEnabled) {
+        this.ensureTrackFilter(chain).set({
+          type: track.filterType as BiquadFilterType,
+          frequency: this.midiToFrequency(track.filterFrequency),
+          rolloff: track.filterRolloff as -12 | -24 | -48 | -96,
+          Q: track.filterQ,
+          gain: track.filterGain,
+        });
+      }
       chain.limiterGain.gain.value = this.dbToGain(track.limiterGain);
-      chain.tremolo.set({
-        frequency: track.tremoloFrequency,
-        depth: this.clampNormalRange(track.tremoloDepth),
-        spread: track.tremoloSpread,
-        wet: track.tremoloEnabled ? 1 : 0,
-      });
-      chain.vibrato.set({
-        frequency: track.vibratoFrequency,
-        depth: this.clampNormalRange(track.vibratoDepth),
-        wet: track.vibratoEnabled && !this.isNoiseWaveform(track.waveform) ? 1 : 0,
-      });
-      chain.echo.set({
-        // Tone rejects a delay time above the node's maxDelay, which would abort playback.
-        delayTime: Math.min(this.getEchoDelaySeconds(track.echoDelay), chain.maxDelay),
-        feedback: this.clampNormalRange(track.echoFeedback),
-        wet: track.echoEnabled ? this.dbToWetMix(track.echoWet) : 0,
-      });
-      chain.chorus.set({
-        frequency: this.getModulationRateHz(track.chorusRate),
-        delayTime: track.chorusDelay,
-        depth: this.clampNormalRange(track.chorusDepth),
-        spread: track.chorusSpread,
-        feedback: this.clampNormalRange(track.chorusFeedback),
-        wet: track.chorusEnabled ? this.dbToWetMix(track.chorusWet) : 0,
-      });
-      const flangerDelaySeconds = track.flangerDelay / 1000;
-      const flangerSweepSeconds = flangerDelaySeconds * this.clampNormalRange(track.flangerDepth);
-      chain.flangerLfo.set({
-        frequency: this.getModulationRateHz(track.flangerRate),
-        min: Math.max(0.00005, flangerDelaySeconds - flangerSweepSeconds),
-        max: Math.min(FLANGER_MAX_DELAY_SECONDS, flangerDelaySeconds + flangerSweepSeconds),
-      });
-      chain.flanger.set({
-        feedback: this.clampNormalRange(track.flangerFeedback),
-        wet: track.flangerEnabled ? this.dbToWetMix(track.flangerWet) : 0,
-      });
-      chain.phaser.apply({
-        frequency: this.getModulationRateHz(track.phaserRate),
-        sweepOctaves: (track.phaserDepth / 100) * PHASER_MAX_SWEEP_OCTAVES,
-        Q: track.phaserQ,
-        feedback: track.phaserFeedback,
-        wet: track.phaserEnabled ? this.dbToWetMix(track.phaserWet) : 0,
-      });
+      if (track.tremoloEnabled) {
+        this.ensureTrackTremolo(chain).set({
+          frequency: track.tremoloFrequency,
+          depth: this.clampNormalRange(track.tremoloDepth),
+          spread: track.tremoloSpread,
+          wet: 1,
+        });
+      }
+      if (track.vibratoEnabled && !isNoise) {
+        this.ensureTrackVibrato(chain).set({
+          frequency: track.vibratoFrequency,
+          depth: this.clampNormalRange(track.vibratoDepth),
+          wet: 1,
+        });
+      }
+      if (track.echoEnabled) {
+        this.ensureTrackEcho(chain).set({
+          // Tone rejects a delay time above the node's maxDelay, which would abort playback.
+          delayTime: Math.min(this.getEchoDelaySeconds(track.echoDelay), chain.maxDelay),
+          feedback: this.clampNormalRange(track.echoFeedback),
+          wet: this.dbToWetMix(track.echoWet),
+        });
+      }
+      if (track.chorusEnabled) {
+        this.ensureTrackChorus(chain).set({
+          frequency: this.getModulationRateHz(track.chorusRate),
+          delayTime: track.chorusDelay,
+          depth: this.clampNormalRange(track.chorusDepth),
+          spread: track.chorusSpread,
+          feedback: this.clampNormalRange(track.chorusFeedback),
+          wet: this.dbToWetMix(track.chorusWet),
+        });
+      }
+      if (track.flangerEnabled) {
+        const flangerDelaySeconds = track.flangerDelay / 1000;
+        const flangerSweepSeconds = flangerDelaySeconds * this.clampNormalRange(track.flangerDepth);
+        const flanger = this.ensureTrackFlanger(chain);
+        chain.flangerLfo!.set({
+          frequency: this.getModulationRateHz(track.flangerRate),
+          min: Math.max(0.00005, flangerDelaySeconds - flangerSweepSeconds),
+          max: Math.min(FLANGER_MAX_DELAY_SECONDS, flangerDelaySeconds + flangerSweepSeconds),
+        });
+        flanger.set({
+          feedback: this.clampNormalRange(track.flangerFeedback),
+          wet: this.dbToWetMix(track.flangerWet),
+        });
+      }
+      if (track.phaserEnabled) {
+        this.ensureTrackPhaser(chain).apply({
+          frequency: this.getModulationRateHz(track.phaserRate),
+          sweepOctaves: (track.phaserDepth / 100) * PHASER_MAX_SWEEP_OCTAVES,
+          Q: track.phaserQ,
+          feedback: track.phaserFeedback,
+          wet: this.dbToWetMix(track.phaserWet),
+        });
+      }
       chain.outputGain.gain.value = this.dbToGain(track.gain);
       this.applyTrackMixState(track, chain);
       chain.dryGain.gain.value = this.dbToGain(this.reverbDry);
       chain.reverbSend.gain.value = this.reverbEnabled ? this.dbToGain(track.reverbWet + this.reverbWet) : 0;
-      chain.synth.context.lookAhead = 0.4;
-      chain.noiseSynth.context.lookAhead = 0.4;
-      if (routingChanged) {
+      const context = chain.sourceBus.context;
+      if (context.lookAhead !== 0.4) {
+        context.lookAhead = 0.4;
+      }
+      if (routingSignature !== chain.routingSignature) {
         this.routeTrackAudioChain(track, chain);
         chain.routingSignature = routingSignature;
         // Tone modulation sources can end up stopped after graph rewires / param sets
@@ -2030,21 +2245,51 @@ export default defineComponent({
       }
     },
     /**
+     * Everything that feeds `synth.set()` / `noiseSynth.set()`. Applying voice settings
+     * fans out across every pooled voice, so it only runs when this signature changes.
+     */
+    getTrackVoiceSignature(track: PresetTrackData): string {
+      return [
+        track.waveform,
+        track.tonewheelDrawbars,
+        track.unisonVoices,
+        track.unisonDetune,
+        track.attack,
+        track.decay,
+        track.sustain,
+        track.release,
+        track.pitchEnvelopeAttack,
+        track.pitchEnvelopeDecay,
+        track.pitchEnvelopeSustain,
+        track.pitchEnvelopeRelease,
+        track.pitchEnvelopeAmount,
+        track.pitchEnvelopeShape,
+      ].join('|');
+    },
+    /**
      * Force-restart every free-running modulator on the track chain.
      * stop()+start() recreates each LFO's internal oscillator and re-binds frequency,
      * which recovers units that report "started" but are no longer producing motion.
      */
     ensureTrackModulationRunning(chain: TrackAudioChain) {
-      chain.tremolo.stop();
-      chain.tremolo.start();
-      chain.chorus.stop();
-      chain.chorus.start();
-      chain.flangerLfo.stop();
-      chain.flangerLfo.start();
-      chain.phaser.lfo.stop();
-      chain.phaser.lfo.start();
+      if (chain.tremolo) {
+        chain.tremolo.stop();
+        chain.tremolo.start();
+      }
+      if (chain.chorus) {
+        chain.chorus.stop();
+        chain.chorus.start();
+      }
+      if (chain.flangerLfo) {
+        chain.flangerLfo.stop();
+        chain.flangerLfo.start();
+      }
+      if (chain.phaser) {
+        chain.phaser.lfo.stop();
+        chain.phaser.lfo.start();
+      }
       // Vibrato keeps its LFO private; restart through the same Tone surface when present.
-      const vibratoLfo = (chain.vibrato as unknown as { _lfo?: Tone.LFO })._lfo;
+      const vibratoLfo = (chain.vibrato as unknown as { _lfo?: Tone.LFO } | null)?._lfo;
       if (vibratoLfo && typeof vibratoLfo.stop === 'function' && typeof vibratoLfo.start === 'function') {
         vibratoLfo.stop();
         vibratoLfo.start();
@@ -2118,7 +2363,7 @@ export default defineComponent({
         loop.stop();
         loop.dispose();
       }
-      this.trackLoops = {};
+      this.trackLoops = markRaw({});
     },
     scheduleTrackLoopRebuild() {
       if (!this.isRunning) {
@@ -2158,9 +2403,9 @@ export default defineComponent({
           continue;
         }
 
+        const trackId = entry.track.id;
         const part = markRaw(new Tone.Part<TrackScheduledEvent>((when, event) => {
-          const liveTrack = this.tracks.find((track) => track.id === entry.track.id) ?? entry.track;
-          this.playTrackStep(liveTrack, event, when);
+          this.playTrackStep(this.trackById.get(trackId) ?? entry.track, event, when);
         }, events));
         part.loop = true;
         part.loopStart = 0;
@@ -2233,58 +2478,41 @@ export default defineComponent({
       this.stopTrackLoops();
       Tone.getTransport().stop();
       Tone.getTransport().seconds=0;
-      this.activeNotes = [];
     },
     playTrackStep(track: PresetTrackData, event: TrackScheduledEvent, when: Tone.Unit.Seconds) {
-      if (!this.isTrackAudible(track.id)) {
+      if (!this.audibleTrackIds.has(track.id)) {
         return;
       }
 
-      const currentRhythmStep = track.trackKind === 'rhythmic'
-        ? this.getRhythmSteps(track)[event.step] ?? []
-        : null;
-      const arr = currentRhythmStep
-        ? currentRhythmStep.map((hit) => hit.midi)
-        : event.notes;
-      this.activeNotes = Array.from(new Set([...this.activeNotes, ...arr])).sort((left, right) => left - right);
-
+      const arr = event.notes;
       if (arr.length === 0) {
         return;
       }
 
       const vel = event.velocity;
       const noteDuration = event.duration;
-      const noteVelocities = currentRhythmStep
-        ? currentRhythmStep.map((hit) => Math.min(1, hit.velocity * track.velocityMultiplier))
-        : event.noteVelocities ?? arr.map(() => vel);
-      const drumVoiceIds = currentRhythmStep?.map((hit) => hit.voiceId) ?? event.drumVoiceIds;
+      const noteVelocities = event.noteVelocities;
+      const drumVoiceIds = event.drumVoiceIds;
 
       if (this.useMidiOutput) {
         for (let index = 0; index < arr.length; index += 1) {
-          this.playNoteWithMidi(arr[index], noteVelocities[index] ?? vel, noteDuration, when, track.midiChannel);
+          this.playNoteWithMidi(arr[index], noteVelocities?.[index] ?? vel, noteDuration, when, track.midiChannel);
         }
-      } else {
-        const chain = this.getOrCreateTrackChain(track);
-        this.scheduleFilterEnvelope(track, arr, when, noteDuration, chain.filter);
-        if (track.trackKind === 'rhythmic') {
-          for (let index = 0; index < arr.length; index += 1) {
-            const voiceId = drumVoiceIds?.[index];
-            const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
-            this.chokeDrumXorGroup(track, chain, voiceId, when);
-            instrument?.trigger(when, noteVelocities[index] ?? vel, noteDuration);
-          }
-        } else {
-          this.triggerTrackVoice(track, chain, arr, `${noteDuration}s`, when, vel);
-        }
+        return;
       }
 
-      window.setTimeout(() => {
-        const remaining = new Set(this.activeNotes);
-        for (const note of arr) {
-          remaining.delete(note);
+      const chain = this.getOrCreateTrackChain(track);
+      this.scheduleFilterEnvelope(track, arr, when, noteDuration, chain);
+      if (track.trackKind === 'rhythmic') {
+        for (let index = 0; index < arr.length; index += 1) {
+          const voiceId = drumVoiceIds?.[index];
+          const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
+          this.chokeDrumXorGroup(chain, voiceId, when);
+          instrument?.trigger(when, noteVelocities?.[index] ?? vel, noteDuration);
         }
-        this.activeNotes = Array.from(remaining.values()).sort((left, right) => left - right);
-      }, Math.max(0, Math.floor(noteDuration * 1000)));
+      } else {
+        this.triggerTrackVoice(track, chain, arr, `${noteDuration}s`, when, vel);
+      }
     },
 
     async downloadMIDI() {
@@ -2373,7 +2601,7 @@ export default defineComponent({
     for (const chain of Object.values(this.trackSynths)) {
       this.disposeTrackChain(chain);
     }
-    this.trackSynths = {};
+    this.trackSynths = markRaw({});
     if (this.reverbChain) {
       disposeReverbAudioChain(this.reverbChain as ReverbAudioChain);
       this.reverbChain = null;

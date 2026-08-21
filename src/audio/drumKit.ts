@@ -91,8 +91,16 @@ function register(owned: any[], ...nodes: any[]): void {
  * shared frequency signals, so each further hit walks an ever larger graph during cycle
  * detection and a long WAV export grows quadratically. Holding the oscillators open
  * keeps that cost linear; the envelope alone shapes each hit, as it already did.
+ *
+ * Realtime playback does not have that problem (`onended` fires and releases the stale
+ * nodes), and holding twelve FM oscillators open per metal voice would burn CPU
+ * continuously between hits, so the workaround is only applied to offline contexts.
  */
 function keepMetalOscillatorsRunning(metal: Tone.MetalSynth): void {
+  if (!metal.context.isOffline) {
+    return;
+  }
+
   const internals = metal as unknown as {
     envelope: Tone.Envelope;
     _triggerEnvelopeRelease: (time: number) => unknown;

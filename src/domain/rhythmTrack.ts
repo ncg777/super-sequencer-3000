@@ -272,7 +272,15 @@ export function getDefaultDrumParameters(voiceId: DrumVoiceId): DrumParameterBag
   return { ...SHARED_DEFAULT_PARAMETERS, ...VOICE_DEFAULT_PARAMETERS[voiceId] };
 }
 
-export function getDrumParameterDefinitions(voiceId: DrumVoiceId): readonly DrumParameterDefinition[] {
+/**
+ * Parameter definitions are static per voice but are looked up on every parameter
+ * normalization, so they are built once and reused instead of being rebuilt (and
+ * re-scanned) for each parameter of each lane.
+ */
+const PARAMETER_DEFINITION_CACHE = new Map<DrumVoiceId, readonly DrumParameterDefinition[]>();
+const PARAMETER_DEFINITION_INDEX_CACHE = new Map<DrumVoiceId, ReadonlyMap<string, DrumParameterDefinition>>();
+
+function buildDrumParameterDefinitions(voiceId: DrumVoiceId): readonly DrumParameterDefinition[] {
   return Object.keys(getDefaultDrumParameters(voiceId))
     .map((name) => {
       const definition = PARAMETER_DEFINITIONS[name];
@@ -285,6 +293,31 @@ export function getDrumParameterDefinitions(voiceId: DrumVoiceId): readonly Drum
       return definition;
     })
     .filter((definition): definition is DrumParameterDefinition => definition !== undefined);
+}
+
+export function getDrumParameterDefinitions(voiceId: DrumVoiceId): readonly DrumParameterDefinition[] {
+  const cached = PARAMETER_DEFINITION_CACHE.get(voiceId);
+  if (cached) {
+    return cached;
+  }
+
+  const definitions = buildDrumParameterDefinitions(voiceId);
+  PARAMETER_DEFINITION_CACHE.set(voiceId, definitions);
+  return definitions;
+}
+
+function getDrumParameterDefinitionIndex(voiceId: DrumVoiceId): ReadonlyMap<string, DrumParameterDefinition> {
+  const cached = PARAMETER_DEFINITION_INDEX_CACHE.get(voiceId);
+  if (cached) {
+    return cached;
+  }
+
+  const index = new Map<string, DrumParameterDefinition>();
+  for (const definition of getDrumParameterDefinitions(voiceId)) {
+    index.set(definition.name, definition);
+  }
+  PARAMETER_DEFINITION_INDEX_CACHE.set(voiceId, index);
+  return index;
 }
 
 export function normalizeDrumXorGroup(value: unknown): DrumXorGroupId {
@@ -330,6 +363,25 @@ export function getDrumXorGroupMembers(
     .map((lane) => lane.voiceId);
 }
 
+/**
+ * Precomputed "voice -> voices it chokes" table. Playback resolves choke targets on
+ * every hit, so the lane scan is done once per lane layout instead of per event.
+ */
+export function buildDrumChokeMap(lanes: readonly DrumLane[]): Map<DrumVoiceId, DrumVoiceId[]> {
+  const chokeMap = new Map<DrumVoiceId, DrumVoiceId[]>();
+  for (const lane of lanes) {
+    const group = normalizeDrumXorGroup(lane.xorGroup);
+    if (group === DRUM_XOR_GROUP_NONE) {
+      continue;
+    }
+    const members = getDrumXorGroupMembers(lanes, group, lane.voiceId);
+    if (members.length > 0) {
+      chokeMap.set(lane.voiceId, members);
+    }
+  }
+  return chokeMap;
+}
+
 export function createDefaultRhythmLanes(): DrumLane[] {
   return DEFAULT_RHYTHM_VOICE_IDS.map(createDefaultDrumLane);
 }
@@ -343,12 +395,13 @@ export function normalizeDrumParameters(voiceId: DrumVoiceId, value: unknown): D
   const defaults = getDefaultDrumParameters(voiceId);
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const normalized: DrumParameterBag = { ...defaults };
+  const definitions = getDrumParameterDefinitionIndex(voiceId);
 
   for (const [name, defaultValue] of Object.entries(defaults)) {
     const candidate = raw[name];
     if (typeof defaultValue === 'number') {
       if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-        const definition = getDrumParameterDefinitions(voiceId).find((entry) => entry.name === name);
+        const definition = definitions.get(name);
         const maximum = definition?.max;
         normalized[name] = definition?.min !== undefined && maximum !== undefined
           ? Math.min(maximum, Math.max(definition.min, candidate))
@@ -423,31 +476,46 @@ export function decodeRhythmMasks(
 ): RhythmHit[][] {
   const bits = normalizeDrumVelocityBits(velocityBits);
   const maxValue = (1n << BigInt(bits)) - 1n;
+  const maxValueNumber = Number(maxValue);
+  const bitsBigInt = BigInt(bits);
+  // Lane metadata is constant across steps, so resolve it once instead of per mask.
+  const laneInfos = lanes.map((lane) => ({
+    voiceId: lane.voiceId,
+    midi: drumVoiceMidiNote(lane.voiceId),
+    group: normalizeDrumXorGroup(lane.xorGroup),
+  }));
+  const hasExclusiveLanes = laneInfos.some((lane) => lane.group !== DRUM_XOR_GROUP_NONE);
 
   return masks.map((mask) => {
     const hits: RhythmHit[] = [];
-    const exclusiveWinners = new Map<DrumXorGroupId, number>();
-    lanes.forEach((lane, laneIndex) => {
-      const value = (mask >> BigInt(laneIndex * bits)) & maxValue;
+    const exclusiveWinners = hasExclusiveLanes ? new Map<DrumXorGroupId, number>() : null;
+    // Shift the mask down one lane at a time so only one BigInt shift happens per lane.
+    let remaining = mask;
+    for (let laneIndex = 0; laneIndex < laneInfos.length; laneIndex += 1) {
+      const laneInfo = laneInfos[laneIndex];
+      const value = remaining & maxValue;
+      remaining >>= bitsBigInt;
       if (value === 0n) {
-        return;
+        if (remaining === 0n) {
+          break;
+        }
+        continue;
       }
       hits.push({
         laneIndex,
-        voiceId: lane.voiceId,
-        midi: drumVoiceMidiNote(lane.voiceId),
-        velocity: Number(value) / Number(maxValue),
+        voiceId: laneInfo.voiceId,
+        midi: laneInfo.midi,
+        velocity: Number(value) / maxValueNumber,
       });
-      const group = normalizeDrumXorGroup(lane.xorGroup);
-      if (group !== DRUM_XOR_GROUP_NONE) {
-        exclusiveWinners.set(group, laneIndex);
+      if (exclusiveWinners && laneInfo.group !== DRUM_XOR_GROUP_NONE) {
+        exclusiveWinners.set(laneInfo.group, laneIndex);
       }
-    });
-    if (exclusiveWinners.size === 0) {
+    }
+    if (!exclusiveWinners || exclusiveWinners.size === 0) {
       return hits;
     }
     return hits.filter((hit) => {
-      const group = normalizeDrumXorGroup(lanes[hit.laneIndex]?.xorGroup);
+      const group = laneInfos[hit.laneIndex]?.group ?? DRUM_XOR_GROUP_NONE;
       return group === DRUM_XOR_GROUP_NONE || exclusiveWinners.get(group) === hit.laneIndex;
     });
   });
