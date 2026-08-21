@@ -12,7 +12,6 @@ interface PolySynthInternals {
   _averageActiveVoices: number;
   activeVoices: number;
   _collectGarbage(): void;
-  context: { isOffline: boolean };
 }
 
 /**
@@ -44,8 +43,6 @@ export function retainVoicePool(synth: Tone.PolySynth, poolSize = MAX_POOLED_VOI
     if (index >= 0) {
       this._voices.splice(index, 1);
     }
-    if (!this.context.isOffline) {
-      firstAvailable.dispose();
-    }
+    firstAvailable.dispose();
   };
 }

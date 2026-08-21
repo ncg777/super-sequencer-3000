@@ -380,12 +380,6 @@ interface TrackAudioChain {
   voiceSignature: string;
 }
 
-/** Scheduling data resolved once per loop rebuild and reused by every event callback. */
-interface TrackLoopRuntime {
-  trackId: string;
-  fallbackTrack: PresetTrackData;
-}
-
 const ENVELOPE_SMOOTHING_SECONDS = 0.005;
 const CHOIR_FORMANT_FILTER_COUNT = 5;
 /** Upper bound for the flanger delay line; the sweep never exceeds twice the 20 ms maximum base delay. */
@@ -1623,7 +1617,9 @@ export default defineComponent({
       });
       const parameterSignature = JSON.stringify(track.drumLanes);
       if (!force && signature === chain.drumSignature) {
-        chain.drumChokeMap = buildDrumChokeMap(track.drumLanes);
+        if (parameterSignature !== chain.drumParameterSignature) {
+          chain.drumChokeMap = buildDrumChokeMap(track.drumLanes);
+        }
         let requiresRebuild = false;
         for (const lane of track.drumLanes) {
           const updated = chain.drumInstruments[lane.voiceId]?.update?.(lane.parameters);
