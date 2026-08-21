@@ -4,7 +4,7 @@ import type * as Tone from 'tone';
  * Upper bound for a retained voice pool. Tone's own default polyphony is 32, so the
  * pool never holds more voices than the synth could have allocated anyway.
  */
-export const MAX_POOLED_VOICES = 32;
+export const MAX_POOLED_VOICES = 12;
 
 interface PolySynthInternals {
   _voices: Array<{ dispose(): void }>;
