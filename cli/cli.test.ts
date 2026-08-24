@@ -242,9 +242,9 @@ test('rhythmic tracks export GM notes with BigInt-safe per-lane velocities', asy
       name: 'GM Kit',
       trackKind: 'rhythmic',
       drumLanes: [
-        { voiceId: 'kick', parameters: {} },
-        { voiceId: 'snare', parameters: {} },
-        { voiceId: 'hat', parameters: {} },
+        { voiceId: 'kick', parameters: {}, xorGroup: 0 },
+        { voiceId: 'snare', parameters: {}, xorGroup: 0 },
+        { voiceId: 'hat', parameters: {}, xorGroup: 0 },
       ],
       drumVelocityBits: 2,
       numerator: 1,
@@ -272,7 +272,7 @@ test('rhythmic tracks render synthesized audio in CLI WAV output', async () => {
     tracks: [{
       name: 'WAV Kit',
       trackKind: 'rhythmic',
-      drumLanes: [{ voiceId: 'kick', parameters: { tune: 55, decay: 0.25 } }],
+      drumLanes: [{ voiceId: 'kick', parameters: { tune: 55, decay: 0.25 }, xorGroup: 0 }],
       drumVelocityBits: 1,
       numerator: 1,
       denominator: 1,

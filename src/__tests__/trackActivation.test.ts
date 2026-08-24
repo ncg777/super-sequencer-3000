@@ -181,3 +181,31 @@ test('URL override and import/export preserve bitmask sequence B', () => {
     assert.equal(payload.preset.data.bitmaskSequenceInput, '1 2 3 0');
   }
 });
+
+test('URL draft and import/export preserve custom reverb settings', () => {
+  const customReverb = {
+    enabled: false,
+    decay: 12.5,
+    preDelay: 0.18,
+    dry: -3,
+    wet: -9,
+    lowCut: 24,
+    highCut: 96,
+  };
+  const saved = {
+    ...DEFAULT_PRESET_DATA,
+    reverb: customReverb,
+  };
+
+  const draft = buildDraftFromUrl('?bpm=120', saved);
+  assert.deepEqual(draft.reverb, customReverb);
+  assert.equal(arePresetDataEqual(draft, { ...saved, bpm: 120 }), true);
+
+  const preset = createNamedPreset('Reverb Room', saved);
+  const exported = buildSinglePresetExport(preset);
+  const payload = parsePresetImportPayload(JSON.stringify(exported));
+  assert.equal(payload.kind, 'single-preset');
+  if (payload.kind === 'single-preset') {
+    assert.deepEqual(payload.preset.data.reverb, customReverb);
+  }
+});

@@ -1486,6 +1486,7 @@ export function buildDraftFromUrl(search: string, baseData: PresetData): PresetD
       },
       ...baseData.tracks.slice(1),
     ],
+    reverb: baseData.reverb,
   });
 }
 
