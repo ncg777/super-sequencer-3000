@@ -5,6 +5,12 @@ import {
   PITCH_ENVELOPE_SHAPE_MIN,
 } from './audio/pitchEnvelope.js';
 import {
+  GLIDE_CURVE_OPTIONS,
+  GLIDE_MODE_OPTIONS,
+  type GlideCurve,
+  type GlideMode,
+} from './audio/glide.js';
+import {
   CUSTOM_TIME_WARP_CURVE,
   DEFAULT_TIME_WARP_CURVE,
   TIME_WARP_CURVE_VALUES,
@@ -19,6 +25,9 @@ import {
 import { normalizeBitmaskSequenceInput } from './trackActivation.js';
 
 export type TrackKind = 'melodic' | 'rhythmic';
+
+/** Upper bound for per-track polyphony; 1 switches the track to the monophonic glide engine. */
+export const MAX_TRACK_POLYPHONY = 16;
 
 export interface PresetTrackData {
   id: string;
@@ -67,6 +76,17 @@ export interface PresetTrackData {
   pitchEnvelopeAmount: number;
   /** Exponential steepness for pitch envelope segments (0 = linear). */
   pitchEnvelopeShape: number;
+  /** Maximum simultaneous voices (1-16). 1 makes the track monophonic. */
+  polyphony: number;
+  /** Glide time in seconds, or seconds per octave when glideConstantRate is set. 0 disables glide. */
+  glideTime: number;
+  /** 'legato' glides only between overlapping notes; 'always' glides between every note. */
+  glideMode: GlideMode;
+  /** Constant-rate glide, so wide leaps take proportionally longer than small ones. */
+  glideConstantRate: boolean;
+  glideCurve: GlideCurve;
+  /** True legato: overlapping monophonic notes do not retrigger the envelopes. */
+  monoLegato: boolean;
   unisonVoices: number;
   unisonDetune: number;
   tonewheelDrawbars: number[];
@@ -357,6 +377,12 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   pitchEnvelopeRelease: 0.2,
   pitchEnvelopeAmount: 0,
   pitchEnvelopeShape: DEFAULT_PITCH_ENVELOPE_SHAPE,
+  polyphony: 8,
+  glideTime: 0,
+  glideMode: 'legato',
+  glideConstantRate: false,
+  glideCurve: 'exponential',
+  monoLegato: true,
   unisonVoices: 1,
   unisonDetune: 0,
   tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
@@ -556,6 +582,18 @@ function normalizeSkewLfoWaveform(value: unknown): SkewLfoWaveformValue {
     : 'sine';
 }
 
+function normalizeGlideMode(value: unknown): GlideMode {
+  return GLIDE_MODE_OPTIONS.includes(value as GlideMode)
+    ? value as GlideMode
+    : DEFAULT_PRESET_TRACK_DATA.glideMode;
+}
+
+function normalizeGlideCurve(value: unknown): GlideCurve {
+  return GLIDE_CURVE_OPTIONS.includes(value as GlideCurve)
+    ? value as GlideCurve
+    : DEFAULT_PRESET_TRACK_DATA.glideCurve;
+}
+
 function normalizePhaserStages(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   return PHASER_STAGES.has(parsed) ? parsed : DEFAULT_PRESET_TRACK_DATA.phaserStages;
@@ -695,6 +733,12 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     pitchEnvelopeRelease: track.pitchEnvelopeRelease,
     pitchEnvelopeAmount: track.pitchEnvelopeAmount,
     pitchEnvelopeShape: track.pitchEnvelopeShape,
+    polyphony: track.polyphony,
+    glideTime: track.glideTime,
+    glideMode: track.glideMode,
+    glideConstantRate: track.glideConstantRate,
+    glideCurve: track.glideCurve,
+    monoLegato: track.monoLegato,
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
     tonewheelDrawbars: track.tonewheelDrawbars.slice(),
@@ -794,6 +838,12 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     pitchEnvelopeRelease: clamp(parseNumber(raw.pitchEnvelopeRelease, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeRelease), 0, 20),
     pitchEnvelopeAmount: clamp(parseNumber(raw.pitchEnvelopeAmount, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeAmount), -48, 48),
     pitchEnvelopeShape: normalizePitchEnvelopeShape(raw.pitchEnvelopeShape, DEFAULT_PRESET_TRACK_DATA.pitchEnvelopeShape),
+    polyphony: clamp(parseInteger(raw.polyphony?.toString(), DEFAULT_PRESET_TRACK_DATA.polyphony), 1, MAX_TRACK_POLYPHONY),
+    glideTime: clamp(parseNumber(raw.glideTime, DEFAULT_PRESET_TRACK_DATA.glideTime), 0, 5),
+    glideMode: normalizeGlideMode(raw.glideMode),
+    glideConstantRate: Boolean(raw.glideConstantRate ?? DEFAULT_PRESET_TRACK_DATA.glideConstantRate),
+    glideCurve: normalizeGlideCurve(raw.glideCurve),
+    monoLegato: Boolean(raw.monoLegato ?? DEFAULT_PRESET_TRACK_DATA.monoLegato),
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
@@ -984,6 +1034,12 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.pitchEnvelopeRelease !== rightTrack.pitchEnvelopeRelease
       || leftTrack.pitchEnvelopeAmount !== rightTrack.pitchEnvelopeAmount
       || leftTrack.pitchEnvelopeShape !== rightTrack.pitchEnvelopeShape
+      || leftTrack.polyphony !== rightTrack.polyphony
+      || leftTrack.glideTime !== rightTrack.glideTime
+      || leftTrack.glideMode !== rightTrack.glideMode
+      || leftTrack.glideConstantRate !== rightTrack.glideConstantRate
+      || leftTrack.glideCurve !== rightTrack.glideCurve
+      || leftTrack.monoLegato !== rightTrack.monoLegato
       || leftTrack.unisonVoices !== rightTrack.unisonVoices
       || leftTrack.unisonDetune !== rightTrack.unisonDetune
       || leftTrack.tonewheelDrawbars.some((drawbar, drawbarIndex) => drawbar !== rightTrack.tonewheelDrawbars[drawbarIndex])

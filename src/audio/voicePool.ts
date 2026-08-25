@@ -1,10 +1,65 @@
 import type * as Tone from 'tone';
 
 /**
- * Upper bound for a retained voice pool. Tone's own default polyphony is 32, so the
- * pool never holds more voices than the synth could have allocated anyway.
+ * Hard ceiling for allocated Tone voices per track, matching Tone's own default so a
+ * dense track never runs out of voices mid-pattern.
  */
-export const MAX_POOLED_VOICES = 12;
+export const MAX_POOLED_VOICES = 32;
+
+/**
+ * A released voice stays allocated for its whole release tail, so the number of Tone
+ * voices has to exceed the musical voice count or PolySynth starts dropping notes.
+ */
+const VOICE_RELEASE_HEADROOM = 8;
+
+/** Tone voices to allocate for a track that should sound `polyphony` notes at once. */
+export function getSynthVoiceCount(polyphony: number): number {
+  const musicalVoices = Math.max(1, Math.round(polyphony));
+  return Math.min(MAX_POOLED_VOICES, musicalVoices + VOICE_RELEASE_HEADROOM);
+}
+
+export interface SoundingNote {
+  frequency: number;
+  endTime: number;
+}
+
+/** Overlap shorter than this is scheduling jitter rather than a held note. */
+const NOTE_END_TOLERANCE_SECONDS = 1e-4;
+
+/**
+ * Reserve voices for `incoming` and return the frequencies that have to be released at
+ * `startTime` to stay within `polyphony`. Tone's PolySynth silently drops a note once
+ * every voice is busy, so the pattern only plays back faithfully if the oldest sounding
+ * note is stolen instead.
+ */
+export function claimVoices(
+  sounding: SoundingNote[],
+  incoming: readonly number[],
+  startTime: number,
+  endTime: number,
+  polyphony: number,
+): number[] {
+  for (let index = sounding.length - 1; index >= 0; index -= 1) {
+    if (sounding[index].endTime <= startTime + NOTE_END_TOLERANCE_SECONDS) {
+      sounding.splice(index, 1);
+    }
+  }
+
+  const limit = Math.max(1, Math.floor(polyphony));
+  const stolen: number[] = [];
+  while (sounding.length > 0 && sounding.length + incoming.length > limit) {
+    // Releasing a pitch that is being restruck would let its own queued release cut the
+    // new voice short, so those are only stolen once nothing else is left.
+    const index = Math.max(0, sounding.findIndex((note) => !incoming.includes(note.frequency)));
+    stolen.push(sounding[index].frequency);
+    sounding.splice(index, 1);
+  }
+
+  for (const frequency of incoming) {
+    sounding.push({ frequency, endTime });
+  }
+  return stolen;
+}
 
 interface PolySynthInternals {
   _voices: Array<{ dispose(): void }>;

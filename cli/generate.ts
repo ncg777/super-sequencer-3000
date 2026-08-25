@@ -25,6 +25,18 @@ import {
   type DrumLane,
   type DrumVoiceId,
 } from '../src/domain/rhythmTrack.js';
+import {
+  createMonoGlideState,
+  getGlideFrequency,
+  isMonophonic,
+  limitPolyphony,
+  planMonoGlide,
+  GLIDE_CURVE_OPTIONS,
+  GLIDE_MODE_OPTIONS,
+  type GlideCurve,
+  type GlideMode,
+  type GlidePlan,
+} from '../src/audio/glide.js';
 import { renderDrumHitIntoBuffers } from './drumWav.js';
 
 export interface GenerateTrackOptions {
@@ -80,6 +92,16 @@ export interface GenerateTrackOptions {
   pitchEnvelopeAmount?: number;
   /** Exponential steepness for pitch envelope segments (0 = linear). */
   pitchEnvelopeShape?: number;
+  /** Maximum simultaneous voices (1-16). 1 makes the track monophonic. */
+  polyphony?: number;
+  /** Glide time in seconds, or seconds per octave when glideConstantRate is set. 0 disables glide. */
+  glideTime?: number;
+  /** 'legato' glides only between overlapping notes; 'always' glides between every note. */
+  glideMode?: GlideMode;
+  glideConstantRate?: boolean;
+  glideCurve?: GlideCurve;
+  /** True legato: overlapping monophonic notes do not retrigger the envelopes. */
+  monoLegato?: boolean;
   unisonVoices?: number;
   unisonDetune?: number;
   /** Nine Hammond-style drawbar levels (0-8) used by the tonewheel waveform. */
@@ -133,6 +155,7 @@ const ECHO_DELAY_OPTIONS = [
 ] as const;
 
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
+const MAX_POLYPHONY = 16;
 const DEFAULT_TONEWHEEL_DRAWBARS = [8, 8, 8, 0, 0, 0, 0, 0, 0];
 const TONEWHEEL_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
@@ -448,6 +471,12 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     pitchEnvelopeRelease: 0.2,
     pitchEnvelopeAmount: 0,
     pitchEnvelopeShape: 0,
+    polyphony: 8,
+    glideTime: 0,
+    glideMode: 'legato',
+    glideConstantRate: false,
+    glideCurve: 'exponential',
+    monoLegato: true,
     unisonVoices: 1,
     unisonDetune: 12,
     tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
@@ -515,6 +544,12 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     pitchEnvelopeRelease: clamp(track.pitchEnvelopeRelease ?? fallbackTrack.pitchEnvelopeRelease, 0, 20),
     pitchEnvelopeAmount: clamp(track.pitchEnvelopeAmount ?? fallbackTrack.pitchEnvelopeAmount, -48, 48),
     pitchEnvelopeShape: normalizePitchEnvelopeShape(track.pitchEnvelopeShape, fallbackTrack.pitchEnvelopeShape),
+    polyphony: clamp(track.polyphony ?? fallbackTrack.polyphony, 1, MAX_POLYPHONY),
+    glideTime: clamp(track.glideTime ?? fallbackTrack.glideTime, 0, 5),
+    glideMode: GLIDE_MODE_OPTIONS.includes(track.glideMode as GlideMode) ? track.glideMode as GlideMode : fallbackTrack.glideMode,
+    glideConstantRate: Boolean(track.glideConstantRate ?? fallbackTrack.glideConstantRate),
+    glideCurve: GLIDE_CURVE_OPTIONS.includes(track.glideCurve as GlideCurve) ? track.glideCurve as GlideCurve : fallbackTrack.glideCurve,
+    monoLegato: Boolean(track.monoLegato ?? fallbackTrack.monoLegato),
     unisonVoices: clamp(track.unisonVoices ?? fallbackTrack.unisonVoices, 1, 8),
     unisonDetune: clamp(track.unisonDetune ?? fallbackTrack.unisonDetune, 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(track.tonewheelDrawbars),
@@ -901,10 +936,18 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
 
     const track = midi.addTrack();
     track.channel = entry.track.midiChannel - 1;
+    if (entry.track.trackKind !== 'rhythmic' && isMonophonic(entry.track.polyphony) && entry.track.glideTime > 0) {
+      // GM portamento: CC65 switches it on, CC5 is the glide time as a 0-1 fraction of the 5 s range.
+      track.addCC({ number: 65, value: 1, time: 0 });
+      track.addCC({ number: 5, value: Math.min(1, entry.track.glideTime / 5), time: 0 });
+    }
 
     for (const event of events) {
-      for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
-        const note = event.notes[noteIndex];
+      const notes = entry.track.trackKind === 'rhythmic'
+        ? event.notes
+        : limitPolyphony(event.notes, entry.track.polyphony);
+      for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
+        const note = notes[noteIndex];
         track.addNote({
           midi: note,
           time: event.time,
@@ -972,6 +1015,8 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
       }
     }
     const drumFilterState = { low: 0, high: 0, band: 0 };
+    const isMonoTrack = entry.track.trackKind !== 'rhythmic' && isMonophonic(entry.track.polyphony);
+    const glideState = createMonoGlideState();
 
     for (const event of events) {
       const start = event.time;
@@ -1017,8 +1062,25 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
       const startFrame = Math.max(0, Math.floor(start * sampleRate));
       const endFrame = Math.min(frameCount, Math.ceil((start + duration + entry.track.release) * sampleRate));
+      const voicedNotes = limitPolyphony(notes, entry.track.polyphony);
+      // High-note priority already picked the winner, so the glide follows a single pitch.
+      const glidePlan: GlidePlan | null = isMonoTrack && voicedNotes.length > 0
+        ? planMonoGlide(
+          glideState,
+          midiToFrequency(voicedNotes[0], prepared.a4),
+          start,
+          start + duration,
+          {
+            time: entry.track.glideTime,
+            mode: entry.track.glideMode,
+            constantRate: entry.track.glideConstantRate,
+            curve: entry.track.glideCurve,
+            legato: entry.track.monoLegato,
+          },
+        )
+        : null;
 
-      for (const midiNote of notes) {
+      for (const midiNote of voicedNotes) {
           const voiceCount = entry.track.unisonVoices;
 
           for (let voice = 0; voice < voiceCount; voice += 1) {
@@ -1067,7 +1129,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
                 getPitchEnvelopeMidiOffset(entry.track, pitchEnvelopeLevel) / 12,
               );
               const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
-              const filterCutoff = getFilterFrequency(entry.track, notes, filterEnvelopeLevel, prepared.a4);
+              const filterCutoff = getFilterFrequency(entry.track, voicedNotes, filterEnvelopeLevel, prepared.a4);
 
               const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, tonewheel);
               const sample = applySimpleFilter(
@@ -1080,7 +1142,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               trackLeft[frame] += sample * leftPan;
               trackRight[frame] += sample * rightPan;
 
-              phase += phaseIncrement * vibrato * pitchEnvelopeRatio;
+              const glideRatio = glidePlan && glidePlan.seconds > 0
+                ? getGlideFrequency(glidePlan, t) / glidePlan.toFrequency
+                : 1;
+              phase += phaseIncrement * vibrato * pitchEnvelopeRatio * glideRatio;
               if (phase >= 1) {
                 phase -= Math.floor(phase);
               }

@@ -21,7 +21,7 @@ export interface PitchEnvelopeSynthOptions extends SynthOptions {
  * Used by PolySynth so each voice gets independent pitch-envelope state.
  */
 export class PitchEnvelopeSynth extends Tone.Synth {
-  readonly name = 'PitchEnvelopeSynth';
+  readonly name: string = 'PitchEnvelopeSynth';
 
   readonly pitchEnvelope: Tone.Envelope;
   private readonly pitchCents: Tone.Multiply;

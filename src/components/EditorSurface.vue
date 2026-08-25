@@ -8,7 +8,7 @@
         <v-tab value="time-warp" prepend-icon="mdi-chart-sankey">Time Warp</v-tab>
         <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
         <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="envelopes" prepend-icon="mdi-chart-bell-curve-cumulative">Envelopes</v-tab>
-        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="unison" prepend-icon="mdi-account-voice">Unison</v-tab>
+        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="unison" prepend-icon="mdi-account-voice">Voices &amp; Glide</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Tremolo/Vibrato</v-tab>
         <v-tab value="drive" prepend-icon="mdi-lightning-bolt-outline">Tanh Drive</v-tab>
         <v-tab value="chorus" prepend-icon="mdi-blur">Chorus</v-tab>
@@ -372,6 +372,61 @@
         </v-window-item>
 
         <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="unison" class="control-tab-panel">
+          <div class="envelope-section-label">Polyphony</div>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider :label="'Voices (' + (draftTrack.polyphony <= 1 ? 'mono' : draftTrack.polyphony) + ')'" :min="1" :max="maxTrackPolyphony" :step="1" v-model="draftTrack.polyphony" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+
+          <div class="envelope-section-label envelope-section-label--spaced">Glide (monophonic only)</div>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <EditableSlider
+                :label="'Glide Time (' + Number(draftTrack.glideTime).toFixed(3) + (draftTrack.glideConstantRate ? 's / octave)' : 's)')"
+                :min="0"
+                :max="5"
+                :step="0.001"
+                v-model="draftTrack.glideTime"
+                :disabled="draftTrack.polyphony > 1"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-select
+                v-model="draftTrack.glideMode"
+                label="Glide Mode"
+                :items="glideModeOptions"
+                :disabled="draftTrack.polyphony > 1"
+                hide-details="auto"
+                density="comfortable"
+                variant="outlined"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-select
+                v-model="draftTrack.glideCurve"
+                label="Glide Curve"
+                :items="glideCurveOptions"
+                :disabled="draftTrack.polyphony > 1"
+                hide-details="auto"
+                density="comfortable"
+                variant="outlined"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+          <v-row class="compact-row">
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.glideConstantRate" label="Constant Rate (time per octave)" :disabled="draftTrack.polyphony > 1" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-switch v-model="draftTrack.monoLegato" label="Legato (overlapping notes keep the envelopes)" :disabled="draftTrack.polyphony > 1" hide-details density="compact" @update:modelValue="handleTrackDraftChange" />
+            </v-col>
+          </v-row>
+
+          <div class="envelope-section-label envelope-section-label--spaced">Unison</div>
           <v-row class="compact-row">
             <v-col cols="12" md="6">
               <EditableSlider :label="'Unison Voices (' + draftTrack.unisonVoices + ')'" :min="1" :max="8" :step="1" v-model="draftTrack.unisonVoices" @update:modelValue="handleTrackDraftChange" />
@@ -717,6 +772,7 @@ import {
   clonePresetTrackData,
   DEFAULT_PRESET_TRACK_DATA,
   ECHO_DELAY_OPTIONS,
+  MAX_TRACK_POLYPHONY,
   MODULATION_RATE_OPTIONS,
   PHASER_STAGE_OPTIONS,
   PITCH_ENVELOPE_SHAPE_MAX,
@@ -765,6 +821,15 @@ export default defineComponent({
       skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
       pitchEnvelopeShapeMin: PITCH_ENVELOPE_SHAPE_MIN,
       pitchEnvelopeShapeMax: PITCH_ENVELOPE_SHAPE_MAX,
+      maxTrackPolyphony: MAX_TRACK_POLYPHONY,
+      glideModeOptions: [
+        { title: 'Legato (overlapping notes)', value: 'legato' },
+        { title: 'Always', value: 'always' },
+      ],
+      glideCurveOptions: [
+        { title: 'Exponential (constant cents/s)', value: 'exponential' },
+        { title: 'Linear (constant Hz/s)', value: 'linear' },
+      ],
       customTimeWarpCurve: CUSTOM_TIME_WARP_CURVE,
       timeWarpCurveOptions: [
         { title: 'Custom expression', value: CUSTOM_TIME_WARP_CURVE },
