@@ -162,23 +162,46 @@
           </div>
         </div>
 
-        <div v-show="!controlDeckCollapsed" class="toolbar-panel track-strip-panel">
-          <TrackStrip
-            :tracks="tracks"
-            :selected-track-id="selectedTrackId"
-            :track-mix-states="trackMixStates"
-            :bitmask-sequence-input="bitmaskSequenceInput"
-            :loop-duration-seconds="loopDurationSeconds"
-            :bpm="bpm"
-            @add-track="addTrack"
-            @select-track="handleTrackSelection"
-            @track-name-input="handleTrackNameInput"
-            @commit-track-name="commitTrackName"
-            @toggle-muted="toggleTrackMuted"
-            @toggle-soloed="toggleTrackSoloed"
-            @remove-track="removeTrack"
-            @bitmask-sequence-input="handleBitmaskSequenceInput"
-          />
+        <div
+          v-show="!controlDeckCollapsed"
+          class="track-drawer"
+          :class="{ expanded: trackDrawerExpanded }"
+        >
+          <button
+            type="button"
+            class="track-drawer-toggle"
+            aria-controls="track-drawer-panel"
+            :aria-expanded="trackDrawerExpanded ? 'true' : 'false'"
+            :title="trackDrawerExpanded ? 'Hide tracks' : 'Show tracks'"
+            @click="trackDrawerExpanded = !trackDrawerExpanded"
+          >
+            <v-icon size="18">{{ trackDrawerExpanded ? 'mdi-chevron-right' : 'mdi-chevron-left' }}</v-icon>
+            <span class="track-drawer-label">Tracks</span>
+            <span class="track-drawer-count">{{ tracks.length }}</span>
+          </button>
+
+          <div
+            v-show="trackDrawerExpanded"
+            id="track-drawer-panel"
+            class="toolbar-panel track-strip-panel"
+          >
+            <TrackStrip
+              :tracks="tracks"
+              :selected-track-id="selectedTrackId"
+              :track-mix-states="trackMixStates"
+              :bitmask-sequence-input="bitmaskSequenceInput"
+              :loop-duration-seconds="loopDurationSeconds"
+              :bpm="bpm"
+              @add-track="addTrack"
+              @select-track="handleTrackSelection"
+              @track-name-input="handleTrackNameInput"
+              @commit-track-name="commitTrackName"
+              @toggle-muted="toggleTrackMuted"
+              @toggle-soloed="toggleTrackSoloed"
+              @remove-track="removeTrack"
+              @bitmask-sequence-input="handleBitmaskSequenceInput"
+            />
+          </div>
         </div>
       </div>
 
@@ -517,6 +540,7 @@ export default defineComponent({
       transportMenuOpen: false,
       controlDeckHeight: 0,
       controlDeckCollapsed: false,
+      trackDrawerExpanded: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
       rebuildTrackLoopsTimer: null as number | null,
     };
@@ -2715,6 +2739,71 @@ export default defineComponent({
   backdrop-filter: blur(12px);
 }
 
+.track-drawer {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.track-drawer.expanded {
+  width: 100%;
+}
+
+.track-drawer-toggle {
+  flex: 0 0 34px;
+  min-width: 34px;
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 5px;
+  border: 1px solid rgba(0, 255, 209, 0.46);
+  background: #000000;
+  color: #ecf8ff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42), 0 0 14px rgba(0, 255, 209, 0.12);
+  cursor: pointer;
+}
+
+.track-drawer-toggle:hover,
+.track-drawer-toggle:focus-visible {
+  border-color: rgba(0, 255, 209, 0.88);
+  background: rgba(0, 255, 209, 0.1);
+}
+
+.track-drawer-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: rgba(236, 248, 255, 0.92);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.track-drawer-count {
+  min-width: 20px;
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 79, 163, 0.45);
+  color: #ffd1e7;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.track-strip-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: calc(100vh - 100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .brand-group {
   flex: 1 1 auto;
   justify-content: center;
@@ -2891,6 +2980,20 @@ export default defineComponent({
   .toolbar-panel {
     padding: 8px 9px;
     border-radius: 0;
+  }
+
+  .track-drawer {
+    max-width: calc(100vw - 10px);
+  }
+
+  .track-drawer-toggle {
+    flex-basis: 32px;
+    min-width: 32px;
+    min-height: 96px;
+  }
+
+  .track-strip-panel {
+    padding: 7px;
   }
 
   .brand-group {
