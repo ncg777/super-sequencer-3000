@@ -2774,7 +2774,6 @@ export default defineComponent({
 .track-drawer-toggle:focus-visible {
   border-color: rgba(0, 255, 209, 0.88);
   background: rgba(0, 255, 209, 0.1);
-  outline: none;
 }
 
 .track-drawer-label {
