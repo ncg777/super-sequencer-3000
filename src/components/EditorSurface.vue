@@ -319,6 +319,70 @@
             </v-col>
           </v-row>
           <v-row class="compact-row">
+            <v-col cols="12">
+              <v-switch
+                :model-value="draftTrack.tonewheelWavetable.enabled"
+                label="Multidimensional wavetable"
+                hint="Morph between any number of tonewheel configurations across independent axes."
+                persistent-hint
+                density="compact"
+                @update:modelValue="setTonewheelWavetableEnabled(Boolean($event))"
+              />
+            </v-col>
+          </v-row>
+          <template v-if="draftTrack.tonewheelWavetable.enabled">
+            <v-row v-for="(dimension, dimensionIndex) in draftTrack.tonewheelWavetable.dimensions" :key="dimensionIndex" class="compact-row">
+              <v-col cols="12" md="4">
+                <v-text-field v-model="dimension.name" :label="`Axis ${dimensionIndex + 1}`" density="compact" variant="outlined" hide-details @change="handleTrackDraftChange" />
+              </v-col>
+              <v-col cols="10" md="7">
+                <EditableSlider :label="`${dimension.name} (${Math.round(dimension.value * 100)}%)`" :min="0" :max="1" :step="0.01" v-model="dimension.value" @update:modelValue="handleWavetableMorphChange" />
+              </v-col>
+              <v-col cols="2" md="1">
+                <v-btn icon="mdi-delete-outline" size="small" variant="text" :aria-label="`Remove ${dimension.name}`" @click="removeWavetableDimension(dimensionIndex)" />
+              </v-col>
+            </v-row>
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-btn prepend-icon="mdi-axis-arrow" variant="outlined" block @click="addWavetableDimension">Add morph axis</v-btn>
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-btn prepend-icon="mdi-content-save-plus-outline" variant="outlined" block @click="addWavetableConfiguration">Capture configuration here</v-btn>
+              </v-col>
+            </v-row>
+            <v-row v-if="selectedTonewheelConfiguration">
+              <v-col cols="12" md="8">
+                <v-select
+                  v-model="selectedTonewheelConfigurationIndex"
+                  label="Configuration to edit"
+                  :items="tonewheelConfigurationOptions"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-btn prepend-icon="mdi-delete-outline" variant="outlined" block :disabled="draftTrack.tonewheelWavetable.configurations.length <= 1" @click="removeSelectedWavetableConfiguration">Remove</v-btn>
+              </v-col>
+              <v-col cols="12">
+                <v-text-field v-model="selectedTonewheelConfiguration.name" label="Configuration name" density="compact" variant="outlined" hide-details @change="handleTrackDraftChange" />
+              </v-col>
+              <v-col v-for="(dimension, dimensionIndex) in draftTrack.tonewheelWavetable.dimensions" :key="`position-${dimensionIndex}`" cols="12" md="6">
+                <EditableSlider
+                  :label="`${dimension.name} position (${Math.round(selectedTonewheelConfiguration.position[dimensionIndex] * 100)}%)`"
+                  :min="0"
+                  :max="1"
+                  :step="0.01"
+                  v-model="selectedTonewheelConfiguration.position[dimensionIndex]"
+                  @update:modelValue="handleWavetableMorphChange"
+                />
+              </v-col>
+              <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
+                <EditableSlider :label="`${label} Drawbar (${Number(selectedTonewheelConfiguration.drawbars[index]).toFixed(1)})`" :min="0" :max="8" :step="0.1" v-model="selectedTonewheelConfiguration.drawbars[index]" @update:modelValue="handleWavetableMorphChange" />
+              </v-col>
+            </v-row>
+          </template>
+          <v-row v-else class="compact-row">
             <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
               <EditableSlider :label="label + ' Drawbar (' + draftTrack.tonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="draftTrack.tonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
             </v-col>
@@ -763,6 +827,12 @@ import RhythmTrackControls from './RhythmTrackControls.vue';
 import RhythmSoundControls from './RhythmSoundControls.vue';
 import TimeWarpPreview from './TimeWarpPreview.vue';
 import {
+  interpolateTonewheelDrawbars,
+  MAX_WAVETABLE_CONFIGURATIONS,
+  MAX_WAVETABLE_DIMENSIONS,
+  type TonewheelConfiguration,
+} from '../audio/tonewheelWavetable';
+import {
   CUSTOM_TIME_WARP_CURVE,
   TIME_WARP_CURVE_OPTIONS,
   TIME_WARP_QUANTIZE_OPTIONS,
@@ -843,6 +913,7 @@ export default defineComponent({
         value,
       })),
       activeControlTab: 'sequence' as string,
+      selectedTonewheelConfigurationIndex: 0,
     };
   },
   computed: {
@@ -857,6 +928,15 @@ export default defineComponent({
       const resolution = resolveTimeWarpFunction(this.draftTrack.timeWarpCurve, this.draftTrack.timeWarpExpression);
       return resolution.error ?? '';
     },
+    selectedTonewheelConfiguration(): TonewheelConfiguration | null {
+      return this.draftTrack.tonewheelWavetable.configurations[this.selectedTonewheelConfigurationIndex] ?? null;
+    },
+    tonewheelConfigurationOptions(): Array<{ title: string; value: number }> {
+      return this.draftTrack.tonewheelWavetable.configurations.map((configuration, index) => ({
+        title: `${configuration.name} · ${configuration.position.map((value) => Math.round(value * 100)).join(' / ')}%`,
+        value: index,
+      }));
+    },
   },
   watch: {
     track: {
@@ -866,6 +946,10 @@ export default defineComponent({
         if (nextTrack) {
           const trackKindChanged = nextTrack.trackKind !== this.draftTrack.trackKind;
           this.draftTrack = clonePresetTrackData(nextTrack);
+          this.selectedTonewheelConfigurationIndex = Math.min(
+            this.selectedTonewheelConfigurationIndex,
+            Math.max(0, this.draftTrack.tonewheelWavetable.configurations.length - 1),
+          );
           if (trackKindChanged) {
             this.activeControlTab = 'sequence';
           }
@@ -901,6 +985,68 @@ export default defineComponent({
     },
     handleTrackDraftChange() {
       this.$emit('track-change', clonePresetTrackData(this.draftTrack));
+    },
+    setTonewheelWavetableEnabled(enabled: boolean) {
+      const wavetable = this.draftTrack.tonewheelWavetable;
+      if (enabled && wavetable.dimensions.length === 0) {
+        wavetable.dimensions = [{ name: 'Brightness', value: 0 }];
+        wavetable.configurations = [
+          { name: 'Original', position: [0], drawbars: this.draftTrack.tonewheelDrawbars.slice() },
+          { name: 'Bright', position: [1], drawbars: [0, 0, 8, 8, 6, 5, 3, 2, 1] },
+        ];
+      }
+      wavetable.enabled = enabled;
+      this.selectedTonewheelConfigurationIndex = 0;
+      this.handleWavetableMorphChange();
+    },
+    addWavetableDimension() {
+      const wavetable = this.draftTrack.tonewheelWavetable;
+      if (wavetable.dimensions.length >= MAX_WAVETABLE_DIMENSIONS) {
+        return;
+      }
+      wavetable.dimensions.push({ name: `Morph ${wavetable.dimensions.length + 1}`, value: 0.5 });
+      wavetable.configurations.forEach((configuration) => configuration.position.push(0.5));
+      this.handleTrackDraftChange();
+    },
+    removeWavetableDimension(index: number) {
+      const wavetable = this.draftTrack.tonewheelWavetable;
+      if (wavetable.dimensions.length <= 1) {
+        this.setTonewheelWavetableEnabled(false);
+        return;
+      }
+      wavetable.dimensions.splice(index, 1);
+      wavetable.configurations.forEach((configuration) => configuration.position.splice(index, 1));
+      this.handleWavetableMorphChange();
+    },
+    addWavetableConfiguration() {
+      const wavetable = this.draftTrack.tonewheelWavetable;
+      if (wavetable.configurations.length >= MAX_WAVETABLE_CONFIGURATIONS) {
+        return;
+      }
+      const drawbars = interpolateTonewheelDrawbars(wavetable, this.draftTrack.tonewheelDrawbars);
+      wavetable.configurations.push({
+        name: `Configuration ${wavetable.configurations.length + 1}`,
+        position: wavetable.dimensions.map((dimension) => dimension.value),
+        drawbars,
+      });
+      this.selectedTonewheelConfigurationIndex = wavetable.configurations.length - 1;
+      this.handleTrackDraftChange();
+    },
+    removeSelectedWavetableConfiguration() {
+      const configurations = this.draftTrack.tonewheelWavetable.configurations;
+      if (configurations.length <= 1) {
+        return;
+      }
+      configurations.splice(this.selectedTonewheelConfigurationIndex, 1);
+      this.selectedTonewheelConfigurationIndex = Math.min(this.selectedTonewheelConfigurationIndex, configurations.length - 1);
+      this.handleWavetableMorphChange();
+    },
+    handleWavetableMorphChange() {
+      this.draftTrack.tonewheelDrawbars = interpolateTonewheelDrawbars(
+        this.draftTrack.tonewheelWavetable,
+        this.draftTrack.tonewheelDrawbars,
+      );
+      this.handleTrackDraftChange();
     },
     handleReverbDraftChange() {
       this.$emit('reverb-change', { ...this.draftReverb });
