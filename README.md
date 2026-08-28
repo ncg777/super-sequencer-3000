@@ -15,6 +15,21 @@ GateRunner stores sequences as named presets in the browser.
 - Use **New** to create a fresh default preset.
 - Existing single-preset local storage data is migrated automatically the first time the new preset system loads.
 
+### Multidimensional Tonewheel Wavetables
+
+Each melodic track can turn its drawbar registration into a sparse multidimensional
+wavetable from the **Tonewheel** tab.
+
+- Enabling the wavetable creates a useful **Brightness** axis with the current sound
+  at one end and a bright registration at the other.
+- Add independent morph axes without having to fill every corner of a hypercube.
+- Move the axis controls to crossfade smoothly between all nearby configurations.
+- **Capture configuration here** snapshots the interpolated sound at the current
+  position; configurations can then be renamed, moved, and edited.
+- The current interpolated registration is also stored in the legacy drawbar field.
+  Older presets therefore sound unchanged, and older GateRunner versions can still
+  play a representative snapshot of newly saved presets.
+
 ### Import And Export
 
 Preset files use JSON.

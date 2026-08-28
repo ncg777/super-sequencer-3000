@@ -317,6 +317,7 @@ import { MonoGlideSynth } from './audio/monoGlideSynth';
 import { isMonophonic, limitPolyphony, type GlideCurve, type GlideMode } from './audio/glide';
 import { claimVoices, getSynthVoiceCount, retainVoicePool, type SoundingNote } from './audio/voicePool';
 import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
+import { interpolateTonewheelDrawbars } from './audio/tonewheelWavetable';
 import {
   quantizeNormalizedTime,
   resolveTimeWarpFunction,
@@ -1878,6 +1879,7 @@ export default defineComponent({
       const partialIndices = [1, 3, 2, 4, 6, 8, 10, 12, 16];
       const maximumPartial = 64;
       const partials = Array.from({ length: maximumPartial }, () => 0);
+      const drawbars = interpolateTonewheelDrawbars(track.tonewheelWavetable, track.tonewheelDrawbars);
 
       const addWaveformHarmonics = (basePartial: number, amplitude: number) => {
         for (let harmonic = 1; basePartial * harmonic <= maximumPartial; harmonic += 1) {
@@ -1890,7 +1892,7 @@ export default defineComponent({
       };
 
       partialIndices.forEach((partialIndex, drawbarIndex) => {
-        addWaveformHarmonics(partialIndex, track.tonewheelDrawbars[drawbarIndex] / 8);
+        addWaveformHarmonics(partialIndex, drawbars[drawbarIndex] / 8);
       });
 
       const normalizer = Math.max(1, Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
@@ -1900,7 +1902,8 @@ export default defineComponent({
       // The spectrum only depends on the waveform and the drawbars, and Tone rescans its
       // periodic-wave cache with a deep compare for every partial array it is handed, so
       // the same array instance is reused for identical settings.
-      const key = `${track.waveform}|${track.tonewheelDrawbars.join(',')}`;
+      const drawbars = interpolateTonewheelDrawbars(track.tonewheelWavetable, track.tonewheelDrawbars);
+      const key = `${track.waveform}|${drawbars.join(',')}`;
       const cached = tonewheelPartialCache.get(key);
       if (cached) {
         return cached;
@@ -2346,6 +2349,7 @@ export default defineComponent({
       return [
         track.waveform,
         track.tonewheelDrawbars,
+        JSON.stringify(track.tonewheelWavetable),
         track.unisonVoices,
         track.unisonDetune,
         track.attack,

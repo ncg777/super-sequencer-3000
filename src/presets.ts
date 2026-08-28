@@ -23,6 +23,13 @@ import {
   type DrumLane,
 } from './domain/rhythmTrack.js';
 import { normalizeBitmaskSequenceInput } from './trackActivation.js';
+import {
+  MAX_WAVETABLE_CONFIGURATIONS,
+  MAX_WAVETABLE_DIMENSIONS,
+  type TonewheelConfiguration,
+  type TonewheelWavetable,
+  type TonewheelWavetableDimension,
+} from './audio/tonewheelWavetable.js';
 
 export type TrackKind = 'melodic' | 'rhythmic';
 
@@ -90,6 +97,7 @@ export interface PresetTrackData {
   unisonVoices: number;
   unisonDetune: number;
   tonewheelDrawbars: number[];
+  tonewheelWavetable: TonewheelWavetable;
   tremoloEnabled: boolean;
   tremoloFrequency: number;
   tremoloDepth: number;
@@ -386,6 +394,11 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   unisonVoices: 1,
   unisonDetune: 0,
   tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
+  tonewheelWavetable: {
+    enabled: false,
+    dimensions: [],
+    configurations: [],
+  },
   tremoloEnabled: false,
   tremoloFrequency: 5,
   tremoloDepth: 0.35,
@@ -557,6 +570,40 @@ function normalizeWaveform(value: unknown): PresetTrackData['waveform'] {
 function normalizeTonewheelDrawbars(value: unknown): number[] {
   const raw = Array.isArray(value) ? value : [];
   return DEFAULT_TONEWHEEL_DRAWBARS.map((fallback, index) => clamp(parseNumber(raw[index], fallback), 0, 8));
+}
+
+function normalizeTonewheelWavetable(value: unknown): TonewheelWavetable {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<TonewheelWavetable>;
+  const rawDimensions = Array.isArray(raw.dimensions) ? raw.dimensions : [];
+  const dimensions: TonewheelWavetableDimension[] = rawDimensions
+    .slice(0, MAX_WAVETABLE_DIMENSIONS)
+    .map((value, index) => {
+      const dimension = (typeof value === 'object' && value !== null ? value : {}) as Partial<TonewheelWavetableDimension>;
+      const name = typeof dimension.name === 'string' ? dimension.name.trim().slice(0, 40) : '';
+      return {
+        name: name || `Morph ${index + 1}`,
+        value: clamp(parseNumber(dimension.value, 0), 0, 1),
+      };
+    });
+  const rawConfigurations = Array.isArray(raw.configurations) ? raw.configurations : [];
+  const configurations: TonewheelConfiguration[] = rawConfigurations
+    .slice(0, MAX_WAVETABLE_CONFIGURATIONS)
+    .map((value, index) => {
+      const configuration = (typeof value === 'object' && value !== null ? value : {}) as Partial<TonewheelConfiguration>;
+      const name = typeof configuration.name === 'string' ? configuration.name.trim().slice(0, 40) : '';
+      const rawPosition = Array.isArray(configuration.position) ? configuration.position : [];
+      return {
+        name: name || `Configuration ${index + 1}`,
+        position: dimensions.map((_, dimensionIndex) => clamp(parseNumber(rawPosition[dimensionIndex], 0), 0, 1)),
+        drawbars: normalizeTonewheelDrawbars(configuration.drawbars),
+      };
+    });
+
+  return {
+    enabled: Boolean(raw.enabled) && dimensions.length > 0 && configurations.length > 0,
+    dimensions,
+    configurations,
+  };
 }
 
 function normalizeFilterType(value: unknown): PresetTrackData['filterType'] {
@@ -742,6 +789,15 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
     tonewheelDrawbars: track.tonewheelDrawbars.slice(),
+    tonewheelWavetable: {
+      enabled: track.tonewheelWavetable.enabled,
+      dimensions: track.tonewheelWavetable.dimensions.map((dimension) => ({ ...dimension })),
+      configurations: track.tonewheelWavetable.configurations.map((configuration) => ({
+        name: configuration.name,
+        position: configuration.position.slice(),
+        drawbars: configuration.drawbars.slice(),
+      })),
+    },
     tremoloEnabled: track.tremoloEnabled,
     tremoloFrequency: track.tremoloFrequency,
     tremoloDepth: track.tremoloDepth,
@@ -847,6 +903,7 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
+    tonewheelWavetable: normalizeTonewheelWavetable(raw.tonewheelWavetable),
     tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
     tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
     tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
