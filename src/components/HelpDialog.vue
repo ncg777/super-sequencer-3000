@@ -47,8 +47,36 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Effects</strong>: Add optional per-track feedback echo and send each track into the global pink-noise convolution reverb.</li>
           <li><strong>Chorus/Flanger/Phaser</strong>: Tempo-synced modulation effects whose LFO completes one cycle per selected note division (e.g. 4/1 sweeps over four whole notes, 1/8T warbles per eighth triplet), so they follow the BPM automatically.</li>
           <li><strong>Phaser</strong>: A classic phaser pedal: a cascade of first-order allpass stages (each stage pair creates one notch) whose poles are spaced one octave apart around the Center frequency and swept by the LFO over ±(Sweep % of 5 octaves). Stages picks the pole count (classic pedals use 4), Feedback resonates the notches, Resonance sharpens each pole, and Wet sets the dry/phase-shifted mix (always at least 50% wet so the notches stay audible).</li>
+          <li><strong>Multidimensional Tonewheel</strong>: For melodic, non-noise tracks, build a morphable tonewheel spectrum from sparse drawbar configurations and animate its position with routed vector LFOs.</li>
           <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
           <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft, including an automatic rest trail for releases and effects.</li>
+        </ul>
+
+        <h3 class="mt-4 mb-2">Multidimensional Tonewheel Wavetable</h3>
+        <p>The Tonewheel tab turns a melodic track's nine drawbars into a morphable spectrum. Instead of keeping one fixed drawbar registration, you place named registrations at points in a space with up to 16 independent morph axes. GateRunner continuously interpolates the drawbars at the current position, so one axis could represent brightness, another body, and another harmonic complexity.</p>
+        <p>This feature affects the additive tonewheel spectrum used by melodic waveforms. Rhythmic tracks do not use it, and noise waveforms bypass the tonewheel drawbar spectrum.</p>
+
+        <h4 class="mt-3 mb-2">Axes and Configurations</h4>
+        <ul>
+          <li><strong>Enable Multidimensional wavetable</strong>: Enabling it for the first time creates a <em>Brightness</em> axis plus <em>Original</em> and <em>Bright</em> starting configurations. Disabling it returns the track to its single fixed set of drawbars without deleting the stored wavetable.</li>
+          <li><strong>Morph axes</strong>: Each axis has a name and a current value from 0% to 100%. The current values form the base position used for playback. Use <strong>Add morph axis</strong> to add another independent direction; existing configurations receive a centered 50% coordinate on the new axis.</li>
+          <li><strong>Configurations</strong>: A configuration stores a name, one position per axis, and all nine drawbar levels. Select <strong>Configuration to edit</strong> to rename it, move it in the morph space, or change its registration.</li>
+          <li><strong>Capture configuration here</strong>: Adds a point at the current axis position and initializes its drawbars from the sound currently interpolated there. You can then edit that point into a new registration.</li>
+          <li><strong>Sparse interpolation</strong>: You do not need to define every corner of a multidimensional grid. GateRunner weights nearby configurations by inverse squared distance. Landing exactly on a configuration uses its drawbars exactly; elsewhere, closer configurations contribute more strongly.</li>
+          <li><strong>Limits and removal</strong>: A wavetable supports up to 16 axes and 64 configurations. Removing an axis also removes its coordinate and LFO route from every stored item. Removing the final axis disables the wavetable, and at least one configuration must remain while it is enabled.</li>
+        </ul>
+
+        <h4 class="mt-3 mb-2">Vector Modulation</h4>
+        <p>Up to eight vector LFOs can animate the morph position. For each axis, the movement is its base value plus the LFO output multiplied by <strong>Global depth</strong> and that axis's <strong>Route</strong>. The final position is constrained to the 0%-100% range. Multiple enabled LFOs are applied in list order.</p>
+        <ul>
+          <li><strong>Shape</strong>: Choose sine, triangle, rising or falling saw, square, sample-and-hold, or smooth random motion.</li>
+          <li><strong>Polarity</strong>: Bipolar motion ranges from -1 to +1 around the base position. Unipolar motion ranges from 0 to +1; a negative route can make that motion travel downward instead.</li>
+          <li><strong>Rate</strong>: With <strong>Tempo sync</strong> enabled, the selected note division is the duration of one complete LFO cycle; dotted and triplet divisions are available. With sync disabled, set a free rate from 0.01 Hz to 20 Hz.</li>
+          <li><strong>Phase mode</strong>: <em>Free running</em> follows transport time continuously. <em>Retrigger on note event</em> restarts the phase for each track-wide note event. <em>Retrigger when song is played</em> restarts it at playback start.</li>
+          <li><strong>Start phase and smoothing</strong>: Start phase offsets the cycle from 0° to almost 360°. Smoothing softens abrupt or random changes, which is especially useful with square and sample-and-hold shapes.</li>
+          <li><strong>Axis routes</strong>: Each route ranges from -100% to +100%. A value of 0% disconnects that LFO from the axis, positive values follow the LFO, and negative values reverse it. One LFO can move several axes at different strengths and directions.</li>
+          <li><strong>Frequency modulation</strong>: An LFO may use an earlier LFO in the list as its frequency-modulation source. The <strong>FM index</strong> sets the phase deviation in cycles; positive and negative values bend the destination motion in opposite directions. Only earlier LFOs are offered as sources, preventing circular modulation.</li>
+          <li><strong>Global depth</strong>: Scales all routes from that LFO at once. Setting depth to 0%, disabling the LFO, or setting every route to 0% leaves the base morph position unchanged.</li>
         </ul>
 
         <h3 class="mt-4 mb-2">How Notes Are Computed in the Encoding Scheme</h3>
