@@ -1962,7 +1962,7 @@ export default defineComponent({
 
       const frequencies = this.getTrackPlaybackFrequencies(track, notes);
       const synth = this.ensureTrackSynth(chain, track);
-      const modulationTime = modulationTimeSeconds ?? Tone.getTransport().seconds;
+      const modulationTime = modulationTimeSeconds ?? Tone.getTransport().getSecondsAtTime(when);
       chain.modulationNoteStartSeconds = modulationTime;
       this.applyTonewheelModulation(track, chain, modulationTime);
       if (synth instanceof MonoGlideSynth) {
@@ -2428,10 +2428,14 @@ export default defineComponent({
         return;
       }
       if (!chain.wavetableLfoLoop) {
-        chain.wavetableLfoLoop = markRaw(new Tone.Loop(() => {
+        chain.wavetableLfoLoop = markRaw(new Tone.Loop((time) => {
           const currentTrack = chain.modulationTrack;
           if (currentTrack) {
-            this.applyTonewheelModulation(currentTrack, chain, Tone.getTransport().seconds);
+            this.applyTonewheelModulation(
+              currentTrack,
+              chain,
+              Tone.getTransport().getSecondsAtTime(time),
+            );
           }
         }, 1 / 30));
         chain.wavetableLfoLoop.start(0);

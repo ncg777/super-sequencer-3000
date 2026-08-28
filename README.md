@@ -33,6 +33,8 @@ wavetable from the **Tonewheel** tab.
   every morph axis, inspired by Prophet VS vector motion and Wavestation wave sequencing.
 - LFOs support free rates or dotted/triplet tempo divisions, free/note/bar phase modes,
   bipolar or unipolar output, phase offset, smoothing, and smooth-random motion.
+- Note retrigger restarts the track-wide vector trajectory for all sounding voices so
+  the shared timbral space stays coherent during polyphonic passages.
 - Later LFOs can take an earlier LFO as an FM source, creating acyclic cascades similar
   to modern wavetable modulation matrices while keeping playback deterministic.
 - Browser playback updates the spectrum at control rate; browser and CLI WAV exports
