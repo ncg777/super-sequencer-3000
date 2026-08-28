@@ -29,6 +29,14 @@ wavetable from the **Tonewheel** tab.
 - The current interpolated registration is also stored in the legacy drawbar field.
   Older presets therefore sound unchanged, and older GateRunner versions can still
   play a representative snapshot of newly saved presets.
+- Add up to eight **Vector LFOs** and route each one independently and bipolarly to
+  every morph axis, inspired by Prophet VS vector motion and Wavestation wave sequencing.
+- LFOs support free rates or dotted/triplet tempo divisions, free/note/bar phase modes,
+  bipolar or unipolar output, phase offset, smoothing, and smooth-random motion.
+- Later LFOs can take an earlier LFO as an FM source, creating acyclic cascades similar
+  to modern wavetable modulation matrices while keeping playback deterministic.
+- Browser playback updates the spectrum at control rate; browser and CLI WAV exports
+  render the same modulation against absolute song time.
 
 ### Import And Export
 

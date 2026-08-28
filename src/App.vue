@@ -317,7 +317,7 @@ import { MonoGlideSynth } from './audio/monoGlideSynth';
 import { isMonophonic, limitPolyphony, type GlideCurve, type GlideMode } from './audio/glide';
 import { claimVoices, getSynthVoiceCount, retainVoicePool, type SoundingNote } from './audio/voicePool';
 import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
-import { interpolateTonewheelDrawbars } from './audio/tonewheelWavetable';
+import { interpolateModulatedTonewheelDrawbars } from './audio/tonewheelWavetable';
 import {
   quantizeNormalizedTime,
   resolveTimeWarpFunction,
@@ -407,6 +407,9 @@ interface TrackAudioChain {
   drumRebuildTimer: number | null;
   routingSignature: string;
   voiceSignature: string;
+  wavetableLfoLoop: Tone.Loop | null;
+  modulationTrack: PresetTrackData | null;
+  modulationNoteStartSeconds: number;
   /** Notes the polyphonic engine is currently holding, oldest first, for voice stealing. */
   soundingNotes: SoundingNote[];
 }
@@ -1257,7 +1260,7 @@ export default defineComponent({
                 instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
               }
             } else {
-              this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity);
+              this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity, event.time);
             }
           }
         }
@@ -1501,6 +1504,9 @@ export default defineComponent({
         drumRebuildTimer: null,
         routingSignature: '',
         voiceSignature: '',
+        wavetableLfoLoop: null,
+        modulationTrack: null,
+        modulationNoteStartSeconds: 0,
         soundingNotes: [],
       });
     },
@@ -1870,7 +1876,7 @@ export default defineComponent({
       return track.unisonVoices > 1 ? 'fatcustom' : 'custom';
     },
     /** Linear (unwarped) tonewheel spectrum used as the PD source shape. */
-    getLinearTonewheelPartials(track: PresetTrackData): number[] {
+    getLinearTonewheelPartials(track: PresetTrackData, timeSeconds = 0, noteStartSeconds = 0): number[] {
       // Noise waveforms never use the additive oscillator path.
       if (this.isNoiseWaveform(track.waveform)) {
         return [1];
@@ -1879,7 +1885,16 @@ export default defineComponent({
       const partialIndices = [1, 3, 2, 4, 6, 8, 10, 12, 16];
       const maximumPartial = 64;
       const partials = Array.from({ length: maximumPartial }, () => 0);
-      const drawbars = interpolateTonewheelDrawbars(track.tonewheelWavetable, track.tonewheelDrawbars);
+      const drawbars = interpolateModulatedTonewheelDrawbars(
+        track.tonewheelWavetable,
+        track.tonewheelDrawbars,
+        {
+          timeSeconds,
+          noteStartSeconds,
+          bpm: this.bpm,
+          beatsPerBar: track.numerator * 4 / track.denominator,
+        },
+      );
 
       const addWaveformHarmonics = (basePartial: number, amplitude: number) => {
         for (let harmonic = 1; basePartial * harmonic <= maximumPartial; harmonic += 1) {
@@ -1898,18 +1913,27 @@ export default defineComponent({
       const normalizer = Math.max(1, Math.sqrt(partials.reduce((sum, amplitude) => sum + amplitude * amplitude, 0)));
       return partials.map((amplitude) => amplitude / normalizer);
     },
-    getTonewheelPartials(track: PresetTrackData): number[] {
+    getTonewheelPartials(track: PresetTrackData, timeSeconds = 0, noteStartSeconds = 0): number[] {
       // The spectrum only depends on the waveform and the drawbars, and Tone rescans its
       // periodic-wave cache with a deep compare for every partial array it is handed, so
       // the same array instance is reused for identical settings.
-      const drawbars = interpolateTonewheelDrawbars(track.tonewheelWavetable, track.tonewheelDrawbars);
+      const drawbars = interpolateModulatedTonewheelDrawbars(
+        track.tonewheelWavetable,
+        track.tonewheelDrawbars,
+        {
+          timeSeconds,
+          noteStartSeconds,
+          bpm: this.bpm,
+          beatsPerBar: track.numerator * 4 / track.denominator,
+        },
+      );
       const key = `${track.waveform}|${drawbars.join(',')}`;
       const cached = tonewheelPartialCache.get(key);
       if (cached) {
         return cached;
       }
 
-      const partials = this.getLinearTonewheelPartials(track);
+      const partials = this.getLinearTonewheelPartials(track, timeSeconds, noteStartSeconds);
       // Trailing silent partials only make the periodic wave more expensive to build.
       let length = partials.length;
       while (length > 1 && partials[length - 1] === 0) {
@@ -1929,6 +1953,7 @@ export default defineComponent({
       duration: Tone.Unit.Time,
       when: Tone.Unit.Time,
       velocity: number,
+      modulationTimeSeconds?: number,
     ) {
       if (this.isNoiseWaveform(track.waveform)) {
         this.ensureTrackNoiseSynth(chain).triggerAttackRelease(duration, when, velocity);
@@ -1937,6 +1962,9 @@ export default defineComponent({
 
       const frequencies = this.getTrackPlaybackFrequencies(track, notes);
       const synth = this.ensureTrackSynth(chain, track);
+      const modulationTime = modulationTimeSeconds ?? Tone.getTransport().seconds;
+      chain.modulationNoteStartSeconds = modulationTime;
+      this.applyTonewheelModulation(track, chain, modulationTime);
       if (synth instanceof MonoGlideSynth) {
         synth.triggerNotes(frequencies, duration, when, velocity);
         return;
@@ -2090,6 +2118,7 @@ export default defineComponent({
       chain.chorus?.dispose();
       chain.flanger?.dispose();
       chain.phaser?.dispose();
+      chain.wavetableLfoLoop?.dispose();
       chain.echo?.dispose();
       chain.dryGain.dispose();
       chain.reverbSend.dispose();
@@ -2185,6 +2214,7 @@ export default defineComponent({
       Tone.connectSeries(...signalChain);
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
+      chain.modulationTrack = track;
       this.rebuildDrumInstruments(track, chain);
       this.syncTrackChainNodeOptions(track, chain);
       const routingSignature = this.getTrackRoutingSignature(track);
@@ -2257,6 +2287,7 @@ export default defineComponent({
           chain.synthGain.gain.setValueAtTime(1, now);
         }
       }
+      this.syncTonewheelModulationLoop(track, chain);
 
       if (track.filterEnabled) {
         this.ensureTrackFilter(chain).set({
@@ -2369,6 +2400,42 @@ export default defineComponent({
         track.glideCurve,
         track.monoLegato,
       ].join('|');
+    },
+    applyTonewheelModulation(track: PresetTrackData, chain: TrackAudioChain, timeSeconds: number) {
+      if (!chain.synth || this.isNoiseWaveform(track.waveform)) {
+        return;
+      }
+      const oscillator = {
+        type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
+        count: track.unisonVoices,
+        spread: track.unisonDetune,
+        partials: this.getTonewheelPartials(track, timeSeconds, chain.modulationNoteStartSeconds),
+      };
+      if (chain.synth instanceof MonoGlideSynth) {
+        chain.synth.set({ oscillator } as unknown as Parameters<PitchEnvelopeSynth['set']>[0]);
+      } else {
+        chain.synth.set({ oscillator } as Parameters<Tone.PolySynth<PitchEnvelopeSynth>['set']>[0]);
+      }
+    },
+    syncTonewheelModulationLoop(track: PresetTrackData, chain: TrackAudioChain) {
+      const hasActiveRoutes = track.tonewheelWavetable.enabled
+        && (track.tonewheelWavetable.lfos ?? []).some((lfo) => (
+          lfo.enabled && lfo.depth > 0 && lfo.routes.some((amount) => amount !== 0)
+        ));
+      if (!hasActiveRoutes || track.trackKind === 'rhythmic' || this.isNoiseWaveform(track.waveform)) {
+        chain.wavetableLfoLoop?.dispose();
+        chain.wavetableLfoLoop = null;
+        return;
+      }
+      if (!chain.wavetableLfoLoop) {
+        chain.wavetableLfoLoop = markRaw(new Tone.Loop(() => {
+          const currentTrack = chain.modulationTrack;
+          if (currentTrack) {
+            this.applyTonewheelModulation(currentTrack, chain, Tone.getTransport().seconds);
+          }
+        }, 1 / 30));
+        chain.wavetableLfoLoop.start(0);
+      }
     },
     /**
      * Force-restart every free-running modulator on the track chain.

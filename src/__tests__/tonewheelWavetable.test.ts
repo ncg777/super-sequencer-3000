@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { interpolateTonewheelDrawbars, type TonewheelWavetable } from '../audio/tonewheelWavetable.js';
+import {
+  getModulatedTonewheelPosition,
+  interpolateTonewheelDrawbars,
+  type TonewheelWavetable,
+  type TonewheelWavetableLfo,
+} from '../audio/tonewheelWavetable.js';
 import { DEFAULT_PRESET_TRACK_DATA, normalizePresetTrackData } from '../presets.js';
 
 function wavetable(values: number[]): TonewheelWavetable {
@@ -9,6 +14,26 @@ function wavetable(values: number[]): TonewheelWavetable {
     dimensions: values.map((value, index) => ({ name: `Axis ${index + 1}`, value })),
     configurations: [],
     lfos: [],
+  };
+}
+
+function vectorLfo(overrides: Partial<TonewheelWavetableLfo> = {}): TonewheelWavetableLfo {
+  return {
+    name: 'Vector LFO',
+    enabled: true,
+    waveform: 'sine',
+    sync: false,
+    rateHz: 1,
+    syncRate: '1/4',
+    phase: 0,
+    depth: 0.5,
+    polarity: 'bipolar',
+    retrigger: 'free',
+    smoothing: 0,
+    fmSource: -1,
+    fmAmount: 0,
+    routes: [1],
+    ...overrides,
   };
 }
 
@@ -48,7 +73,6 @@ test('normalization clamps imported wavetable values and fills missing coordinat
       lfos: [],
     },
   });
-
   assert.deepEqual(normalized.tonewheelWavetable.dimensions, [
     { name: 'Morph 1', value: 1 },
     { name: 'Body', value: 0 },
@@ -58,4 +82,59 @@ test('normalization clamps imported wavetable values and fills missing coordinat
     position: [0.25, 0],
     drawbars: Array(9).fill(8),
   });
+});
+
+test('routes tempo-synced bipolar modulation independently across dimensions', () => {
+    const table = wavetable([0.5, 0.5]);
+    table.lfos = [vectorLfo({ sync: true, syncRate: '1/4', routes: [0.5, -1] })];
+
+    assert.deepEqual(
+      getModulatedTonewheelPosition(table, { timeSeconds: 0.125, bpm: 120 }),
+      [0.75, 0],
+    );
+});
+
+test('supports deterministic cascaded frequency modulation between vector LFOs', () => {
+    const table = wavetable([0]);
+    table.lfos = [
+      vectorLfo({ phase: 0.25, depth: 1, routes: [0] }),
+      vectorLfo({ fmSource: 0, fmAmount: 0.25, depth: 1, routes: [1] }),
+    ];
+
+    assert.equal(getModulatedTonewheelPosition(table, { timeSeconds: 0, bpm: 120 })[0], 1);
+});
+
+test('note retrigger resets LFO phase while free-running LFOs retain transport phase', () => {
+    const table = wavetable([0.5]);
+    table.lfos = [vectorLfo({ retrigger: 'note' })];
+
+    assert.equal(getModulatedTonewheelPosition(table, {
+      timeSeconds: 10,
+      noteStartSeconds: 10,
+      bpm: 120,
+    })[0], 0.5);
+    assert.equal(getModulatedTonewheelPosition(table, {
+      timeSeconds: 10.25,
+      noteStartSeconds: 10,
+      bpm: 120,
+    })[0], 1);
+});
+
+test('normalization clamps vector routes and prevents cyclic FM sources', () => {
+    const normalized = normalizePresetTrackData({
+      tonewheelWavetable: {
+        enabled: true,
+        dimensions: [{ name: 'X', value: 0.5 }],
+        configurations: [{ name: 'A', position: [0], drawbars: Array(9).fill(4) }],
+        lfos: [
+          vectorLfo({ fmSource: 4, fmAmount: 99, routes: [2] }),
+          vectorLfo({ fmSource: 0, rateHz: 99, routes: [-2] }),
+        ],
+      },
+    });
+
+    assert.equal(normalized.tonewheelWavetable.lfos[0].fmSource, -1);
+    assert.equal(normalized.tonewheelWavetable.lfos[0].fmAmount, 4);
+    assert.deepEqual(normalized.tonewheelWavetable.lfos.map((lfo) => lfo.routes), [[1], [-1]]);
+    assert.equal(normalized.tonewheelWavetable.lfos[1].rateHz, 20);
 });

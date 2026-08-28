@@ -168,7 +168,7 @@ function parseReverbJson(value: string): GenerateReverbOptions {
 program
   .name('gaterunner')
   .description('Generate a MIDI/WAV file from a GateRunner sequence')
-  .version('2026.8.25')
+  .version('2026.8.27')
   .requiredOption('-o, --output <file>', 'Output file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
