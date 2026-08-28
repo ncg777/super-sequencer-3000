@@ -967,7 +967,7 @@ export default defineComponent({
       wavetableLfoRetriggerOptions: [
         { title: 'Free running', value: 'free' },
         { title: 'Retrigger on note event (track-wide)', value: 'note' },
-        { title: 'Retrigger each bar', value: 'bar' },
+        { title: 'Retrigger when song is played', value: 'song' },
       ],
       maxWavetableLfos: MAX_WAVETABLE_LFOS,
       pitchEnvelopeShapeMin: PITCH_ENVELOPE_SHAPE_MIN,

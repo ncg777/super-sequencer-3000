@@ -84,6 +84,20 @@ test('normalization clamps imported wavetable values and fills missing coordinat
   });
 });
 
+test('normalization accepts song retrigger and migrates removed bar retrigger values', () => {
+  const normalizeRetrigger = (retrigger: string) => normalizePresetTrackData({
+    tonewheelWavetable: {
+      enabled: true,
+      dimensions: [{ name: 'X', value: 0.5 }],
+      configurations: [{ name: 'A', position: [0], drawbars: Array(9).fill(4) }],
+      lfos: [vectorLfo({ retrigger: retrigger as TonewheelWavetableLfo['retrigger'] })],
+    },
+  }).tonewheelWavetable.lfos[0].retrigger;
+
+  assert.equal(normalizeRetrigger('song'), 'song');
+  assert.equal(normalizeRetrigger('bar'), 'song');
+});
+
 test('routes tempo-synced bipolar modulation independently across dimensions', () => {
     const table = wavetable([0.5, 0.5]);
     table.lfos = [vectorLfo({ sync: true, syncRate: '1/4', routes: [0.5, -1] })];
@@ -116,6 +130,22 @@ test('note retrigger resets LFO phase while free-running LFOs retain transport p
     assert.equal(getModulatedTonewheelPosition(table, {
       timeSeconds: 10.25,
       noteStartSeconds: 10,
+      bpm: 120,
+    })[0], 1);
+});
+
+test('song retrigger resets LFO phase only at the playback start epoch', () => {
+    const table = wavetable([0.5]);
+    table.lfos = [vectorLfo({ retrigger: 'song' })];
+
+    assert.equal(getModulatedTonewheelPosition(table, {
+      timeSeconds: 10,
+      songStartSeconds: 10,
+      bpm: 120,
+    })[0], 0.5);
+    assert.equal(getModulatedTonewheelPosition(table, {
+      timeSeconds: 10.25,
+      songStartSeconds: 10,
       bpm: 120,
     })[0], 1);
 });

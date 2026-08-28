@@ -1892,7 +1892,6 @@ export default defineComponent({
           timeSeconds,
           noteStartSeconds,
           bpm: this.bpm,
-          beatsPerBar: track.numerator * 4 / track.denominator,
         },
       );
 
@@ -1924,7 +1923,6 @@ export default defineComponent({
           timeSeconds,
           noteStartSeconds,
           bpm: this.bpm,
-          beatsPerBar: track.numerator * 4 / track.denominator,
         },
       );
       const key = `${track.waveform}|${drawbars.join(',')}`;

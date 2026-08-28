@@ -11,7 +11,7 @@ export const MAX_WAVETABLE_CONFIGURATIONS = 64;
 export const MAX_WAVETABLE_LFOS = 8;
 
 export type TonewheelLfoPolarity = 'bipolar' | 'unipolar';
-export type TonewheelLfoRetrigger = 'free' | 'note' | 'bar';
+export type TonewheelLfoRetrigger = 'free' | 'note' | 'song';
 
 export interface TonewheelWavetableLfo {
   name: string;
@@ -92,7 +92,7 @@ export interface TonewheelModulationTime {
   timeSeconds: number;
   bpm: number;
   noteStartSeconds?: number;
-  beatsPerBar?: number;
+  songStartSeconds?: number;
 }
 
 function getRetriggeredTime(lfo: TonewheelWavetableLfo, timing: TonewheelModulationTime): number {
@@ -100,9 +100,8 @@ function getRetriggeredTime(lfo: TonewheelWavetableLfo, timing: TonewheelModulat
   if (lfo.retrigger === 'note') {
     return Math.max(0, time - (timing.noteStartSeconds ?? time));
   }
-  if (lfo.retrigger === 'bar') {
-    const barSeconds = Math.max(0.001, (60 / Math.max(1, timing.bpm)) * (timing.beatsPerBar ?? 4));
-    return time % barSeconds;
+  if (lfo.retrigger === 'song') {
+    return Math.max(0, time - (timing.songStartSeconds ?? 0));
   }
   return time;
 }

@@ -622,7 +622,10 @@ function normalizeTonewheelWavetable(value: unknown): TonewheelWavetable {
         ? lfo.syncRate as LfoSyncRateValue
         : '1/4';
       const polarity = lfo.polarity === 'unipolar' ? 'unipolar' : 'bipolar';
-      const retrigger = lfo.retrigger === 'note' || lfo.retrigger === 'bar' ? lfo.retrigger : 'free';
+      const rawRetrigger = lfo.retrigger as string | undefined;
+      const retrigger = rawRetrigger === 'note' || rawRetrigger === 'song' || rawRetrigger === 'bar'
+        ? rawRetrigger === 'bar' ? 'song' : rawRetrigger
+        : 'free';
       const fmSource = clamp(parseInteger(String(lfo.fmSource ?? -1), -1), -1, index - 1);
       const rawRoutes = Array.isArray(lfo.routes) ? lfo.routes : [];
       return {
