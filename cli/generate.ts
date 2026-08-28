@@ -490,6 +490,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
       enabled: false,
       dimensions: [],
       configurations: [],
+      lfos: [],
     },
     tremoloEnabled: false,
     tremoloFrequency: 5,

@@ -8,6 +8,7 @@ function wavetable(values: number[]): TonewheelWavetable {
     enabled: true,
     dimensions: values.map((value, index) => ({ name: `Axis ${index + 1}`, value })),
     configurations: [],
+    lfos: [],
   };
 }
 
@@ -44,6 +45,7 @@ test('normalization clamps imported wavetable values and fills missing coordinat
       enabled: true,
       dimensions: [{ name: '', value: 2 }, { name: 'Body', value: -1 }],
       configurations: [{ name: '', position: [0.25], drawbars: Array(9).fill(12) }],
+      lfos: [],
     },
   });
 
