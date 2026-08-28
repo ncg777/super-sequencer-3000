@@ -486,6 +486,11 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     unisonVoices: 1,
     unisonDetune: 12,
     tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
+    tonewheelWavetable: {
+      enabled: false,
+      dimensions: [],
+      configurations: [],
+    },
     tremoloEnabled: false,
     tremoloFrequency: 5,
     tremoloDepth: 0.35,
@@ -559,7 +564,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     unisonVoices: clamp(track.unisonVoices ?? fallbackTrack.unisonVoices, 1, 8),
     unisonDetune: clamp(track.unisonDetune ?? fallbackTrack.unisonDetune, 0, 100),
     tonewheelDrawbars: normalizeTonewheelDrawbars(track.tonewheelDrawbars),
-    tonewheelWavetable: track.tonewheelWavetable,
+    tonewheelWavetable: track.tonewheelWavetable ?? fallbackTrack.tonewheelWavetable,
     tremoloEnabled: Boolean(track.tremoloEnabled ?? fallbackTrack.tremoloEnabled),
     tremoloFrequency: clamp(track.tremoloFrequency ?? fallbackTrack.tremoloFrequency, 0.01, 40),
     tremoloDepth: clamp(track.tremoloDepth ?? fallbackTrack.tremoloDepth, 0, 1),
@@ -1006,9 +1011,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
     const trackLeft = new Float32Array(frameCount);
     const trackRight = new Float32Array(frameCount);
-    const tonewheel = prepareTonewheel(entry.track.tonewheelWavetable
-      ? interpolateTonewheelDrawbars(entry.track.tonewheelWavetable, entry.track.tonewheelDrawbars)
-      : entry.track.tonewheelDrawbars);
+    const tonewheel = prepareTonewheel(interpolateTonewheelDrawbars(
+      entry.track.tonewheelWavetable,
+      entry.track.tonewheelDrawbars,
+    ));
     const drumParameters = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.parameters]));
     const drumXorGroups = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.xorGroup]));
     const nextGroupHitTimes = new Map<number, number[]>();
