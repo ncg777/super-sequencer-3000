@@ -381,6 +381,73 @@
                 <EditableSlider :label="`${label} Drawbar (${Number(selectedTonewheelConfiguration.drawbars[index]).toFixed(1)})`" :min="0" :max="8" :step="0.1" v-model="selectedTonewheelConfiguration.drawbars[index]" @update:modelValue="handleWavetableMorphChange" />
               </v-col>
             </v-row>
+            <v-divider class="my-4" />
+            <v-row align="center">
+              <v-col>
+                <div class="text-subtitle-1">Vector modulation</div>
+                <div class="text-caption text-medium-emphasis">Route up to eight tempo-synced LFOs across every morph axis. Earlier LFOs can frequency-modulate later ones.</div>
+              </v-col>
+              <v-col cols="auto">
+                <v-btn prepend-icon="mdi-sine-wave" variant="outlined" :disabled="draftTrack.tonewheelWavetable.lfos.length >= maxWavetableLfos" @click="addWavetableLfo">Add LFO</v-btn>
+              </v-col>
+            </v-row>
+            <v-card v-for="(lfo, lfoIndex) in draftTrack.tonewheelWavetable.lfos" :key="`wavetable-lfo-${lfoIndex}`" variant="outlined" class="mb-3 pa-3">
+              <v-row align="center" class="compact-row">
+                <v-col cols="12" md="5">
+                  <v-text-field v-model="lfo.name" :label="`LFO ${lfoIndex + 1} name`" density="compact" variant="outlined" hide-details @change="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="8" md="5">
+                  <v-switch v-model="lfo.enabled" label="Enabled" density="compact" hide-details @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="4" md="2" class="text-right">
+                  <v-btn icon="mdi-delete-outline" size="small" variant="text" :aria-label="`Remove ${lfo.name}`" @click="removeWavetableLfo(lfoIndex)" />
+                </v-col>
+              </v-row>
+              <v-row class="compact-row">
+                <v-col cols="12" md="4">
+                  <v-select v-model="lfo.waveform" label="Shape" :items="wavetableLfoWaveformOptions" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-select v-model="lfo.polarity" label="Polarity" :items="wavetableLfoPolarityOptions" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-select v-model="lfo.retrigger" label="Phase mode" :items="wavetableLfoRetriggerOptions" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+              </v-row>
+              <v-row class="compact-row">
+                <v-col cols="12" md="4">
+                  <v-switch v-model="lfo.sync" label="Tempo sync" density="compact" hide-details @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="12" md="8">
+                  <v-select v-if="lfo.sync" v-model="lfo.syncRate" :label="`Rate ${formatModulationRate(lfo.syncRate)}`" :items="wavetableLfoSyncRateOptions" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                  <EditableSlider v-else v-model="lfo.rateHz" :label="`Rate (${Number(lfo.rateHz).toFixed(2)} Hz)`" :min="0.01" :max="20" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+              </v-row>
+              <v-row class="compact-row">
+                <v-col cols="12" md="4">
+                  <EditableSlider v-model="lfo.depth" :label="`Global depth (${Math.round(lfo.depth * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <EditableSlider v-model="lfo.phase" :label="`Start phase (${Math.round(lfo.phase * 360)}°)`" :min="0" :max="0.99" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <EditableSlider v-model="lfo.smoothing" :label="`Smoothing (${Math.round(lfo.smoothing * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+              </v-row>
+              <v-row class="compact-row">
+                <v-col cols="12" md="6">
+                  <v-select v-model="lfo.fmSource" label="Frequency modulation source" :items="wavetableLfoFmSourceOptions(lfoIndex)" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <EditableSlider v-model="lfo.fmAmount" :label="`FM index (${Number(lfo.fmAmount).toFixed(2)} cycles)`" :min="-4" :max="4" :step="0.01" :disabled="lfo.fmSource < 0" @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+              </v-row>
+              <v-row class="compact-row">
+                <v-col v-for="(dimension, dimensionIndex) in draftTrack.tonewheelWavetable.dimensions" :key="`route-${lfoIndex}-${dimensionIndex}`" cols="12" md="6">
+                  <EditableSlider v-model="lfo.routes[dimensionIndex]" :label="`${dimension.name} route (${Math.round(lfo.routes[dimensionIndex] * 100)}%)`" :min="-1" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                </v-col>
+              </v-row>
+            </v-card>
           </template>
           <v-row v-else class="compact-row">
             <v-col v-for="(label, index) in tonewheelDrawbarLabels" :key="label" cols="12" sm="6" md="4">
@@ -830,8 +897,11 @@ import {
   interpolateTonewheelDrawbars,
   MAX_WAVETABLE_CONFIGURATIONS,
   MAX_WAVETABLE_DIMENSIONS,
+  MAX_WAVETABLE_LFOS,
   type TonewheelConfiguration,
+  type TonewheelWavetableLfo,
 } from '../audio/tonewheelWavetable';
+import { LFO_SYNC_RATE_OPTIONS, LFO_WAVEFORM_OPTIONS } from '../audio/lfo';
 import {
   CUSTOM_TIME_WARP_CURVE,
   TIME_WARP_CURVE_OPTIONS,
@@ -850,7 +920,6 @@ import {
   SKEW_LFO_WAVEFORM_OPTIONS,
   TONEWHEEL_DRAWBAR_LABELS,
   WAVEFORM_OPTIONS,
-  type ModulationRateValue,
   type PresetReverbData,
   type PresetTrackData,
 } from '../presets';
@@ -889,6 +958,18 @@ export default defineComponent({
       phaserStageOptions: [...PHASER_STAGE_OPTIONS] as number[],
       waveformOptions: WAVEFORM_OPTIONS,
       skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
+      wavetableLfoWaveformOptions: LFO_WAVEFORM_OPTIONS,
+      wavetableLfoSyncRateOptions: LFO_SYNC_RATE_OPTIONS,
+      wavetableLfoPolarityOptions: [
+        { title: 'Bipolar (±)', value: 'bipolar' },
+        { title: 'Unipolar (+)', value: 'unipolar' },
+      ],
+      wavetableLfoRetriggerOptions: [
+        { title: 'Free running', value: 'free' },
+        { title: 'Retrigger on note event (track-wide)', value: 'note' },
+        { title: 'Retrigger each bar', value: 'bar' },
+      ],
+      maxWavetableLfos: MAX_WAVETABLE_LFOS,
       pitchEnvelopeShapeMin: PITCH_ENVELOPE_SHAPE_MIN,
       pitchEnvelopeShapeMax: PITCH_ENVELOPE_SHAPE_MAX,
       maxTrackPolyphony: MAX_TRACK_POLYPHONY,
@@ -966,7 +1047,7 @@ export default defineComponent({
   },
   methods: {
     /** Shows the tempo-synced LFO cycle length translated into Hz at the current tempo. */
-    formatModulationRate(rate: ModulationRateValue): string {
+    formatModulationRate(rate: string): string {
       const match = rate.match(/^(\d+)\/(\d+)([DT])?$/);
       if (!match) {
         return '';
@@ -1006,6 +1087,7 @@ export default defineComponent({
       }
       wavetable.dimensions.push({ name: `Morph ${wavetable.dimensions.length + 1}`, value: 0.5 });
       wavetable.configurations.forEach((configuration) => configuration.position.push(0.5));
+      wavetable.lfos.forEach((lfo) => lfo.routes.push(0));
       this.handleTrackDraftChange();
     },
     removeWavetableDimension(index: number) {
@@ -1016,6 +1098,7 @@ export default defineComponent({
       }
       wavetable.dimensions.splice(index, 1);
       wavetable.configurations.forEach((configuration) => configuration.position.splice(index, 1));
+      wavetable.lfos.forEach((lfo) => lfo.routes.splice(index, 1));
       this.handleWavetableMorphChange();
     },
     addWavetableConfiguration() {
@@ -1040,6 +1123,52 @@ export default defineComponent({
       configurations.splice(this.selectedTonewheelConfigurationIndex, 1);
       this.selectedTonewheelConfigurationIndex = Math.min(this.selectedTonewheelConfigurationIndex, configurations.length - 1);
       this.handleWavetableMorphChange();
+    },
+    addWavetableLfo() {
+      const wavetable = this.draftTrack.tonewheelWavetable;
+      if (wavetable.lfos.length >= MAX_WAVETABLE_LFOS) {
+        return;
+      }
+      const index = wavetable.lfos.length;
+      const lfo: TonewheelWavetableLfo = {
+        name: `Vector LFO ${index + 1}`,
+        enabled: true,
+        waveform: index === 0 ? 'sine' : 'smooth-random',
+        sync: true,
+        rateHz: 0.5,
+        syncRate: index === 0 ? '1/1' : '4/1',
+        phase: index * 0.25 % 1,
+        depth: 0.25,
+        polarity: 'bipolar',
+        retrigger: 'free',
+        smoothing: 0.1,
+        fmSource: index > 0 ? index - 1 : -1,
+        fmAmount: 0,
+        routes: wavetable.dimensions.map((_, dimensionIndex) => dimensionIndex === index % wavetable.dimensions.length ? 1 : 0),
+      };
+      wavetable.lfos.push(lfo);
+      this.handleTrackDraftChange();
+    },
+    removeWavetableLfo(index: number) {
+      const lfos = this.draftTrack.tonewheelWavetable.lfos;
+      lfos.splice(index, 1);
+      lfos.forEach((lfo) => {
+        if (lfo.fmSource === index) {
+          lfo.fmSource = -1;
+        } else if (lfo.fmSource > index) {
+          lfo.fmSource -= 1;
+        }
+      });
+      this.handleTrackDraftChange();
+    },
+    wavetableLfoFmSourceOptions(index: number): Array<{ title: string; value: number }> {
+      return [
+        { title: 'None', value: -1 },
+        ...this.draftTrack.tonewheelWavetable.lfos.slice(0, index).map((lfo, sourceIndex) => ({
+          title: `${sourceIndex + 1}: ${lfo.name}`,
+          value: sourceIndex,
+        })),
+      ];
     },
     handleWavetableMorphChange() {
       this.draftTrack.tonewheelDrawbars = interpolateTonewheelDrawbars(

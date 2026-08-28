@@ -26,10 +26,20 @@ import { normalizeBitmaskSequenceInput } from './trackActivation.js';
 import {
   MAX_WAVETABLE_CONFIGURATIONS,
   MAX_WAVETABLE_DIMENSIONS,
+  MAX_WAVETABLE_LFOS,
   type TonewheelConfiguration,
   type TonewheelWavetable,
   type TonewheelWavetableDimension,
+  type TonewheelWavetableLfo,
 } from './audio/tonewheelWavetable.js';
+import {
+  LFO_FREE_RATE_MAX_HZ,
+  LFO_FREE_RATE_MIN_HZ,
+  LFO_SYNC_RATE_VALUES,
+  LFO_WAVEFORM_VALUES,
+  type LfoSyncRateValue,
+  type LfoWaveform,
+} from './audio/lfo.js';
 
 export type TrackKind = 'melodic' | 'rhythmic';
 
@@ -398,6 +408,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
     enabled: false,
     dimensions: [],
     configurations: [],
+    lfos: [],
   },
   tremoloEnabled: false,
   tremoloFrequency: 5,
@@ -598,11 +609,45 @@ function normalizeTonewheelWavetable(value: unknown): TonewheelWavetable {
         drawbars: normalizeTonewheelDrawbars(configuration.drawbars),
       };
     });
+  const rawLfos = Array.isArray(raw.lfos) ? raw.lfos : [];
+  const lfos: TonewheelWavetableLfo[] = rawLfos
+    .slice(0, MAX_WAVETABLE_LFOS)
+    .map((value, index) => {
+      const lfo = (typeof value === 'object' && value !== null ? value : {}) as Partial<TonewheelWavetableLfo>;
+      const name = typeof lfo.name === 'string' ? lfo.name.trim().slice(0, 40) : '';
+      const waveform = typeof lfo.waveform === 'string' && LFO_WAVEFORM_VALUES.has(lfo.waveform)
+        ? lfo.waveform as LfoWaveform
+        : 'sine';
+      const syncRate = typeof lfo.syncRate === 'string' && LFO_SYNC_RATE_VALUES.has(lfo.syncRate)
+        ? lfo.syncRate as LfoSyncRateValue
+        : '1/4';
+      const polarity = lfo.polarity === 'unipolar' ? 'unipolar' : 'bipolar';
+      const retrigger = lfo.retrigger === 'note' || lfo.retrigger === 'bar' ? lfo.retrigger : 'free';
+      const fmSource = clamp(parseInteger(String(lfo.fmSource ?? -1), -1), -1, index - 1);
+      const rawRoutes = Array.isArray(lfo.routes) ? lfo.routes : [];
+      return {
+        name: name || `Vector LFO ${index + 1}`,
+        enabled: Boolean(lfo.enabled ?? true),
+        waveform,
+        sync: Boolean(lfo.sync ?? true),
+        rateHz: clamp(parseNumber(lfo.rateHz, 0.5), LFO_FREE_RATE_MIN_HZ, LFO_FREE_RATE_MAX_HZ),
+        syncRate,
+        phase: clamp(parseNumber(lfo.phase, 0), 0, 0.999999),
+        depth: clamp(parseNumber(lfo.depth, 0.25), 0, 1),
+        polarity,
+        retrigger,
+        smoothing: clamp(parseNumber(lfo.smoothing, 0), 0, 1),
+        fmSource,
+        fmAmount: clamp(parseNumber(lfo.fmAmount, 0), -4, 4),
+        routes: dimensions.map((_, dimensionIndex) => clamp(parseNumber(rawRoutes[dimensionIndex], 0), -1, 1)),
+      };
+    });
 
   return {
     enabled: Boolean(raw.enabled) && dimensions.length > 0 && configurations.length > 0,
     dimensions,
     configurations,
+    lfos,
   };
 }
 
@@ -796,6 +841,10 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
         name: configuration.name,
         position: configuration.position.slice(),
         drawbars: configuration.drawbars.slice(),
+      })),
+      lfos: (track.tonewheelWavetable.lfos ?? []).map((lfo) => ({
+        ...lfo,
+        routes: lfo.routes.slice(),
       })),
     },
     tremoloEnabled: track.tremoloEnabled,

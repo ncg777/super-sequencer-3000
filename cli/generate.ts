@@ -39,6 +39,7 @@ import {
 } from '../src/audio/glide.js';
 import { renderDrumHitIntoBuffers } from './drumWav.js';
 import {
+  interpolateModulatedTonewheelDrawbars,
   interpolateTonewheelDrawbars,
   type TonewheelWavetable,
 } from '../src/audio/tonewheelWavetable.js';
@@ -490,6 +491,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
       enabled: false,
       dimensions: [],
       configurations: [],
+      lfos: [],
     },
     tremoloEnabled: false,
     tremoloFrequency: 5,
@@ -1011,7 +1013,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
 
     const trackLeft = new Float32Array(frameCount);
     const trackRight = new Float32Array(frameCount);
-    const tonewheel = prepareTonewheel(interpolateTonewheelDrawbars(
+    const staticTonewheel = prepareTonewheel(interpolateTonewheelDrawbars(
       entry.track.tonewheelWavetable,
       entry.track.tonewheelDrawbars,
     ));
@@ -1108,8 +1110,21 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             const rightPan = Math.sin(voicePan * Math.PI / 2);
             const filterState = { low: 0, high: 0, band: 0 };
             let phase = 0;
+            let tonewheel = staticTonewheel;
             for (let frame = startFrame; frame < endFrame; frame += 1) {
               const t = (frame - startFrame) / sampleRate;
+              if ((frame - startFrame) % 64 === 0) {
+                tonewheel = prepareTonewheel(interpolateModulatedTonewheelDrawbars(
+                  entry.track.tonewheelWavetable,
+                  entry.track.tonewheelDrawbars,
+                  {
+                    timeSeconds: frame / sampleRate,
+                    noteStartSeconds: start,
+                    bpm: prepared.bpm,
+                    beatsPerBar: entry.track.numerator * 4 / entry.track.denominator,
+                  },
+                ));
+              }
               const releaseTime = duration - t;
 
               let env = 1;

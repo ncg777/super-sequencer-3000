@@ -10,6 +10,7 @@ export const LFO_WAVEFORM_OPTIONS = [
   { title: 'Saw Down', value: 'saw-down' },
   { title: 'Square', value: 'square' },
   { title: 'Sample & Hold', value: 'sample-hold' },
+  { title: 'Smooth Random', value: 'smooth-random' },
 ] as const;
 
 export type LfoWaveform = typeof LFO_WAVEFORM_OPTIONS[number]['value'];
@@ -96,6 +97,7 @@ export function sampleLfoWaveform(phase: number, waveform: LfoWaveform, holdValu
     case 'square':
       return p < 0.5 ? 1 : -1;
     case 'sample-hold':
+    case 'smooth-random':
       return holdValue;
     case 'sine':
     default:
@@ -117,14 +119,15 @@ export function advanceSkewLfo(
   if (nextPhase >= 1 || nextPhase < 0) {
     // Count wrap events so very large increments still re-trigger S&H once per wrap.
     const wraps = Math.floor(nextPhase) - Math.floor(previousPhase);
-    if (waveform === 'sample-hold' && wraps !== 0) {
+    if ((waveform === 'sample-hold' || waveform === 'smooth-random') && wraps !== 0) {
       state.holdValue = nextRandom(state);
     }
     nextPhase -= Math.floor(nextPhase);
   }
   state.phase = nextPhase;
 
-  if (waveform === 'sample-hold' && previousPhase === 0 && state.holdValue === 0 && phaseIncrement > 0) {
+  if ((waveform === 'sample-hold' || waveform === 'smooth-random')
+    && previousPhase === 0 && state.holdValue === 0 && phaseIncrement > 0) {
     // First sample of a fresh S&H LFO: seed an initial held value.
     state.holdValue = nextRandom(state);
   }
@@ -191,16 +194,23 @@ export function sampleLfoAtTime(
   const phase = safeFrequency * Math.max(0, timeSeconds) + wrapLfoPhase(initPhase);
   const wrapped = wrapLfoPhase(phase);
 
-  if (waveform === 'sample-hold') {
-    // Hold value is constant between integer cycle boundaries.
+  if (waveform === 'sample-hold' || waveform === 'smooth-random') {
+    const randomAtCycle = (cycleIndex: number): number => {
+      let seed = (state.seed ^ Math.imul(cycleIndex + 1, 0x9e3779b9)) >>> 0;
+      let t = (seed += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      const u = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      return u * 2 - 1;
+    };
     const cycleIndex = Math.floor(phase);
-    // Re-seed deterministically from cycle index + base seed.
-    let seed = (state.seed ^ Math.imul(cycleIndex + 1, 0x9e3779b9)) >>> 0;
-    let t = (seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    const u = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    return u * 2 - 1;
+    const current = randomAtCycle(cycleIndex);
+    if (waveform === 'sample-hold') {
+      return current;
+    }
+    const next = randomAtCycle(cycleIndex + 1);
+    const blend = wrapped * wrapped * (3 - 2 * wrapped);
+    return current + (next - current) * blend;
   }
 
   return sampleLfoWaveform(wrapped, waveform, state.holdValue);
