@@ -1312,8 +1312,9 @@ export default defineComponent({
         },
       });
     },
-    applyDraftData(data: PresetData) {
+    applyDraftData(data: PresetData, options: { preserveTrackMixStates?: boolean } = {}) {
       const normalized = clonePresetData(normalizePresetData(data));
+      const previousTrackMixStates = this.trackMixStates;
       this.bpm = normalized.bpm;
       this.a4 = normalized.a4;
       this.forte = normalized.forte;
@@ -1331,7 +1332,13 @@ export default defineComponent({
         ? this.selectedTrackId
         : fallbackTrackId;
       this.tracks = normalized.tracks.map((track) => clonePresetTrackData(track));
-      this.trackMixStates = {};
+      this.trackMixStates = options.preserveTrackMixStates
+        ? Object.fromEntries(
+          normalized.tracks
+            .filter((track) => previousTrackMixStates[track.id])
+            .map((track) => [track.id, previousTrackMixStates[track.id]]),
+        )
+        : {};
       this.selectedTrackId = preferredTrackId;
       this.applyRealtimeSettings();
     },

@@ -203,6 +203,12 @@
                     </template>
                     <v-list density="compact" class="preset-action-menu">
                       <v-list-item title="Load preset" prepend-icon="mdi-folder-open-outline" @click="loadPresetFromBrowser(entry.preset.id)" />
+                      <v-list-item
+                        title="Merge tracks into current"
+                        prepend-icon="mdi-playlist-plus"
+                        :disabled="entry.preset.id === presetLibrary.selectedPresetId"
+                        @click="mergeTracksFromPreset(entry.preset.id)"
+                      />
                       <v-list-item title="Rename preset" prepend-icon="mdi-form-textbox" @click="renamePresetFromBrowser(entry.preset.id)" />
                       <v-list-item title="Move preset" prepend-icon="mdi-folder-move-outline" @click="openMovePresetDialog(entry.preset.id)" />
                       <v-list-item title="Delete preset" prepend-icon="mdi-delete-outline" @click="deletePresetFromBrowser(entry.preset.id)" />
@@ -253,6 +259,12 @@
                     </template>
                     <v-list density="compact" class="preset-action-menu">
                       <v-list-item title="Load preset" prepend-icon="mdi-folder-open-outline" @click="loadPresetFromBrowser(preset.id)" />
+                      <v-list-item
+                        title="Merge tracks into current"
+                        prepend-icon="mdi-playlist-plus"
+                        :disabled="preset.id === presetLibrary.selectedPresetId"
+                        @click="mergeTracksFromPreset(preset.id)"
+                      />
                       <v-list-item title="Rename preset" prepend-icon="mdi-form-textbox" @click="renamePresetFromBrowser(preset.id)" />
                       <v-list-item title="Move preset" prepend-icon="mdi-folder-move-outline" @click="openMovePresetDialog(preset.id)" />
                       <v-list-item title="Delete preset" prepend-icon="mdi-delete-outline" @click="deletePresetFromBrowser(preset.id)" />
@@ -328,6 +340,7 @@ import {
   listChildFolders,
   listFolderPresets,
   mergeImportedPresetLibrary,
+  mergePresetTracks,
   moveFolder,
   movePresetToFolder,
   parsePresetImportPayload,
@@ -377,7 +390,7 @@ export default defineComponent({
       required: true,
     },
     applyDraftData: {
-      type: Function as PropType<(data: PresetData) => void>,
+      type: Function as PropType<(data: PresetData, options?: { preserveTrackMixStates?: boolean }) => void>,
       required: true,
     },
     confirmDiscardChanges: {
@@ -683,6 +696,23 @@ export default defineComponent({
       if (deletingCurrent && result.selectedPresetId) {
         this.loadPresetById(result.selectedPresetId, result.library);
       }
+    },
+    async mergeTracksFromPreset(presetId: string) {
+      const sourcePreset = this.presetLibrary.presets.find((preset) => preset.id === presetId);
+      const currentPreset = this.currentPreset;
+      if (!sourcePreset || !currentPreset || sourcePreset.id === currentPreset.id) return;
+
+      const trackCount = sourcePreset.data.tracks.length;
+      const shouldMerge = await this.askForConfirmation(
+        'Merge Preset Tracks',
+        `Add ${trackCount} track${trackCount === 1 ? '' : 's'} from "${sourcePreset.name}" to "${currentPreset.name}"? Current song settings will stay unchanged.`,
+        'Merge',
+      );
+      if (!shouldMerge) return;
+
+      this.applyDraftData(mergePresetTracks(this.draftData, sourcePreset.data), { preserveTrackMixStates: true });
+      this.syncDirtyState();
+      this.showNotice(`Merged ${trackCount} track${trackCount === 1 ? '' : 's'} from "${sourcePreset.name}".`, 'success');
     },
     openMovePresetDialog(presetId: string) {
       this.moveDialogMode = 'preset';

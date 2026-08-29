@@ -1061,6 +1061,35 @@ export function clonePresetData(data: PresetData): PresetData {
   };
 }
 
+/** Appends deep-cloned source tracks while preserving the current song settings. */
+export function mergePresetTracks(current: PresetData, source: PresetData): PresetData {
+  const merged = clonePresetData(current);
+  const trackIds = new Set(merged.tracks.map((track) => track.id));
+  const trackNames = new Set(merged.tracks.map((track) => track.name));
+  const importedTracks = source.tracks.map((sourceTrack, index) => {
+    const track = clonePresetTrackData(sourceTrack);
+    const generatedId = createTrackId(merged.tracks.length + index);
+    let uniqueId = generatedId;
+    let suffix = 2;
+    while (trackIds.has(uniqueId)) {
+      uniqueId = `${generatedId}-${suffix}`;
+      suffix += 1;
+    }
+    trackIds.add(uniqueId);
+
+    return {
+      ...track,
+      id: uniqueId,
+      name: ensureUniqueName(trackNames, track.name, (name) => sanitizeTrackName(name, merged.tracks.length + index)),
+    };
+  });
+
+  return {
+    ...merged,
+    tracks: [...merged.tracks, ...importedTracks],
+  };
+}
+
 export function normalizePresetData(value: unknown): PresetData {
   const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<PresetData> & {
     numerator?: number;
