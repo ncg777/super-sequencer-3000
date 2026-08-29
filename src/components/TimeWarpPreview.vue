@@ -98,8 +98,8 @@ export default defineComponent({
 
 <style scoped>
 .time-warp-preview {
-  border: 1px solid rgba(127, 211, 231, 0.26);
-  background: rgba(3, 11, 16, 0.62);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
   padding: 8px;
 }
 
@@ -110,29 +110,29 @@ export default defineComponent({
 }
 
 .time-warp-preview-bg {
-  fill: #000000;
+  fill: #10120f;
 }
 
 .time-warp-preview-identity {
   fill: none;
-  stroke: rgba(151, 197, 210, 0.6);
+  stroke: rgba(170, 167, 141, 0.58);
   stroke-dasharray: 4 4;
   stroke-width: 1;
 }
 
 .time-warp-preview-curve {
   fill: none;
-  stroke: #00ffd1;
+  stroke: #f2b84b;
   stroke-width: 2;
 }
 
 .time-warp-preview-tick {
-  fill: #d6f6ff;
+  fill: #e8dfc8;
 }
 
 .time-warp-preview-error {
   margin: 8px 0 0;
-  color: #ff9ea8;
+  color: #e9836f;
   font-size: 12px;
 }
 </style>

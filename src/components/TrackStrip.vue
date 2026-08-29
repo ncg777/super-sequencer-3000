@@ -339,7 +339,7 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 4px;
-  color: rgba(236, 248, 255, 0.9);
+  color: var(--instrument-text);
   font-weight: 700;
   font-size: 0.78rem;
   line-height: 1;
@@ -348,7 +348,7 @@ export default defineComponent({
 }
 
 .track-add-btn {
-  box-shadow: 0 0 16px rgba(255, 79, 163, 0.18);
+  box-shadow: 0 0 12px rgba(217, 111, 50, 0.2);
   height: 20px !important;
   width: 20px !important;
   min-height: 20px !important;
@@ -368,8 +368,8 @@ export default defineComponent({
 
 .track-activation {
   margin-top: 6px;
-  border: 1px solid rgba(124, 208, 228, 0.2);
-  background: rgba(4, 12, 18, 0.55);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
 }
 
 .track-activation-toggle {
@@ -380,7 +380,7 @@ export default defineComponent({
   padding: 4px 8px;
   border: 0;
   background: transparent;
-  color: rgba(228, 248, 255, 0.92);
+  color: var(--instrument-text);
   font: inherit;
   font-size: 0.76rem;
   font-weight: 700;
@@ -390,13 +390,13 @@ export default defineComponent({
 
 .track-activation-toggle:hover,
 .track-activation-toggle:focus-visible {
-  background: rgba(0, 255, 209, 0.08);
+  background: rgba(242, 184, 75, 0.08);
   outline: none;
 }
 
 .track-activation-status {
   margin-left: auto;
-  color: rgba(176, 226, 237, 0.72);
+  color: var(--instrument-muted);
   font-weight: 600;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
@@ -409,7 +409,7 @@ export default defineComponent({
 
 .track-activation-help {
   margin: 6px 0 0;
-  color: rgba(176, 226, 237, 0.66);
+  color: var(--instrument-muted);
   font-size: 0.72rem;
   line-height: 1.35;
 }
@@ -428,20 +428,20 @@ export default defineComponent({
   gap: 6px;
   align-items: center;
   padding: 1px 6px;
-  border: 1px solid rgba(124, 208, 228, 0.24);
+  border: 1px solid var(--panel-border-soft);
   border-radius: 0;
-  color: #e9f9ff;
-  background: linear-gradient(90deg, rgba(3, 11, 16, 0.52), rgba(16, 22, 46, 0.4));
+  color: var(--instrument-text);
+  background: linear-gradient(90deg, var(--panel-deep), var(--panel-raised));
   cursor: pointer;
   text-align: left;
 }
 
 .track-timeline-row.selected {
-  border-color: rgba(0, 255, 209, 0.76);
+  border-color: rgba(242, 184, 75, 0.82);
   background:
-    linear-gradient(90deg, rgba(0, 255, 209, 0.16), rgba(255, 79, 163, 0.12)),
-    rgba(8, 18, 28, 0.72);
-  box-shadow: inset 0 0 18px rgba(0, 255, 209, 0.1), 0 0 14px rgba(0, 255, 209, 0.12);
+    linear-gradient(90deg, rgba(242, 184, 75, 0.16), rgba(93, 166, 154, 0.08)),
+    var(--panel-raised);
+  box-shadow: inset 3px 0 var(--indicator-amber), 0 0 12px rgba(242, 184, 75, 0.1);
 }
 
 .track-timeline-controls {
@@ -460,14 +460,14 @@ export default defineComponent({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(220, 247, 255, 0.74);
+  color: var(--instrument-muted);
   font-size: 0.76rem;
 }
 
 .track-name-input {
   width: 100%;
   min-width: 0;
-  color: #f9fdff;
+  color: var(--instrument-text);
   font: inherit;
   font-weight: 800;
   background: transparent;
@@ -479,9 +479,9 @@ export default defineComponent({
 
 .track-name-input:hover,
 .track-name-input:focus {
-  border-color: rgba(0, 255, 209, 0.42);
-  background: rgba(0, 255, 209, 0.08);
-  box-shadow: 0 0 12px rgba(0, 255, 209, 0.12);
+  border-color: rgba(242, 184, 75, 0.52);
+  background: rgba(242, 184, 75, 0.08);
+  box-shadow: 0 0 10px rgba(242, 184, 75, 0.1);
 }
 
 .track-timeline-bar {
@@ -509,15 +509,15 @@ export default defineComponent({
 .track-timeline-segment.delay {
   background: repeating-linear-gradient(
     135deg,
-    rgba(150, 171, 183, 0.58),
-    rgba(150, 171, 183, 0.58) 4px,
-    rgba(94, 112, 124, 0.38) 4px,
-    rgba(94, 112, 124, 0.38) 8px
+    rgba(170, 167, 141, 0.58),
+    rgba(170, 167, 141, 0.58) 4px,
+    rgba(96, 96, 75, 0.42) 4px,
+    rgba(96, 96, 75, 0.42) 8px
   );
 }
 
 .track-timeline-segment.repeat {
-  background: linear-gradient(90deg, rgba(0, 255, 209, 0.94), rgba(255, 79, 163, 0.82), rgba(244, 216, 76, 0.86));
+  background: linear-gradient(90deg, var(--indicator-teal), var(--indicator-amber), var(--indicator-orange));
 }
 
 .track-delete-btn {
@@ -531,7 +531,7 @@ export default defineComponent({
 
 .track-timeline-segment.pad {
   min-width: 0;
-  background: rgba(124, 208, 228, 0.1);
+  background: rgba(180, 177, 133, 0.1);
 }
 
 .track-activation-overlay {

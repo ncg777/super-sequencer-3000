@@ -222,7 +222,7 @@ function updateLaneXorGroup(index: number, value: DrumXorGroupId | null): void {
 }
 
 .section-label {
-  color: rgba(176, 236, 255, 0.88);
+  color: var(--indicator-amber);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -235,7 +235,7 @@ function updateLaneXorGroup(index: number, value: DrumXorGroupId | null): void {
 }
 
 .lane-icon {
-  color: rgba(176, 236, 255, 0.8);
+  color: var(--instrument-muted);
 }
 
 .add-voice-select {
@@ -255,20 +255,20 @@ function updateLaneXorGroup(index: number, value: DrumXorGroupId | null): void {
   gap: 5px;
   min-height: 34px;
   padding: 2px 5px;
-  border: 1px solid rgba(124, 208, 228, 0.22);
-  color: #e9f9ff;
-  background: rgba(4, 12, 18, 0.7);
+  border: 1px solid var(--panel-border-soft);
+  color: var(--instrument-text);
+  background: var(--panel-raised);
   text-align: left;
 }
 
 .lane-row.selected {
-  border-color: rgba(0, 255, 209, 0.72);
-  background: rgba(0, 255, 209, 0.1);
+  border-color: rgba(242, 184, 75, 0.72);
+  background: rgba(242, 184, 75, 0.12);
 }
 
 .lane-order,
 .lane-midi {
-  color: rgba(176, 226, 237, 0.7);
+  color: var(--instrument-muted);
   font-size: 0.75rem;
 }
 

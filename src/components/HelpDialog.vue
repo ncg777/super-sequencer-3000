@@ -126,7 +126,7 @@ const visible = defineModel<boolean>({ required: true });
 <style scoped>
 .version {
   margin-left: 1em;
-  color: #888888;
+  color: var(--instrument-muted);
   font-size: 0.6em;
 }
 

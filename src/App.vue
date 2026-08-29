@@ -2826,37 +2826,39 @@ export default defineComponent({
 }
 
 :deep(.v-application) {
-  background: #000000 !important;
+  background: var(--panel-black) !important;
 }
 
 :deep(.v-main) {
-  background: #000000 !important;
+  background: transparent !important;
 }
 
 .app-shell {
-  color: #e8f5ff;
-  background: #000000;
+  color: var(--instrument-text);
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px),
+    var(--panel-black);
 }
 
 .workspace-main {
   position: relative;
   z-index: 1;
   padding: 0 12px 16px;
-  background: #000000;
+  background: transparent;
 }
 
 .donation-footer {
   min-height: 28px;
   padding: 4px 12px;
   justify-content: center;
-  background: #000000;
+  background: var(--panel-black);
 }
 
 .donation-link {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: rgba(176, 226, 237, 0.58);
+  color: var(--instrument-muted);
   text-decoration: none;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
@@ -2864,7 +2866,7 @@ export default defineComponent({
 
 .donation-link:hover,
 .donation-link:focus-visible {
-  color: #80dfff;
+  color: var(--indicator-amber);
 }
 
 .control-deck {
@@ -2886,22 +2888,22 @@ export default defineComponent({
   gap: 8px;
   padding: 7px 10px;
   border-radius: 0;
-  border: 1px solid rgba(0, 255, 209, 0.34);
-  background: #000000;
-  box-shadow: 0 0 22px rgba(0, 255, 209, 0.14), 0 14px 30px rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(242, 184, 75, 0.48);
+  background: linear-gradient(180deg, #2b2d24, var(--panel-deep));
+  box-shadow: inset 0 1px rgba(255, 245, 205, 0.08), 0 0 18px rgba(242, 184, 75, 0.1), 0 14px 30px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(12px);
 }
 
 .control-deck-toggle {
-  border: 1px solid rgba(111, 214, 231, 0.32);
-  background: rgba(15, 45, 59, 0.52);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-raised);
 }
 
 .toolbar-panel {
   padding: 8px 10px;
   border-radius: 0;
-  border: 1px solid rgba(111, 214, 231, 0.26);
-  background: #000000;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-deep);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
 }
@@ -2930,23 +2932,23 @@ export default defineComponent({
   justify-content: center;
   gap: 6px;
   padding: 8px 5px;
-  border: 1px solid rgba(0, 255, 209, 0.46);
-  background: #000000;
-  color: #ecf8ff;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42), 0 0 14px rgba(0, 255, 209, 0.12);
+  border: 1px solid rgba(242, 184, 75, 0.52);
+  background: linear-gradient(90deg, var(--panel-deep), var(--panel-raised));
+  color: var(--instrument-text);
+  box-shadow: inset 1px 0 rgba(255, 245, 205, 0.06), 0 8px 20px rgba(0, 0, 0, 0.42);
   cursor: pointer;
 }
 
 .track-drawer-toggle:hover,
 .track-drawer-toggle:focus-visible {
-  border-color: rgba(0, 255, 209, 0.88);
-  background: rgba(0, 255, 209, 0.1);
+  border-color: var(--indicator-amber);
+  background: rgba(242, 184, 75, 0.12);
 }
 
 .track-drawer-label {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  color: rgba(236, 248, 255, 0.92);
+  color: var(--instrument-text);
   font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -2956,8 +2958,8 @@ export default defineComponent({
 .track-drawer-count {
   min-width: 20px;
   padding: 1px 4px;
-  border: 1px solid rgba(255, 79, 163, 0.45);
-  color: #ffd1e7;
+  border: 1px solid rgba(217, 111, 50, 0.6);
+  color: #ffc37d;
   font-size: 0.68rem;
   font-weight: 800;
   line-height: 1.2;
@@ -2982,29 +2984,25 @@ export default defineComponent({
 
 .app-title {
   margin: 0;
-  color: #f4fbff;
+  color: var(--indicator-amber);
   font-size: clamp(1.2rem, 2vw, 1.6rem);
   letter-spacing: 0;
   line-height: 1;
-  background: linear-gradient(90deg, #f8fdff, #00ffd1 38%, #ff4fa3 72%, #f4d84c);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 18px rgba(0, 255, 209, 0.7), 0 0 28px rgba(255, 79, 163, 0.34);
+  text-shadow: 0 0 10px rgba(242, 184, 75, 0.28);
 }
 
 .version-pill {
   font-size: 0.76rem;
   letter-spacing: 0.05em;
-  color: rgba(208, 243, 255, 0.88);
+  color: var(--instrument-muted);
   padding: 2px 8px;
   border-radius: 0;
-  border: 1px solid rgba(138, 215, 235, 0.4);
-  background: rgba(15, 45, 59, 0.52);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
 }
 
 .toolbar-icon-btn {
-  color: #d5f5ff;
+  color: var(--instrument-text);
 }
 
 .header-actions {
@@ -3017,12 +3015,12 @@ export default defineComponent({
 .header-icon-btn {
   width: 34px;
   height: 34px;
-  border: 1px solid rgba(159, 244, 255, 0.22);
-  box-shadow: 0 0 14px rgba(0, 255, 209, 0.14);
+  border: 1px solid var(--panel-border-soft);
+  box-shadow: inset 0 1px rgba(255, 245, 205, 0.05);
 }
 
 .play-toggle-btn {
-  box-shadow: 0 0 16px rgba(111, 255, 124, 0.18);
+  box-shadow: 0 0 14px rgba(158, 170, 105, 0.24);
 }
 
 .transport-actions {
@@ -3044,8 +3042,8 @@ export default defineComponent({
 
 .transport-action-menu {
   min-width: 220px;
-  border: 1px solid rgba(139, 213, 231, 0.3);
-  background: rgba(4, 12, 17, 0.96);
+  border: 1px solid var(--panel-border-soft);
+  background: rgba(28, 30, 25, 0.98);
 }
 
 .midi-menu-item {
@@ -3099,16 +3097,16 @@ export default defineComponent({
 :deep(.v-autocomplete__selection-text),
 :deep(.v-list-item-title),
 :deep(.v-switch__label) {
-  color: #ecf8ff !important;
+  color: var(--instrument-text) !important;
 }
 
 :deep(.v-field) {
   border-radius: 0;
-  background: #000000;
+  background: var(--panel-inset);
 }
 
 :deep(.v-field--variant-outlined .v-field__outline) {
-  color: rgba(124, 208, 228, 0.58) !important;
+  color: rgba(180, 177, 133, 0.58) !important;
 }
 
 :deep(.v-btn__content) {
@@ -3117,8 +3115,8 @@ export default defineComponent({
 }
 
 .rename-dialog-card {
-  border: 1px solid rgba(132, 209, 228, 0.32);
-  background: #000000;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-deep);
 }
 
 @media (max-width: 960px) {

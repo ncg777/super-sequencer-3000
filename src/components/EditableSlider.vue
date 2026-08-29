@@ -146,7 +146,7 @@ function updateFromSlider(nextValue: unknown): void {
 }
 
 .editable-slider__label {
-  color: #ffffff;
+  color: var(--instrument-text);
   font-weight: 600;
   font-size: 0.82rem;
   background: transparent;

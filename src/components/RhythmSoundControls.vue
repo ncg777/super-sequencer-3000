@@ -114,21 +114,21 @@ function voiceLabel(voiceId: string): string {
 }
 
 .sound-lane-tabs {
-  border: 1px solid rgba(124, 208, 228, 0.22);
-  background: rgba(4, 12, 18, 0.72);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
 }
 
 .selected-voice-heading {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  color: #f4fbff;
+  color: var(--instrument-text);
   font-size: 0.9rem;
   font-weight: 800;
 }
 
 .selected-voice-midi {
-  color: rgba(176, 226, 237, 0.7);
+  color: var(--instrument-muted);
   font-size: 0.76rem;
   font-weight: 600;
 }

@@ -50,9 +50,9 @@ const formatLabel = computed(() => {
 
 <style scoped>
 .export-dialog-card {
-  border: 1px solid rgba(132, 209, 228, 0.32);
+  border: 1px solid var(--panel-border-soft);
   border-radius: 0;
-  background: #000000;
+  background: var(--panel-deep);
 }
 
 :deep(.v-progress-linear) {

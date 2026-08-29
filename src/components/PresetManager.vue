@@ -987,8 +987,8 @@ export default defineComponent({
 .toolbar-panel {
   padding: 8px 10px;
   border-radius: 0;
-  border: 1px solid rgba(111, 214, 231, 0.26);
-  background: #000000;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-deep);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
 }
@@ -1021,14 +1021,14 @@ export default defineComponent({
 
 .preset-browser-launch-name {
   font-weight: 700;
-  color: #f3fbff;
+  color: var(--instrument-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .preset-browser-launch-path {
-  color: rgba(201, 241, 255, 0.7);
+  color: var(--instrument-muted);
   font-size: 0.73rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1038,23 +1038,23 @@ export default defineComponent({
 .preset-state-pill {
   min-height: 40px;
   padding: 8px 12px;
-  border: 1px solid rgba(135, 211, 230, 0.35);
+  border: 1px solid var(--panel-border-soft);
   border-radius: 0;
-  background: rgba(8, 23, 32, 0.62);
+  background: var(--panel-inset);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: rgba(220, 247, 255, 0.8);
+  color: var(--instrument-muted);
   font-size: 0.82rem;
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
 .preset-state-pill.dirty {
-  color: #ffd39a;
-  border-color: rgba(244, 176, 88, 0.48);
-  background: rgba(47, 27, 8, 0.56);
+  color: #ffd487;
+  border-color: rgba(242, 184, 75, 0.56);
+  background: rgba(112, 73, 22, 0.32);
 }
 
 .preset-menu-btn {
@@ -1063,13 +1063,13 @@ export default defineComponent({
 
 .preset-action-menu {
   min-width: 240px;
-  border: 1px solid rgba(139, 213, 231, 0.3);
-  background: rgba(4, 12, 17, 0.96);
+  border: 1px solid var(--panel-border-soft);
+  background: rgba(28, 30, 25, 0.98);
 }
 
 .preset-browser-card {
-  border: 1px solid rgba(132, 209, 228, 0.32);
-  background: #000000;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-deep);
 }
 
 .preset-browser-title {
@@ -1079,7 +1079,7 @@ export default defineComponent({
 }
 
 .preset-browser-subtitle {
-  color: rgba(201, 241, 255, 0.7);
+  color: var(--instrument-muted);
 }
 
 .preset-browser-body {
@@ -1108,8 +1108,8 @@ export default defineComponent({
 
 .preset-browser-tree,
 .preset-browser-content {
-  border: 1px solid rgba(127, 211, 231, 0.24);
-  background: rgba(2, 10, 15, 0.65);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
   overflow: auto;
 }
 
@@ -1129,13 +1129,13 @@ export default defineComponent({
   justify-content: space-between;
   gap: 8px;
   align-items: baseline;
-  color: rgba(234, 248, 255, 0.88);
-  border-bottom: 1px solid rgba(127, 211, 231, 0.2);
+  color: var(--instrument-text);
+  border-bottom: 1px solid var(--panel-border-soft);
   padding-bottom: 5px;
 }
 
 .preset-browser-path-label {
-  color: rgba(201, 241, 255, 0.7);
+  color: var(--instrument-muted);
   font-size: 0.78rem;
 }
 
@@ -1143,15 +1143,15 @@ export default defineComponent({
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(201, 241, 255, 0.72);
+  color: var(--indicator-amber);
   margin-top: 2px;
 }
 
 .preset-browser-empty {
   font-size: 0.83rem;
-  color: rgba(201, 241, 255, 0.68);
+  color: var(--instrument-muted);
   padding: 6px 8px;
-  border: 1px dashed rgba(127, 211, 231, 0.28);
+  border: 1px dashed var(--panel-border-soft);
 }
 
 .preset-folder-row {
@@ -1163,14 +1163,14 @@ export default defineComponent({
   gap: 2px;
   border: 1px solid transparent;
   background: transparent;
-  color: rgba(238, 250, 255, 0.9);
+  color: var(--instrument-text);
   text-align: left;
   padding: 1px 4px;
 }
 
 .preset-folder-row.active {
-  border-color: rgba(0, 255, 209, 0.56);
-  background: rgba(0, 255, 209, 0.12);
+  border-color: rgba(242, 184, 75, 0.65);
+  background: rgba(242, 184, 75, 0.14);
 }
 
 .preset-folder-expand {
@@ -1178,7 +1178,7 @@ export default defineComponent({
   height: 24px;
   border: none;
   background: transparent;
-  color: rgba(225, 247, 255, 0.8);
+  color: var(--instrument-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1208,26 +1208,26 @@ export default defineComponent({
 
 .preset-item-row {
   min-height: 38px;
-  border: 1px solid rgba(127, 211, 231, 0.2);
-  background: rgba(8, 22, 31, 0.55);
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-raised);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
 
 .preset-item-row.active {
-  border-color: rgba(0, 255, 209, 0.56);
-  background: rgba(0, 255, 209, 0.1);
+  border-color: rgba(242, 184, 75, 0.65);
+  background: rgba(242, 184, 75, 0.12);
 }
 
 .preset-item-row.folder {
-  background: rgba(8, 22, 31, 0.4);
+  background: rgba(39, 41, 32, 0.72);
 }
 
 .preset-item-load {
   border: none;
   background: transparent;
-  color: #e9f9ff;
+  color: var(--instrument-text);
   padding: 7px 9px;
   text-align: left;
   display: grid;
@@ -1244,7 +1244,7 @@ export default defineComponent({
 
 .preset-item-path {
   font-size: 0.72rem;
-  color: rgba(201, 241, 255, 0.68);
+  color: var(--instrument-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1259,8 +1259,8 @@ export default defineComponent({
 }
 
 .rename-dialog-card {
-  border: 1px solid rgba(132, 209, 228, 0.32);
-  background: #000000;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-deep);
 }
 
 @media (max-width: 960px) {

@@ -1187,35 +1187,36 @@ export default defineComponent({
 <style scoped>
 .editor-surface {
   width: min(1120px, calc(100vw - 20px));
-  background: #000000;
-  border: 1px solid rgba(122, 206, 226, 0.24);
+  background: var(--panel-deep);
+  border: 1px solid var(--panel-border-soft);
   border-radius: 0;
-  box-shadow: 0 0 28px rgba(0, 255, 209, 0.08), 0 24px 40px rgba(0, 0, 0, 0.32);
+  box-shadow: inset 0 1px rgba(255, 245, 205, 0.05), 0 24px 40px rgba(0, 0, 0, 0.38);
 }
 
 .control-tabs-layout {
   display: grid;
   grid-template-columns: 188px minmax(0, 1fr);
   min-height: 470px;
-  border: 1px solid rgba(127, 211, 231, 0.26);
-  background: #000000;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
 }
 
 .control-tabs {
-  border-right: 1px solid rgba(127, 211, 231, 0.26);
-  background: rgba(3, 11, 16, 0.62);
+  border-right: 1px solid var(--panel-border-soft);
+  background: var(--panel-raised);
 }
 
 .control-tabs :deep(.v-tab) {
   justify-content: flex-start;
   min-height: 44px;
   padding-inline: 14px;
-  color: rgba(220, 247, 255, 0.76);
+  color: var(--instrument-muted);
 }
 
 .control-tabs :deep(.v-tab--selected) {
-  color: #f4fbff;
-  background: rgba(0, 255, 209, 0.1);
+  color: #fff0c7;
+  background: rgba(242, 184, 75, 0.15);
+  box-shadow: inset 3px 0 var(--indicator-amber);
 }
 
 .control-tab-content {
@@ -1228,7 +1229,7 @@ export default defineComponent({
 
 .envelope-section-label {
   margin: 2px 0 8px;
-  color: rgba(176, 236, 255, 0.88);
+  color: var(--indicator-amber);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1266,16 +1267,16 @@ export default defineComponent({
 :deep(.v-autocomplete__selection-text),
 :deep(.v-list-item-title),
 :deep(.v-switch__label) {
-  color: #ecf8ff !important;
+  color: var(--instrument-text) !important;
 }
 
 :deep(.v-field) {
   border-radius: 0;
-  background: #000000;
+  background: var(--panel-inset);
 }
 
 :deep(.v-field--variant-outlined .v-field__outline) {
-  color: rgba(124, 208, 228, 0.58) !important;
+  color: rgba(180, 177, 133, 0.58) !important;
 }
 
 :deep(.v-btn__content) {
@@ -1301,7 +1302,7 @@ export default defineComponent({
 
   .control-tabs {
     border-right: none;
-    border-bottom: 1px solid rgba(127, 211, 231, 0.26);
+    border-bottom: 1px solid var(--panel-border-soft);
   }
 
   .control-tabs :deep(.v-slide-group__container) {
