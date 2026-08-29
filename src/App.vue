@@ -551,7 +551,7 @@ export default defineComponent({
       transportMenuOpen: false,
       controlDeckHeight: 0,
       controlDeckCollapsed: false,
-      trackDrawerExpanded: false,
+      trackDrawerExpanded: true,
       controlDeckResizeObserver: null as ResizeObserver | null,
       rebuildTrackLoopsTimer: null as number | null,
     };
@@ -2971,6 +2971,9 @@ export default defineComponent({
   max-height: calc(100vh - 100% - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  border-color: rgba(242, 184, 75, 0.58);
+  background: #23251d;
+  box-shadow: inset 0 1px rgba(255, 240, 190, 0.07), 0 12px 24px rgba(0, 0, 0, 0.46);
 }
 
 .brand-group {

@@ -339,7 +339,7 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--instrument-text);
+  color: var(--indicator-amber);
   font-weight: 700;
   font-size: 0.78rem;
   line-height: 1;
@@ -369,7 +369,7 @@ export default defineComponent({
 .track-activation {
   margin-top: 6px;
   border: 1px solid var(--panel-border-soft);
-  background: var(--panel-inset);
+  background: #1a1c16;
 }
 
 .track-activation-toggle {
@@ -431,7 +431,7 @@ export default defineComponent({
   border: 1px solid var(--panel-border-soft);
   border-radius: 0;
   color: var(--instrument-text);
-  background: linear-gradient(90deg, var(--panel-deep), var(--panel-raised));
+  background: linear-gradient(90deg, #25271f, #2c2e24);
   cursor: pointer;
   text-align: left;
 }
@@ -439,9 +439,13 @@ export default defineComponent({
 .track-timeline-row.selected {
   border-color: rgba(242, 184, 75, 0.82);
   background:
-    linear-gradient(90deg, rgba(242, 184, 75, 0.16), rgba(93, 166, 154, 0.08)),
-    var(--panel-raised);
-  box-shadow: inset 3px 0 var(--indicator-amber), 0 0 12px rgba(242, 184, 75, 0.1);
+    linear-gradient(90deg, rgba(242, 184, 75, 0.24), rgba(93, 166, 154, 0.14)),
+    #292b21;
+  box-shadow: inset 4px 0 var(--indicator-amber), 0 0 14px rgba(242, 184, 75, 0.16);
+}
+
+.track-timeline-row.selected .track-name-input {
+  color: #ffe0a0;
 }
 
 .track-timeline-controls {
@@ -487,9 +491,11 @@ export default defineComponent({
 .track-timeline-bar {
   position: relative;
   min-width: 0;
-  height: 14px;
+  height: 18px;
+  border: 1px solid rgba(180, 177, 133, 0.34);
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.28);
+  background: #0d0f0c;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.72);
   overflow: hidden;
 }
 
@@ -517,7 +523,8 @@ export default defineComponent({
 }
 
 .track-timeline-segment.repeat {
-  background: linear-gradient(90deg, var(--indicator-teal), var(--indicator-amber), var(--indicator-orange));
+  background: linear-gradient(90deg, #5da69a, #c2b760 54%, #e58b43);
+  box-shadow: 0 0 8px rgba(242, 184, 75, 0.28);
 }
 
 .track-delete-btn {
