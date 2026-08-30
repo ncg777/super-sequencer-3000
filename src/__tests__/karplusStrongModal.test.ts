@@ -6,6 +6,7 @@ import {
   KARPLUS_MODAL_MODE_COUNT,
   planKarplusModalBank,
   planKarplusWaveguide,
+  softLimitKarplusLoop,
 } from '../audio/karplusStrongModalSynth.js';
 import {
   arePresetDataEqual,
@@ -88,4 +89,13 @@ test('physical-model presets normalize, clone, and compare without shared state'
   const draft = clonePresetData(saved);
   draft.tracks[0].karplusStrongModalSynth.bodySize = 0.9;
   assert.equal(arePresetDataEqual(saved, draft), false);
+});
+
+test('loop soft limiter is unity gain at silence and bounded at high levels', () => {
+  const epsilon = 0.00001;
+  const slope = (softLimitKarplusLoop(epsilon) - softLimitKarplusLoop(-epsilon)) / (2 * epsilon);
+  assert.ok(Math.abs(slope - 1) < 0.000001);
+  assert.ok(Math.abs(softLimitKarplusLoop(0.8)) < 0.8);
+  assert.ok(Math.abs(softLimitKarplusLoop(100)) < 0.87);
+  assert.equal(softLimitKarplusLoop(-2), -softLimitKarplusLoop(2));
 });

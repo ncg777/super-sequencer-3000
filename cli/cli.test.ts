@@ -458,7 +458,7 @@ test('Karplus-Strong modal tracks render audible deterministic audio in CLI WAV 
       sequence: '1',
       octave: 5,
       lengthFactor: 100,
-      release: 0.3,
+      release: 1.2,
       repeats: 1,
       delay: 0,
       timeWarpEnabled: false,
@@ -471,9 +471,27 @@ test('Karplus-Strong modal tracks render audible deterministic audio in CLI WAV 
   assert.equal(Buffer.from(first.subarray(0, 4)).toString('ascii'), 'RIFF');
   assert.deepEqual(first, second, 'physical excitation rendering must be reproducible');
   const pcm = new DataView(first.buffer, first.byteOffset + 44, first.byteLength - 44);
+  const averageLeftAmplitude = (startSeconds: number, endSeconds: number): number => {
+    const startOffset = Math.floor(startSeconds * 48_000) * 6;
+    const endOffset = Math.min(pcm.byteLength, Math.floor(endSeconds * 48_000) * 6);
+    let total = 0;
+    let samples = 0;
+    for (let offset = startOffset; offset + 2 < endOffset; offset += 6) {
+      const raw = pcm.getUint8(offset) | (pcm.getUint8(offset + 1) << 8) | (pcm.getUint8(offset + 2) << 16);
+      total += Math.abs((raw & 0x800000) !== 0 ? raw - 0x1000000 : raw);
+      samples += 1;
+    }
+    return total / Math.max(1, samples);
+  };
   let peak = 0;
   for (let offset = 0; offset + 1 < pcm.byteLength; offset += 2) {
     peak = Math.max(peak, Math.abs(pcm.getInt16(offset, true)));
   }
   assert.ok(peak > 100, `expected audible physical-model output, got PCM peak ${peak}`);
+  const attackAmplitude = averageLeftAmplitude(0.02, 0.1);
+  const tailAmplitude = averageLeftAmplitude(0.9, 1.2);
+  assert.ok(
+    tailAmplitude > attackAmplitude * 0.002,
+    `expected a sustained physical tail, got attack ${attackAmplitude} and tail ${tailAmplitude}`,
+  );
 });

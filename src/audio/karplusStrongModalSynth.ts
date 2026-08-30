@@ -69,6 +69,11 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+/** Unity gain around silence, with bounded large-signal energy inside the feedback loop. */
+export function softLimitKarplusLoop(value: number): number {
+  return Math.tanh(value * 1.15) / 1.15;
+}
+
 /** Plans a stable, sample-rate-corrected waveguide for one fundamental. */
 export function planKarplusWaveguide(
   frequency: number,
@@ -150,9 +155,11 @@ export class KarplusStrongModalSynth extends Monophonic<KarplusStrongModalSynthO
   private readonly exciter: Tone.Noise;
   private readonly exciterFilter: Tone.Filter;
   private readonly exciterEnvelope: Tone.AmplitudeEnvelope;
+  private readonly excitationGain: Tone.Gain;
   private readonly pickDelay: Tone.Delay;
   private readonly pickPolarity: Tone.Gain;
   private readonly waveguideInput: Tone.Gain;
+  private readonly loopSaturator: Tone.WaveShaper;
   private readonly waveguideDelay: Tone.Delay;
   private readonly dampingFilter: Tone.Filter;
   private readonly dispersionFilter: Tone.Filter;
@@ -187,9 +194,16 @@ export class KarplusStrongModalSynth extends Monophonic<KarplusStrongModalSynthO
       sustain: 0,
       release: 0.002,
     });
+    this.excitationGain = new Tone.Gain({ context: this.context, gain: 0.8 });
     this.pickDelay = new Tone.Delay({ context: this.context, delayTime: 0.001, maxDelay: MAX_DELAY_SECONDS });
     this.pickPolarity = new Tone.Gain({ context: this.context, gain: -0.82 });
-    this.waveguideInput = new Tone.Gain({ context: this.context, gain: 0.8 });
+    this.waveguideInput = new Tone.Gain({ context: this.context, gain: 1 });
+    this.loopSaturator = new Tone.WaveShaper({
+      context: this.context,
+      mapping: softLimitKarplusLoop,
+      length: 4096,
+    });
+    this.loopSaturator.oversample = '2x';
     this.waveguideDelay = new Tone.Delay({ context: this.context, delayTime: 1 / 440, maxDelay: MAX_DELAY_SECONDS });
     this.dampingFilter = new Tone.Filter({ context: this.context, type: 'lowpass', frequency: 8000, Q: 0.4 });
     this.dispersionFilter = new Tone.Filter({ context: this.context, type: 'allpass', frequency: 5000, Q: 0.35 });
@@ -198,10 +212,10 @@ export class KarplusStrongModalSynth extends Monophonic<KarplusStrongModalSynthO
     this.bodyInput = new Tone.Gain({ context: this.context, gain: 0.36 });
     this.bodyGain = new Tone.Gain({ context: this.context, gain: merged.bodyMix });
 
-    this.exciter.chain(this.exciterFilter, this.exciterEnvelope);
-    this.exciterEnvelope.connect(this.waveguideInput);
-    this.exciterEnvelope.chain(this.pickDelay, this.pickPolarity, this.waveguideInput);
-    this.waveguideInput.connect(this.waveguideDelay);
+    this.exciter.chain(this.exciterFilter, this.exciterEnvelope, this.excitationGain);
+    this.excitationGain.connect(this.waveguideInput);
+    this.excitationGain.chain(this.pickDelay, this.pickPolarity, this.waveguideInput);
+    this.waveguideInput.chain(this.loopSaturator, this.waveguideDelay);
     this.waveguideDelay.chain(this.dampingFilter, this.dispersionFilter, this.feedbackGain, this.waveguideInput);
     this.waveguideDelay.connect(this.stringGain);
     this.waveguideDelay.connect(this.bodyInput);
@@ -313,9 +327,11 @@ export class KarplusStrongModalSynth extends Monophonic<KarplusStrongModalSynthO
     this.exciter.dispose();
     this.exciterFilter.dispose();
     this.exciterEnvelope.dispose();
+    this.excitationGain.dispose();
     this.pickDelay.dispose();
     this.pickPolarity.dispose();
     this.waveguideInput.dispose();
+    this.loopSaturator.dispose();
     this.waveguideDelay.dispose();
     this.dampingFilter.dispose();
     this.dispersionFilter.dispose();

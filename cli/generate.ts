@@ -60,6 +60,7 @@ import {
   DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS,
   planKarplusModalBank,
   planKarplusWaveguide,
+  softLimitKarplusLoop,
   type KarplusStrongModalSettings,
 } from '../src/audio/karplusStrongModalSynth.js';
 import { normalizeKarplusStrongModalSettings, normalizeVirtualAnalogSettings } from '../src/presets.js';
@@ -1209,7 +1210,7 @@ function sampleKarplusStrongModal(
     - state.allpassCoefficient * state.allpassOutput;
   state.allpassInput = state.dampingLow;
   state.allpassOutput = allpass;
-  state.delay[state.delayWrite] = Math.tanh((pickedExcitation * 0.8 + allpass * state.feedback) * 1.15) / 1.15;
+  state.delay[state.delayWrite] = softLimitKarplusLoop(pickedExcitation * 0.8 + allpass * state.feedback);
   state.delayWrite = (state.delayWrite + 1) % state.delay.length;
 
   let body = 0;
@@ -1600,7 +1601,8 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
       const operatorRelease = entry.track.generatorType === 'fm'
         ? Math.max(...entry.track.fmSynth.operators.map((operator) => operator.release))
         : 0;
-      const endFrame = Math.min(frameCount, Math.ceil((start + duration + Math.max(entry.track.release, operatorRelease)) * sampleRate));
+      const voiceRelease = Math.max(entry.track.release, operatorRelease);
+      const endFrame = Math.min(frameCount, Math.ceil((start + duration + voiceRelease) * sampleRate));
       const voicedNotes = limitPolyphony(notes, entry.track.polyphony);
       // High-note priority already picked the winner, so the glide follows a single pitch.
       const glidePlan: GlidePlan | null = isMonoTrack && voicedNotes.length > 0
@@ -1671,10 +1673,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               } else if (t >= entry.track.attack) {
                 env = entry.track.sustain;
               }
-              if (releaseTime < entry.track.release) {
-                env = Math.min(env, Math.max(0, (releaseTime + entry.track.release) / Math.max(entry.track.release, 0.001)));
+              if (releaseTime < voiceRelease) {
+                env = Math.min(env, Math.max(0, (releaseTime + voiceRelease) / Math.max(voiceRelease, 0.001)));
               }
-              if (t > duration + entry.track.release) {
+              if (t > duration + voiceRelease) {
                 env = 0;
               }
 
