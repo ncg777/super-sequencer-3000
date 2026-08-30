@@ -100,7 +100,13 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="showPresetBrowser" max-width="1120px" :fullscreen="$vuetify.display.xs">
+    <v-dialog
+      v-model="showPresetBrowser"
+      max-width="1120px"
+      scrim="#080906"
+      opacity="0.78"
+      :fullscreen="$vuetify.display.xs"
+    >
       <v-card class="preset-browser-card">
         <v-card-title class="preset-browser-title">
           <div>
@@ -1068,8 +1074,9 @@ export default defineComponent({
 }
 
 .preset-browser-card {
-  border: 1px solid var(--panel-border-soft);
-  background: var(--panel-deep);
+  border: 1px solid rgba(180, 177, 133, 0.48);
+  background: #1c1e19;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.72);
 }
 
 .preset-browser-title {
