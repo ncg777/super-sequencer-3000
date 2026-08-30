@@ -82,6 +82,14 @@ export interface PresetTrackData {
   gain: number;
   velocityMultiplier: number;
   delay: number;
+  /** Optional track fade-in duration in bars. 0 disables the fade. */
+  fadeIn: number;
+  /** Optional track fade-out duration in bars. 0 disables the fade. */
+  fadeOut: number;
+  /** Silence before the sequence within each repeat, measured in bars. */
+  paddingBefore: number;
+  /** Silence after the sequence within each repeat, measured in bars. */
+  paddingAfter: number;
   repeats: number;
   timeWarpEnabled: boolean;
   timeWarpCurve: string;
@@ -397,6 +405,10 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   gain: -6,
   velocityMultiplier: 1,
   delay: 0,
+  fadeIn: 0,
+  fadeOut: 0,
+  paddingBefore: 0,
+  paddingAfter: 0,
   repeats: 1,
   timeWarpEnabled: false,
   timeWarpCurve: DEFAULT_TIME_WARP_CURVE,
@@ -940,6 +952,10 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     gain: track.gain,
     velocityMultiplier: track.velocityMultiplier,
     delay: track.delay,
+    fadeIn: track.fadeIn,
+    fadeOut: track.fadeOut,
+    paddingBefore: track.paddingBefore,
+    paddingAfter: track.paddingAfter,
     repeats: track.repeats,
     timeWarpEnabled: track.timeWarpEnabled,
     timeWarpCurve: track.timeWarpCurve,
@@ -1069,6 +1085,10 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     gain: clamp(parseNumber(raw.gain, DEFAULT_PRESET_TRACK_DATA.gain), -96, 24),
     velocityMultiplier: clamp(parseNumber(raw.velocityMultiplier, DEFAULT_PRESET_TRACK_DATA.velocityMultiplier), 0, 4),
     delay: clamp(parseInteger(raw.delay?.toString(), DEFAULT_PRESET_TRACK_DATA.delay), 0, 64),
+    fadeIn: clamp(parseNumber(raw.fadeIn, DEFAULT_PRESET_TRACK_DATA.fadeIn), 0, 64),
+    fadeOut: clamp(parseNumber(raw.fadeOut, DEFAULT_PRESET_TRACK_DATA.fadeOut), 0, 64),
+    paddingBefore: clamp(parseNumber(raw.paddingBefore, DEFAULT_PRESET_TRACK_DATA.paddingBefore), 0, 64),
+    paddingAfter: clamp(parseNumber(raw.paddingAfter, DEFAULT_PRESET_TRACK_DATA.paddingAfter), 0, 64),
     repeats: clamp(parseInteger(raw.repeats?.toString(), DEFAULT_PRESET_TRACK_DATA.repeats), 1, 64),
     timeWarpEnabled: Boolean(raw.timeWarpEnabled ?? DEFAULT_PRESET_TRACK_DATA.timeWarpEnabled),
     timeWarpCurve: normalizeTimeWarpCurve(raw.timeWarpCurve),
@@ -1300,6 +1320,10 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.gain !== rightTrack.gain
       || leftTrack.velocityMultiplier !== rightTrack.velocityMultiplier
       || leftTrack.delay !== rightTrack.delay
+      || leftTrack.fadeIn !== rightTrack.fadeIn
+      || leftTrack.fadeOut !== rightTrack.fadeOut
+      || leftTrack.paddingBefore !== rightTrack.paddingBefore
+      || leftTrack.paddingAfter !== rightTrack.paddingAfter
       || leftTrack.repeats !== rightTrack.repeats
       || leftTrack.timeWarpEnabled !== rightTrack.timeWarpEnabled
       || leftTrack.timeWarpCurve !== rightTrack.timeWarpCurve

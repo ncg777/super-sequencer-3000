@@ -31,6 +31,10 @@ function presetDataToGeneratorInput(data: PresetData) {
       gain: track.gain,
       velocityMultiplier: track.velocityMultiplier,
       delay: track.delay,
+      fadeIn: track.fadeIn,
+      fadeOut: track.fadeOut,
+      paddingBefore: track.paddingBefore,
+      paddingAfter: track.paddingAfter,
       repeats: track.repeats,
       timeWarpEnabled: track.timeWarpEnabled,
       timeWarpCurve: track.timeWarpCurve,
@@ -187,6 +191,10 @@ program
   .option('--gain <number>', 'Legacy single-track audio gain in dB (-96 to +24)', '0')
   .option('--waveform <string>', 'Legacy single-track waveform metadata', 'sine')
   .option('--delay <number>', 'Legacy single-track delay in bars (0-64)', '0')
+  .option('--fade-in <number>', 'Legacy single-track fade-in duration in bars (0-64)', '0')
+  .option('--fade-out <number>', 'Legacy single-track fade-out duration in bars (0-64)', '0')
+  .option('--padding-before <number>', 'Legacy single-track silence before every repeated sequence in bars (0-64)', '0')
+  .option('--padding-after <number>', 'Legacy single-track silence after every repeated sequence in bars (0-64)', '0')
   .option('--repeats <number>', 'Legacy single-track number of pattern repetitions (1-64)', '1')
   .option('--time-warp-enabled <boolean>', 'Legacy single-track time warp enabled (true/false)')
   .option('--time-warp-curve <string>', 'Legacy single-track time warp curve name')
@@ -218,6 +226,10 @@ program
             gain: parseFloat(options.gain),
             waveform: options.waveform,
             delay: parseInt(options.delay),
+            fadeIn: parseFloat(options.fadeIn),
+            fadeOut: parseFloat(options.fadeOut),
+            paddingBefore: parseFloat(options.paddingBefore),
+            paddingAfter: parseFloat(options.paddingAfter),
             repeats: parseInt(options.repeats),
             timeWarpEnabled: parseBooleanOption(options.timeWarpEnabled),
             timeWarpCurve: options.timeWarpCurve,

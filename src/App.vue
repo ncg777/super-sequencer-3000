@@ -162,52 +162,74 @@
           </div>
         </div>
 
-        <div
-          v-show="!controlDeckCollapsed"
-          class="track-drawer"
-          :class="{ expanded: trackDrawerExpanded }"
-        >
-          <button
-            type="button"
-            class="track-drawer-toggle"
-            aria-controls="track-drawer-panel"
-            :aria-expanded="trackDrawerExpanded ? 'true' : 'false'"
-            :title="trackDrawerExpanded ? 'Hide tracks' : 'Show tracks'"
-            @click="trackDrawerExpanded = !trackDrawerExpanded"
-          >
-            <v-icon size="18">{{ trackDrawerExpanded ? 'mdi-chevron-right' : 'mdi-chevron-left' }}</v-icon>
-            <span class="track-drawer-label">Tracks</span>
-            <span class="track-drawer-count">{{ tracks.length }}</span>
-          </button>
+        <div v-show="!controlDeckCollapsed" class="track-rack">
+          <div class="track-rack-summary">
+            <button
+              type="button"
+              class="track-rack-toggle"
+              aria-controls="track-rack-panel"
+              :aria-expanded="trackStripExpanded ? 'true' : 'false'"
+              :title="trackStripExpanded ? 'Show track editor' : 'Show track overview'"
+              @click="trackStripExpanded = !trackStripExpanded"
+            >
+              <v-icon size="18">{{ trackStripExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>
+              <v-icon size="17" class="track-rack-icon">mdi-timeline-clock-outline</v-icon>
+              <span class="track-rack-label">Tracks</span>
+              <span class="track-rack-count">{{ tracks.length }}</span>
+              <span class="track-rack-divider" aria-hidden="true"></span>
+              <span class="track-rack-current">{{ currentTrack?.name ?? 'No track selected' }}</span>
+            </button>
 
-          <div
-            v-show="trackDrawerExpanded"
-            id="track-drawer-panel"
-            class="toolbar-panel track-strip-panel"
-          >
-            <TrackStrip
-              :tracks="tracks"
-              :selected-track-id="selectedTrackId"
-              :track-mix-states="trackMixStates"
-              :bitmask-sequence-input="bitmaskSequenceInput"
-              :loop-duration-seconds="loopDurationSeconds"
-              :bpm="bpm"
-              @add-track="addTrack"
-              @select-track="handleTrackSelection"
-              @track-name-input="handleTrackNameInput"
-              @commit-track-name="commitTrackName"
-              @toggle-muted="toggleTrackMuted"
-              @toggle-soloed="toggleTrackSoloed"
-              @remove-track="removeTrack"
-              @bitmask-sequence-input="handleBitmaskSequenceInput"
-            />
+            <v-menu location="bottom end">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  class="track-rack-add"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="secondary"
+                  title="Add track"
+                >
+                  <v-icon size="17">mdi-plus</v-icon>
+                </v-btn>
+              </template>
+              <v-list density="compact">
+                <v-list-item title="Add melodic track" prepend-icon="mdi-sine-wave" @click="addTrack('melodic')" />
+                <v-list-item title="Add rhythmic track" prepend-icon="mdi-metronome" @click="addTrack('rhythmic')" />
+              </v-list>
+            </v-menu>
           </div>
         </div>
       </div>
 
       <div class="control-deck-spacer" :style="{ height: `${controlDeckHeight + 12}px` }"></div>
 
+      <section
+        v-show="trackStripExpanded"
+        id="track-rack-panel"
+        class="track-workspace"
+        aria-label="Track overview"
+      >
+        <TrackStrip
+          :tracks="tracks"
+          :selected-track-id="selectedTrackId"
+          :track-mix-states="trackMixStates"
+          :bitmask-sequence-input="bitmaskSequenceInput"
+          :loop-duration-seconds="loopDurationSeconds"
+          :bpm="bpm"
+          @select-track="handleTrackSelection"
+          @track-name-input="handleTrackNameInput"
+          @commit-track-name="commitTrackName"
+          @toggle-muted="toggleTrackMuted"
+          @toggle-soloed="toggleTrackSoloed"
+          @remove-track="removeTrack"
+          @bitmask-sequence-input="handleBitmaskSequenceInput"
+        />
+      </section>
+
       <EditorSurface
+        v-show="!trackStripExpanded"
         :track="currentTrack"
         :reverb="reverbSettings"
         :bpm="bpm"
@@ -304,6 +326,7 @@ import {
   type ReverbAudioChain,
 } from './audio/reverb';
 import { encodeWavFromChannels } from './audio/wav';
+import { buildTrackFadeEnvelope } from './audio/trackFade';
 import { Phaser } from './audio/phaser';
 import {
   createSkewLfoState,
@@ -413,6 +436,7 @@ interface TrackAudioChain {
   dryGain: Tone.Gain;
   reverbSend: Tone.Gain;
   outputGain: Tone.Gain;
+  fadeGain: Tone.Gain;
   mixGain: Tone.Gain;
   drumInstruments: Record<string, DrumInstrument>;
   drumSignature: string;
@@ -533,6 +557,7 @@ export default defineComponent({
       showPlaybackError: false,
       audioContextResumeHandler: null as (() => void) | null,
       trackLoops: markRaw({}) as Record<string, Tone.Part<TrackScheduledEvent>>,
+      trackFadeLoops: markRaw({}) as Record<string, Tone.Part<{ time: number }>>,
       showHelp: false,
       trackSynths: markRaw({}) as Record<string, TrackAudioChain>,
       reverbChain: null as ReverbAudioChain | null,
@@ -565,7 +590,7 @@ export default defineComponent({
       transportMenuOpen: false,
       controlDeckHeight: 0,
       controlDeckCollapsed: false,
-      trackDrawerExpanded: true,
+      trackStripExpanded: false,
       controlDeckResizeObserver: null as ResizeObserver | null,
       rebuildTrackLoopsTimer: null as number | null,
     };
@@ -677,8 +702,12 @@ export default defineComponent({
     getTrackPatternDuration(track: PresetTrackData, trackNotes: number[][]): number {
       return trackNotes.length * this.getTrackQuant(track);
     },
+    getTrackRepeatDuration(track: PresetTrackData, trackNotes: number[][]): number {
+      return this.getTrackPatternDuration(track, trackNotes)
+        + (track.paddingBefore + track.paddingAfter) * this.getTrackBarSeconds(track);
+    },
     getTrackTotalDuration(track: PresetTrackData, trackNotes: number[][]): number {
-      return this.getTrackDelaySeconds(track) + track.repeats * this.getTrackPatternDuration(track, trackNotes);
+      return this.getTrackDelaySeconds(track) + track.repeats * this.getTrackRepeatDuration(track, trackNotes);
     },
     getLoopDurationSecondsFromTrackLengths(): number {
       const entries = this.allTrackActualNotes.filter((entry) => entry.notes.length > 0);
@@ -985,6 +1014,8 @@ export default defineComponent({
       }
 
       const delaySeconds = this.getTrackDelaySeconds(track);
+      const paddingBeforeSeconds = track.paddingBefore * this.getTrackBarSeconds(track);
+      const repeatPeriod = this.getTrackRepeatDuration(track, trackNotes);
       const warpAmount = track.timeWarpEnabled ? track.timeWarpAmount / 100 : 0;
       const warpEnabled = track.timeWarpEnabled && warpAmount > 0;
       const warpResolution = resolveTimeWarpFunction(track.timeWarpCurve, track.timeWarpExpression);
@@ -998,7 +1029,7 @@ export default defineComponent({
       let order = 0;
 
       for (let repeat = 0; repeat < track.repeats; repeat += 1) {
-        const loopStart = delaySeconds + repeat * trackPeriod;
+        const loopStart = delaySeconds + repeat * repeatPeriod + paddingBeforeSeconds;
         for (let i = 0; i < trackNotes.length; i += 1) {
           const notes = trackNotes[i];
           if (notes.length === 0) {
@@ -1086,6 +1117,10 @@ export default defineComponent({
         || previous.denominator !== next.denominator
         || previous.phase !== next.phase
         || previous.delay !== next.delay
+        || previous.fadeIn !== next.fadeIn
+        || previous.fadeOut !== next.fadeOut
+        || previous.paddingBefore !== next.paddingBefore
+        || previous.paddingAfter !== next.paddingAfter
         || previous.repeats !== next.repeats
         || previous.sequenceInput !== next.sequenceInput
         || previous.octave !== next.octave
@@ -1262,6 +1297,12 @@ export default defineComponent({
           });
           this.trackSynths[`offline-${entry.track.id}`] = chain;
           this.updateTrackChainSettings(entry.track, chain);
+          this.scheduleTrackFadeEnvelope(
+            entry.track,
+            entry.notes,
+            chain.fadeGain.gain,
+            this.getTrackDelaySeconds(entry.track),
+          );
 
           for (const event of events) {
             this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain);
@@ -1482,6 +1523,7 @@ export default defineComponent({
       const limiterGain = markRaw(new Tone.Gain(1));
       const limiter = markRaw(new Tone.WaveShaper((value) => Math.tanh(value)));
       const outputGain = markRaw(new Tone.Gain(1));
+      const fadeGain = markRaw(new Tone.Gain(1));
       const mixGain = markRaw(new Tone.Gain(1));
       const dryGain = markRaw(new Tone.Gain(1).toDestination());
       const reverbSend = markRaw(new Tone.Gain(0));
@@ -1518,6 +1560,7 @@ export default defineComponent({
         dryGain,
         reverbSend,
         outputGain,
+        fadeGain,
         mixGain,
         drumInstruments: {},
         drumSignature: '',
@@ -2167,6 +2210,7 @@ export default defineComponent({
       chain.dryGain.dispose();
       chain.reverbSend.dispose();
       chain.outputGain.dispose();
+      chain.fadeGain.dispose();
       chain.mixGain.dispose();
     },
     updateReverbChain() {
@@ -2255,7 +2299,7 @@ export default defineComponent({
       if (track.filterEnabled) {
         signalChain.push(this.ensureTrackFilter(chain));
       }
-      signalChain.push(chain.mixGain);
+      signalChain.push(chain.fadeGain, chain.mixGain);
       Tone.connectSeries(...signalChain);
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
@@ -2639,14 +2683,44 @@ export default defineComponent({
         loop.dispose();
       }
       this.trackLoops = markRaw({});
+      for (const loop of Object.values(this.trackFadeLoops)) {
+        loop.stop();
+        loop.dispose();
+      }
+      this.trackFadeLoops = markRaw({});
       // A restart must not glide in from the pitch that was playing when the transport stopped.
       for (const chain of Object.values(this.trackSynths)) {
+        chain.fadeGain.gain.cancelScheduledValues(Tone.now());
+        chain.fadeGain.gain.value = 1;
         chain.soundingNotes.length = 0;
         if (chain.synth instanceof MonoGlideSynth
           || chain.synth instanceof MonoFourOperatorFmSynth
           || chain.synth instanceof MonoVirtualAnalogSynth) {
           chain.synth.resetGlide();
         }
+      }
+    },
+    scheduleTrackFadeEnvelope(
+      track: PresetTrackData,
+      trackNotes: number[][],
+      gain: TrackAudioChain['fadeGain']['gain'],
+      startTime: number,
+    ) {
+      const activeDuration = track.repeats * this.getTrackRepeatDuration(track, trackNotes);
+      const barSeconds = this.getTrackBarSeconds(track);
+      const points = buildTrackFadeEnvelope(
+        activeDuration,
+        track.fadeIn * barSeconds,
+        track.fadeOut * barSeconds,
+      );
+      if (points.length === 0) {
+        gain.setValueAtTime(1, startTime);
+        return;
+      }
+
+      gain.setValueAtTime(points[0].gain, startTime + points[0].time);
+      for (const point of points.slice(1)) {
+        gain.linearRampToValueAtTime(point.gain, startTime + point.time);
       }
     },
     scheduleTrackLoopRebuild() {
@@ -2696,6 +2770,20 @@ export default defineComponent({
         part.loopEnd = totalLoopDuration;
         part.start(0);
         this.trackLoops[entry.track.id] = part;
+
+        if (entry.track.fadeIn > 0 || entry.track.fadeOut > 0) {
+          const fadePart = markRaw(new Tone.Part<{ time: number }>((when) => {
+            const currentTrack = this.trackById.get(trackId) ?? entry.track;
+            const currentNotes = this.computeActualNotes(currentTrack);
+            const chain = this.getOrCreateTrackChain(currentTrack);
+            this.scheduleTrackFadeEnvelope(currentTrack, currentNotes, chain.fadeGain.gain, when);
+          }, [{ time: this.getTrackDelaySeconds(entry.track) }]));
+          fadePart.loop = true;
+          fadePart.loopStart = 0;
+          fadePart.loopEnd = totalLoopDuration;
+          fadePart.start(0);
+          this.trackFadeLoops[entry.track.id] = fadePart;
+        }
       }
     },
     showPlaybackErrorMessage(message: string) {
@@ -3005,71 +3093,90 @@ export default defineComponent({
   backdrop-filter: blur(12px);
 }
 
-.track-drawer {
-  position: relative;
-  align-self: flex-end;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  max-width: 100%;
+.track-rack {
+  min-width: 0;
+  border: 1px solid rgba(242, 184, 75, 0.5);
+  background: #20221b;
+  box-shadow: inset 0 1px rgba(255, 240, 190, 0.06), 0 8px 18px rgba(0, 0, 0, 0.36);
 }
 
-.track-drawer.expanded {
-  width: 100%;
+.track-rack-summary {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: stretch;
 }
 
-.track-drawer-toggle {
-  flex: 0 0 34px;
-  min-width: 34px;
-  min-height: 108px;
+.track-rack-toggle {
+  min-width: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 5px;
-  border: 1px solid rgba(242, 184, 75, 0.52);
-  background: linear-gradient(90deg, var(--panel-deep), var(--panel-raised));
+  gap: 7px;
+  padding: 4px 9px;
+  border: 0;
+  background: transparent;
   color: var(--instrument-text);
-  box-shadow: inset 1px 0 rgba(255, 245, 205, 0.06), 0 8px 20px rgba(0, 0, 0, 0.42);
+  font: inherit;
   cursor: pointer;
+  text-align: left;
 }
 
-.track-drawer-toggle:hover,
-.track-drawer-toggle:focus-visible {
-  border-color: var(--indicator-amber);
-  background: rgba(242, 184, 75, 0.12);
+.track-rack-toggle:hover,
+.track-rack-toggle:focus-visible {
+  background: rgba(242, 184, 75, 0.08);
+  outline: none;
 }
 
-.track-drawer-label {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  color: var(--instrument-text);
-  font-size: 0.76rem;
+.track-rack-icon,
+.track-rack-label {
+  color: var(--indicator-amber);
+}
+
+.track-rack-label {
+  font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
-.track-drawer-count {
+.track-rack-count {
   min-width: 20px;
-  padding: 1px 4px;
-  border: 1px solid rgba(217, 111, 50, 0.6);
+  padding: 1px 5px;
+  border: 1px solid rgba(217, 111, 50, 0.55);
   color: #ffc37d;
   font-size: 0.68rem;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1.35;
+  text-align: center;
 }
 
-.track-strip-panel {
-  flex: 1 1 auto;
+.track-rack-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--panel-border-soft);
+}
+
+.track-rack-current {
   min-width: 0;
-  max-height: calc(100vh - 100% - 24px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border-color: rgba(242, 184, 75, 0.58);
+  overflow: hidden;
+  color: var(--instrument-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-rack-add {
+  width: 34px;
+  height: 34px;
+  border-left: 1px solid var(--panel-border-soft);
+}
+
+.track-workspace {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 8px 10px 10px;
+  border: 1px solid rgba(242, 184, 75, 0.5);
   background: #23251d;
-  box-shadow: inset 0 1px rgba(255, 240, 190, 0.07), 0 12px 24px rgba(0, 0, 0, 0.46);
+  box-shadow: inset 0 1px rgba(255, 240, 190, 0.06), 0 12px 24px rgba(0, 0, 0, 0.3);
 }
 
 .brand-group {
@@ -3246,18 +3353,8 @@ export default defineComponent({
     border-radius: 0;
   }
 
-  .track-drawer {
-    max-width: calc(100vw - 10px);
-  }
-
-  .track-drawer-toggle {
-    flex-basis: 32px;
-    min-width: 32px;
-    min-height: 96px;
-  }
-
-  .track-strip-panel {
-    padding: 7px;
+  .track-workspace {
+    padding: 6px;
   }
 
   .brand-group {

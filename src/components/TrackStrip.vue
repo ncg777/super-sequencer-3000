@@ -1,32 +1,5 @@
 ﻿<template>
   <div>
-    <div class="track-strip">
-      <div class="track-strip-heading" style="min-height:16px; height:16px;">
-        <v-icon size="16">mdi-timeline-clock-outline</v-icon>
-        <span>Tracks</span>
-      </div>
-      <v-menu location="bottom end">
-        <template #activator="{ props }">
-          <v-btn
-            v-bind="props"
-            class="track-add-btn"
-            icon
-            size="x-small"
-            variant="flat"
-            color="secondary"
-            title="Add track"
-            style="min-width:0; min-height:0; width:20px; height:20px; padding:0;"
-          >
-            <v-icon size="16">mdi-plus</v-icon>
-          </v-btn>
-        </template>
-        <v-list density="compact">
-          <v-list-item title="Add melodic track" prepend-icon="mdi-sine-wave" @click="$emit('add-track', 'melodic')" />
-          <v-list-item title="Add rhythmic track" prepend-icon="mdi-metronome" @click="$emit('add-track', 'rhythmic')" />
-        </v-list>
-      </v-menu>
-    </div>
-
     <div class="track-activation">
       <button
         type="button"
@@ -90,13 +63,25 @@
               :style="{ flexGrow: entry.delayBeats }"
               :title="`${formatBeats(entry.delayBeats)} beat delay`"
             ></span>
-            <span
-              v-for="repeat in entry.repeatBlocks"
-              :key="repeat"
-              class="track-timeline-segment repeat"
-              :style="{ flexGrow: entry.patternBeats }"
-              :title="`Repeat ${repeat}: ${formatBeats(entry.patternBeats)} beats`"
-            ></span>
+            <template v-for="repeat in entry.repeatBlocks" :key="repeat">
+              <span
+                v-if="entry.paddingBeforeBeats > 0"
+                class="track-timeline-segment sequence-padding"
+                :style="{ flexGrow: entry.paddingBeforeBeats }"
+                :title="`Repeat ${repeat}: ${formatBeats(entry.paddingBeforeBeats)} beats before padding`"
+              ></span>
+              <span
+                class="track-timeline-segment repeat"
+                :style="{ flexGrow: entry.patternBeats }"
+                :title="`Repeat ${repeat}: ${formatBeats(entry.patternBeats)} sequence beats`"
+              ></span>
+              <span
+                v-if="entry.paddingAfterBeats > 0"
+                class="track-timeline-segment sequence-padding"
+                :style="{ flexGrow: entry.paddingAfterBeats }"
+                :title="`Repeat ${repeat}: ${formatBeats(entry.paddingAfterBeats)} beats after padding`"
+              ></span>
+            </template>
             <span
               v-if="entry.padBeats > 0"
               class="track-timeline-segment pad"
@@ -181,6 +166,8 @@ export interface TrackTimingEntry {
   repeats: number;
   delayBeats: number;
   patternBeats: number;
+  paddingBeforeBeats: number;
+  paddingAfterBeats: number;
   activeBeats: number;
   totalBeats: number;
   totalBars: number;
@@ -219,7 +206,6 @@ export default defineComponent({
     },
   },
   emits: [
-    'add-track',
     'select-track',
     'track-name-input',
     'commit-track-name',
@@ -268,7 +254,9 @@ export default defineComponent({
         const patternBeats = sequenceLength / Math.max(1, track.denominator);
         // Include phase so the strip lines up with App scheduling (delay bars + phase steps).
         const delayBeats = track.delay * track.numerator + track.phase / Math.max(1, track.denominator);
-        const activeBeats = patternBeats * track.repeats;
+        const paddingBeforeBeats = track.paddingBefore * track.numerator;
+        const paddingAfterBeats = track.paddingAfter * track.numerator;
+        const activeBeats = (paddingBeforeBeats + patternBeats + paddingAfterBeats) * track.repeats;
         const totalBeats = delayBeats + activeBeats;
         const totalBars = track.numerator > 0 ? totalBeats / track.numerator : 0;
         return {
@@ -280,6 +268,8 @@ export default defineComponent({
           repeats: track.repeats,
           delayBeats,
           patternBeats,
+          paddingBeforeBeats,
+          paddingAfterBeats,
           activeBeats,
           totalBeats,
           totalBars,
@@ -327,47 +317,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.track-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0;
-  align-items: center;
-  padding: 0;
-}
-
-.track-strip-heading {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--indicator-amber);
-  font-weight: 700;
-  font-size: 0.78rem;
-  line-height: 1;
-  min-height: 16px;
-  height: 16px;
-}
-
-.track-add-btn {
-  box-shadow: 0 0 12px rgba(217, 111, 50, 0.2);
-  height: 20px !important;
-  width: 20px !important;
-  min-height: 20px !important;
-  min-width: 20px !important;
-  padding: 0 !important;
-  margin: 0;
-}
-
-.track-add-btn .v-btn__content {
-  height: 20px !important;
-  width: 20px !important;
-  min-height: 20px !important;
-  min-width: 20px !important;
-  line-height: 20px !important;
-  padding: 0 !important;
-}
-
 .track-activation {
-  margin-top: 6px;
   border: 1px solid var(--panel-border-soft);
   background: #1a1c16;
 }
@@ -525,6 +475,12 @@ export default defineComponent({
 .track-timeline-segment.repeat {
   background: linear-gradient(90deg, #5da69a, #c2b760 54%, #e58b43);
   box-shadow: 0 0 8px rgba(242, 184, 75, 0.28);
+}
+
+.track-timeline-segment.sequence-padding {
+  min-width: 2px;
+  border: 1px dashed rgba(180, 177, 133, 0.48);
+  background: rgba(180, 177, 133, 0.12);
 }
 
 .track-delete-btn {

@@ -268,6 +268,28 @@ test('rhythmic tracks export GM notes with BigInt-safe per-lane velocities', asy
   assert.deepEqual(midi.tracks[0].notes.slice(0, 3).map((note) => Number(note.velocity.toFixed(6))), [42 / 127, 42 / 127, 42 / 127].map((velocity) => Number(velocity.toFixed(6))));
 });
 
+test('track padding silences repeat with each sequence after the one-time delay', async () => {
+  const midiBytes = await generateMidi({
+    bpm: 60,
+    tracks: [{
+      numerator: 1,
+      denominator: 1,
+      sequence: '1 2',
+      octave: 5,
+      delay: 1,
+      paddingBefore: 0.5,
+      paddingAfter: 0.25,
+      repeats: 2,
+    }],
+  });
+
+  const midi = new Midi(midiBytes);
+  assert.deepEqual(
+    midi.tracks[0].notes.map((note) => Number(note.time.toFixed(6))),
+    [1.5, 2.5, 4.25, 5.25],
+  );
+});
+
 test('rhythmic tracks render synthesized audio in CLI WAV output', async () => {
   const wavBytes = await generateWav({
     bpm: 60,
@@ -292,6 +314,43 @@ test('rhythmic tracks render synthesized audio in CLI WAV output', async () => {
   assert.equal(Buffer.from(wavBytes.subarray(0, 4)).toString('ascii'), 'RIFF');
   assert.ok(wavBytes.length > 44);
   assert.ok(wavBytes.subarray(44).some((value) => value !== 0));
+});
+
+test('CLI WAV output applies per-track fade in and fade out in bars', async () => {
+  const wavBytes = await generateWav({
+    bpm: 60,
+    tracks: [{
+      numerator: 1,
+      denominator: 1,
+      sequence: '1 1',
+      octave: 5,
+      lengthFactor: 100,
+      repeats: 1,
+      fadeIn: 0.5,
+      fadeOut: 0.5,
+    }],
+    reverb: { enabled: false },
+  });
+
+  const pcm = new DataView(wavBytes.buffer, wavBytes.byteOffset + 44, wavBytes.byteLength - 44);
+  const averageAmplitude = (startSeconds: number, endSeconds: number): number => {
+    const startOffset = Math.floor(startSeconds * 48000) * 6;
+    const endOffset = Math.min(pcm.byteLength, Math.floor(endSeconds * 48000) * 6);
+    let total = 0;
+    let samples = 0;
+    for (let offset = startOffset; offset + 2 < endOffset; offset += 6) {
+      const raw = pcm.getUint8(offset) | (pcm.getUint8(offset + 1) << 8) | (pcm.getUint8(offset + 2) << 16);
+      total += Math.abs((raw & 0x800000) !== 0 ? raw - 0x1000000 : raw);
+      samples += 1;
+    }
+    return total / samples;
+  };
+
+  const fadeInAmplitude = averageAmplitude(0.05, 0.15);
+  const middleAmplitude = averageAmplitude(0.8, 1.2);
+  const fadeOutAmplitude = averageAmplitude(1.85, 1.95);
+  assert.ok(middleAmplitude > fadeInAmplitude * 3, `${middleAmplitude} should exceed fade-in amplitude ${fadeInAmplitude}`);
+  assert.ok(middleAmplitude > fadeOutAmplitude * 3, `${middleAmplitude} should exceed fade-out amplitude ${fadeOutAmplitude}`);
 });
 
 test('four-operator FM tracks render audible audio in CLI WAV output', async () => {

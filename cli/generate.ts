@@ -6,6 +6,7 @@ import {
   getPitchEnvelopeMidiOffset,
   normalizePitchEnvelopeShape,
 } from '../src/audio/pitchEnvelope.js';
+import { getTrackFadeGain } from '../src/audio/trackFade.js';
 import {
   DEFAULT_TIME_WARP_CURVE,
   quantizeNormalizedTime,
@@ -94,6 +95,14 @@ export interface GenerateTrackOptions {
   velocityMultiplier?: number;
   /** Number of bars to wait before the track starts (0-64). */
   delay?: number;
+  /** Fade-in duration in bars (0-64). 0 disables the fade. */
+  fadeIn?: number;
+  /** Fade-out duration in bars (0-64). 0 disables the fade. */
+  fadeOut?: number;
+  /** Silence before the sequence in every repeat, measured in bars (0-64). */
+  paddingBefore?: number;
+  /** Silence after the sequence in every repeat, measured in bars (0-64). */
+  paddingAfter?: number;
   /** Number of repetitions of the pattern (1-64). */
   repeats?: number;
   timeWarpEnabled?: boolean;
@@ -242,6 +251,14 @@ export interface GenerateOptions {
   waveform?: string;
   /** Legacy single-track delay in bars used when tracks is omitted. */
   delay?: number;
+  /** Legacy single-track fade-in duration in bars used when tracks is omitted. */
+  fadeIn?: number;
+  /** Legacy single-track fade-out duration in bars used when tracks is omitted. */
+  fadeOut?: number;
+  /** Legacy single-track padding before every repeated sequence, in bars. */
+  paddingBefore?: number;
+  /** Legacy single-track padding after every repeated sequence, in bars. */
+  paddingAfter?: number;
   /** Legacy single-track number of pattern repetitions used when tracks is omitted. */
   repeats?: number;
   timeWarpEnabled?: boolean;
@@ -326,7 +343,10 @@ function getLoopDurationSecondsFromTrackLengths(prepared: PreparedRenderData): n
   }
 
   const maxDuration = Math.max(
-    ...entries.map((entry) => getTrackDelaySeconds(prepared.bpm, entry.track) + entry.track.repeats * entry.actualNotes.length * entry.quant),
+    ...entries.map((entry) => (
+      getTrackDelaySeconds(prepared.bpm, entry.track)
+      + entry.track.repeats * getTrackRepeatDurationSeconds(prepared.bpm, entry)
+    )),
   );
 
   return Math.max(entries[0].quant, maxDuration);
@@ -334,6 +354,12 @@ function getLoopDurationSecondsFromTrackLengths(prepared: PreparedRenderData): n
 
 function getTrackDelaySeconds(bpm: number, track: NormalizedTrack): number {
   return track.delay * track.numerator * (60 / bpm);
+}
+
+function getTrackRepeatDurationSeconds(bpm: number, entry: TrackRenderData): number {
+  const barSeconds = entry.track.numerator * (60 / bpm);
+  return (entry.track.paddingBefore + entry.track.paddingAfter) * barSeconds
+    + entry.actualNotes.length * entry.quant;
 }
 
 function parseSequence(sequenceInput: string): number[] {
@@ -375,6 +401,9 @@ function buildTrackEvents(
   }
 
   const delaySeconds = getTrackDelaySeconds(bpm, entry.track);
+  const barSeconds = entry.track.numerator * (60 / bpm);
+  const paddingBeforeSeconds = entry.track.paddingBefore * barSeconds;
+  const repeatPeriod = getTrackRepeatDurationSeconds(bpm, entry);
   const warpAmount = entry.track.timeWarpEnabled ? entry.track.timeWarpAmount / 100 : 0;
   const warpEnabled = entry.track.timeWarpEnabled && warpAmount > 0;
   const warpResolution = resolveTimeWarpFunction(entry.track.timeWarpCurve, entry.track.timeWarpExpression);
@@ -387,7 +416,7 @@ function buildTrackEvents(
   let order = 0;
 
   for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
-    const loopStart = delaySeconds + repeat * trackPeriod;
+    const loopStart = delaySeconds + repeat * repeatPeriod + paddingBeforeSeconds;
     for (let i = 0; i < entry.actualNotes.length; i += 1) {
       const notes = entry.actualNotes[i];
       if (notes.length === 0) {
@@ -507,6 +536,10 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     gain: clamp(options.gain ?? 0, -96, 24),
     velocityMultiplier: 1,
     delay: clamp(options.delay ?? 0, 0, 64),
+    fadeIn: clamp(options.fadeIn ?? 0, 0, 64),
+    fadeOut: clamp(options.fadeOut ?? 0, 0, 64),
+    paddingBefore: clamp(options.paddingBefore ?? 0, 0, 64),
+    paddingAfter: clamp(options.paddingAfter ?? 0, 0, 64),
     repeats: clamp(options.repeats ?? 1, 1, 64),
     timeWarpEnabled: Boolean(options.timeWarpEnabled ?? false),
     timeWarpCurve: normalizeTimeWarpCurve(options.timeWarpCurve),
@@ -591,6 +624,10 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     gain: clamp(track.gain ?? fallbackTrack.gain, -96, 24),
     velocityMultiplier: clamp(track.velocityMultiplier ?? fallbackTrack.velocityMultiplier, 0, 4),
     delay: clamp(track.delay ?? fallbackTrack.delay, 0, 64),
+    fadeIn: clamp(track.fadeIn ?? fallbackTrack.fadeIn, 0, 64),
+    fadeOut: clamp(track.fadeOut ?? fallbackTrack.fadeOut, 0, 64),
+    paddingBefore: clamp(track.paddingBefore ?? fallbackTrack.paddingBefore, 0, 64),
+    paddingAfter: clamp(track.paddingAfter ?? fallbackTrack.paddingAfter, 0, 64),
     repeats: clamp(track.repeats ?? fallbackTrack.repeats, 1, 64),
     timeWarpEnabled: Boolean(track.timeWarpEnabled ?? fallbackTrack.timeWarpEnabled),
     timeWarpCurve: normalizeTimeWarpCurve(track.timeWarpCurve ?? fallbackTrack.timeWarpCurve),
@@ -1508,10 +1545,21 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     }
 
     applyFeedbackEcho(trackLeft, trackRight, entry.track, sampleRate, getEchoDelaySeconds(prepared.bpm, entry.track.echoDelay));
+    const barSeconds = entry.track.numerator * (60 / prepared.bpm);
+    const trackStartSeconds = getTrackDelaySeconds(prepared.bpm, entry.track);
+    const activeDurationSeconds = entry.track.repeats * getTrackRepeatDurationSeconds(prepared.bpm, entry);
+    const fadeInSeconds = entry.track.fadeIn * barSeconds;
+    const fadeOutSeconds = entry.track.fadeOut * barSeconds;
     const sendWet = hasReverbSend ? dbToGain(entry.track.reverbWet) : 0;
     for (let frame = 0; frame < frameCount; frame += 1) {
-      const trackLeftSample = trackLeft[frame];
-      const trackRightSample = trackRight[frame];
+      const fadeGain = getTrackFadeGain(
+        frame / sampleRate - trackStartSeconds,
+        activeDurationSeconds,
+        fadeInSeconds,
+        fadeOutSeconds,
+      );
+      const trackLeftSample = trackLeft[frame] * fadeGain;
+      const trackRightSample = trackRight[frame] * fadeGain;
       left[frame] += trackLeftSample;
       right[frame] += trackRightSample;
       if (reverbLeft && reverbRight && sendWet > 0) {

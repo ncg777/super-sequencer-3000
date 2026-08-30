@@ -2,10 +2,37 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  arePresetDataEqual,
   clonePresetData,
   DEFAULT_PRESET_DATA,
   mergePresetTracks,
+  normalizePresetTrackData,
 } from '../presets.js';
+
+test('track fades default to off and normalize fractional bar durations', () => {
+  assert.equal(normalizePresetTrackData({}).fadeIn, 0);
+  assert.equal(normalizePresetTrackData({}).fadeOut, 0);
+  assert.equal(normalizePresetTrackData({ fadeIn: 1.5, fadeOut: 2.25 }).fadeIn, 1.5);
+  assert.equal(normalizePresetTrackData({ fadeIn: -1, fadeOut: 100 }).fadeOut, 64);
+
+  const changed = clonePresetData(DEFAULT_PRESET_DATA);
+  changed.tracks[0].fadeIn = 1;
+  assert.equal(arePresetDataEqual(changed, DEFAULT_PRESET_DATA), false);
+});
+
+test('track sequence padding defaults to zero and normalizes fractional bar durations', () => {
+  const defaults = normalizePresetTrackData({});
+  assert.equal(defaults.paddingBefore, 0);
+  assert.equal(defaults.paddingAfter, 0);
+
+  const normalized = normalizePresetTrackData({ paddingBefore: 1.5, paddingAfter: 2.25 });
+  assert.equal(normalized.paddingBefore, 1.5);
+  assert.equal(normalized.paddingAfter, 2.25);
+
+  const changed = clonePresetData(DEFAULT_PRESET_DATA);
+  changed.tracks[0].paddingAfter = 1;
+  assert.equal(arePresetDataEqual(changed, DEFAULT_PRESET_DATA), false);
+});
 
 test('mergePresetTracks appends independent tracks with unique IDs and names', () => {
   const current = clonePresetData(DEFAULT_PRESET_DATA);

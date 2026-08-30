@@ -182,6 +182,58 @@
           <v-row class="compact-row">
             <v-col cols="12">
               <EditableSlider
+                :label="'Padding Before Sequence (' + Number(draftTrack.paddingBefore).toFixed(2) + ' bars)'"
+                :min="0"
+                :max="64"
+                :step="0.01"
+                v-model="draftTrack.paddingBefore"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
+                :label="'Padding After Sequence (' + Number(draftTrack.paddingAfter).toFixed(2) + ' bars)'"
+                :min="0"
+                :max="64"
+                :step="0.01"
+                v-model="draftTrack.paddingAfter"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
+                :label="'Fade In (' + Number(draftTrack.fadeIn).toFixed(2) + ' bars)'"
+                :min="0"
+                :max="64"
+                :step="0.01"
+                v-model="draftTrack.fadeIn"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
+                :label="'Fade Out (' + Number(draftTrack.fadeOut).toFixed(2) + ' bars)'"
+                :min="0"
+                :max="64"
+                :step="0.01"
+                v-model="draftTrack.fadeOut"
+                @update:modelValue="handleTrackDraftChange"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row class="compact-row">
+            <v-col cols="12">
+              <EditableSlider
                 :label="'Track Repeats (' + draftTrack.repeats + ')'"
                 :min="1"
                 :max="64"

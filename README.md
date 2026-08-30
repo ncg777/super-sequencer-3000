@@ -97,6 +97,16 @@ Preset files use JSON.
 - **Import JSON** accepts either file type and adds imported presets without overwriting existing ones.
 - If an imported preset name already exists, GateRunner keeps both presets by renaming the imported one.
 
+### Track Timing
+
+Each track can add silence around its sequence and fades across its full scheduled duration.
+
+- **Delay** is applied once before the track begins.
+- Every repeat schedules **Padding Before**, then the sequence, then **Padding After**.
+- Padding and fade durations are measured in that track's bars, using its numerator and the shared BPM.
+- A fade value of `0` disables that fade. Fade in starts after the one-time delay, and fade out ends after the final repeat's after-padding.
+- Live playback and browser/CLI WAV export apply the fades. Browser and CLI MIDI export preserve the padded note timing.
+
 ### Track Activation (B)
 
 GateRunner can optionally gate tracks across the full song loop with a song-level bitmask sequence `B`.
