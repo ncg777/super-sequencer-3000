@@ -345,6 +345,10 @@ import {
   MonoVirtualAnalogSynth,
   VirtualAnalogSynth,
 } from './audio/virtualAnalogSynth';
+import {
+  KarplusStrongModalSynth,
+  MonoKarplusStrongModalSynth,
+} from './audio/karplusStrongModalSynth';
 import { isMonophonic, limitPolyphony, type GlideCurve, type GlideMode } from './audio/glide';
 import { claimVoices, getSynthVoiceCount, prewarmVoicePool, retainVoicePool, type SoundingNote } from './audio/voicePool';
 import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
@@ -403,8 +407,9 @@ interface ChoirFormantBank {
 type TonewheelPolySynth = Tone.PolySynth<PitchEnvelopeSynth>;
 type FmPolySynth = Tone.PolySynth<FourOperatorFmSynth>;
 type VirtualAnalogPolySynth = Tone.PolySynth<VirtualAnalogSynth>;
-type TrackSynth = TonewheelPolySynth | FmPolySynth | VirtualAnalogPolySynth
-  | MonoGlideSynth | MonoFourOperatorFmSynth | MonoVirtualAnalogSynth;
+type KarplusStrongModalPolySynth = Tone.PolySynth<KarplusStrongModalSynth>;
+type TrackSynth = TonewheelPolySynth | FmPolySynth | VirtualAnalogPolySynth | KarplusStrongModalPolySynth
+  | MonoGlideSynth | MonoFourOperatorFmSynth | MonoVirtualAnalogSynth | MonoKarplusStrongModalSynth;
 
 /**
  * Per-track audio graph. Everything that is not always in the signal path is created
@@ -1582,15 +1587,19 @@ export default defineComponent({
             chain.synth = markRaw(new MonoFourOperatorFmSynth());
           } else if (track.generatorType === 'virtual-analog') {
             chain.synth = markRaw(new MonoVirtualAnalogSynth());
+          } else if (track.generatorType === 'karplus-modal') {
+            chain.synth = markRaw(new MonoKarplusStrongModalSynth());
           } else {
             chain.synth = markRaw(new MonoGlideSynth());
           }
         } else {
-          let synth: TonewheelPolySynth | FmPolySynth | VirtualAnalogPolySynth;
+          let synth: TonewheelPolySynth | FmPolySynth | VirtualAnalogPolySynth | KarplusStrongModalPolySynth;
           if (track.generatorType === 'fm') {
             synth = markRaw(new Tone.PolySynth(FourOperatorFmSynth));
           } else if (track.generatorType === 'virtual-analog') {
             synth = markRaw(new Tone.PolySynth(VirtualAnalogSynth));
+          } else if (track.generatorType === 'karplus-modal') {
+            synth = markRaw(new Tone.PolySynth(KarplusStrongModalSynth));
           } else {
             synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
           }
@@ -1619,7 +1628,8 @@ export default defineComponent({
 
       const isMono = chain.synth instanceof MonoGlideSynth
         || chain.synth instanceof MonoFourOperatorFmSynth
-        || chain.synth instanceof MonoVirtualAnalogSynth;
+        || chain.synth instanceof MonoVirtualAnalogSynth
+        || chain.synth instanceof MonoKarplusStrongModalSynth;
       if (chain.synthGeneratorType === track.generatorType && isMono === isMonophonic(track.polyphony)) {
         if (!isMono) {
           const synth = chain.synth as Tone.PolySynth;
@@ -2052,7 +2062,8 @@ export default defineComponent({
       }
       if (synth instanceof MonoGlideSynth
         || synth instanceof MonoFourOperatorFmSynth
-        || synth instanceof MonoVirtualAnalogSynth) {
+        || synth instanceof MonoVirtualAnalogSynth
+        || synth instanceof MonoKarplusStrongModalSynth) {
         synth.triggerNotes(frequencies, duration, when, velocity);
         return;
       }
@@ -2384,6 +2395,24 @@ export default defineComponent({
             } else {
               (synth as VirtualAnalogPolySynth).set(voiceOptions as Parameters<VirtualAnalogPolySynth['set']>[0]);
             }
+          } else if (track.generatorType === 'karplus-modal') {
+            const voiceOptions = {
+              envelope,
+              ...track.karplusStrongModalSynth,
+            } as Parameters<KarplusStrongModalSynth['set']>[0];
+            const synth = this.ensureTrackSynth(chain, track);
+            if (synth instanceof MonoKarplusStrongModalSynth) {
+              synth.set(voiceOptions);
+              synth.setGlide({
+                time: track.glideTime,
+                mode: track.glideMode as GlideMode,
+                constantRate: track.glideConstantRate,
+                curve: track.glideCurve as GlideCurve,
+                legato: track.monoLegato,
+              });
+            } else {
+              (synth as KarplusStrongModalPolySynth).set(voiceOptions as Parameters<KarplusStrongModalPolySynth['set']>[0]);
+            }
           } else {
             const oscillatorOptions = {
               type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
@@ -2523,6 +2552,7 @@ export default defineComponent({
         track.generatorType,
         JSON.stringify(track.fmSynth),
         JSON.stringify(track.virtualAnalogSynth),
+        JSON.stringify(track.karplusStrongModalSynth),
         track.tonewheelDrawbars,
         JSON.stringify(track.tonewheelWavetable),
         track.unisonVoices,
@@ -2695,7 +2725,8 @@ export default defineComponent({
         chain.soundingNotes.length = 0;
         if (chain.synth instanceof MonoGlideSynth
           || chain.synth instanceof MonoFourOperatorFmSynth
-          || chain.synth instanceof MonoVirtualAnalogSynth) {
+          || chain.synth instanceof MonoVirtualAnalogSynth
+          || chain.synth instanceof MonoKarplusStrongModalSynth) {
           chain.synth.resetGlide();
         }
       }

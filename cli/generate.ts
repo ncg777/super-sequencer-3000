@@ -56,7 +56,13 @@ import {
   type VirtualAnalogSettings,
   type VirtualAnalogWaveform,
 } from '../src/audio/virtualAnalogSynth.js';
-import { normalizeVirtualAnalogSettings } from '../src/presets.js';
+import {
+  DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS,
+  planKarplusModalBank,
+  planKarplusWaveguide,
+  type KarplusStrongModalSettings,
+} from '../src/audio/karplusStrongModalSynth.js';
+import { normalizeKarplusStrongModalSettings, normalizeVirtualAnalogSettings } from '../src/presets.js';
 
 export interface GenerateTrackOptions {
   /** Optional display name for the track. */
@@ -74,11 +80,13 @@ export interface GenerateTrackOptions {
   /** Oscillator shape metadata (not used by MIDI export). */
   waveform?: string;
   /** Melodic sound generator. Omitted values retain legacy tonewheel behavior. */
-  generatorType?: 'tonewheel' | 'fm' | 'virtual-analog';
+  generatorType?: 'tonewheel' | 'fm' | 'virtual-analog' | 'karplus-modal';
   /** Four-operator FM patch used when generatorType is fm. */
   fmSynth?: FourOperatorFmSettings;
   /** Three-oscillator virtual-analog patch used when generatorType is virtual-analog. */
   virtualAnalogSynth?: VirtualAnalogSettings;
+  /** Hybrid waveguide-string and modal-body patch used when generatorType is karplus-modal. */
+  karplusStrongModalSynth?: KarplusStrongModalSettings;
   /** Space-separated integers to encode as notes, e.g. "1 2 4 8 16". */
   sequence?: string;
   /** Octave shift (0-10). */
@@ -528,6 +536,7 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     generatorType: 'tonewheel',
     fmSynth: normalizeFmSettings(undefined),
     virtualAnalogSynth: normalizeVirtualAnalogSettings(undefined),
+    karplusStrongModalSynth: { ...DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS },
     sequence: options.sequence ?? '1 2 4 8 16',
     octave: clamp(options.octave ?? 6, 0, 10),
     lengthFactor: clamp(options.lengthFactor ?? 100, 0, 400),
@@ -611,11 +620,14 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     numerator: clamp(track.numerator ?? fallbackTrack.numerator, 1, 16),
     denominator: clamp(track.denominator ?? fallbackTrack.denominator, 1, 16),
     waveform: track.waveform ?? fallbackTrack.waveform,
-    generatorType: track.generatorType === 'fm' || track.generatorType === 'virtual-analog'
+    generatorType: track.generatorType === 'fm'
+      || track.generatorType === 'virtual-analog'
+      || track.generatorType === 'karplus-modal'
       ? track.generatorType
       : 'tonewheel',
     fmSynth: normalizeFmSettings(track.fmSynth),
     virtualAnalogSynth: normalizeVirtualAnalogSettings(track.virtualAnalogSynth),
+    karplusStrongModalSynth: normalizeKarplusStrongModalSettings(track.karplusStrongModalSynth),
     sequence: track.sequence ?? fallbackTrack.sequence,
     octave: clamp(track.octave ?? fallbackTrack.octave, 0, 10),
     lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 0, 400),
@@ -1028,6 +1040,189 @@ function sampleVirtualAnalog(
   }
 
   return { left: left * 0.72, right: right * 0.72 };
+}
+
+interface ModalBiquadState {
+  b0: number;
+  b1: number;
+  b2: number;
+  a1: number;
+  a2: number;
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+  gain: number;
+}
+
+interface KarplusRenderState {
+  delay: Float64Array;
+  delayWrite: number;
+  pickDelay: Float64Array;
+  pickWrite: number;
+  noiseSeed: number;
+  pink: [number, number, number];
+  brown: number;
+  exciterLow: number;
+  dampingLow: number;
+  allpassInput: number;
+  allpassOutput: number;
+  allpassCoefficient: number;
+  delaySamples: number;
+  pickDelaySamples: number;
+  feedback: number;
+  dampingFrequency: number;
+  modes: ModalBiquadState[];
+  coefficientCountdown: number;
+}
+
+function createKarplusRenderState(sampleRate: number, seed: number): KarplusRenderState {
+  const bufferLength = Math.ceil(sampleRate / 20) + 4;
+  return {
+    delay: new Float64Array(bufferLength),
+    delayWrite: 0,
+    pickDelay: new Float64Array(bufferLength),
+    pickWrite: 0,
+    noiseSeed: (seed >>> 0) || 1,
+    pink: [0, 0, 0],
+    brown: 0,
+    exciterLow: 0,
+    dampingLow: 0,
+    allpassInput: 0,
+    allpassOutput: 0,
+    allpassCoefficient: 0,
+    delaySamples: sampleRate / 440,
+    pickDelaySamples: sampleRate * 0.18 / 440,
+    feedback: 0.98,
+    dampingFrequency: 8000,
+    modes: Array.from({ length: 8 }, () => ({
+      b0: 0,
+      b1: 0,
+      b2: 0,
+      a1: 0,
+      a2: 0,
+      x1: 0,
+      x2: 0,
+      y1: 0,
+      y2: 0,
+      gain: 0,
+    })),
+    coefficientCountdown: 0,
+  };
+}
+
+function readFractionalDelay(buffer: Float64Array, writeIndex: number, delaySamples: number): number {
+  let readPosition = writeIndex - delaySamples;
+  while (readPosition < 0) {
+    readPosition += buffer.length;
+  }
+  const index0 = Math.floor(readPosition) % buffer.length;
+  const index1 = (index0 + 1) % buffer.length;
+  const fraction = readPosition - Math.floor(readPosition);
+  return buffer[index0] + (buffer[index1] - buffer[index0]) * fraction;
+}
+
+function nextKarplusNoise(state: KarplusRenderState, type: KarplusStrongModalSettings['exciterType']): number {
+  state.noiseSeed ^= state.noiseSeed << 13;
+  state.noiseSeed ^= state.noiseSeed >>> 17;
+  state.noiseSeed ^= state.noiseSeed << 5;
+  const white = ((state.noiseSeed >>> 0) / 0xFFFFFFFF) * 2 - 1;
+  if (type === 'white') {
+    return white;
+  }
+  if (type === 'brown') {
+    state.brown = clamp(state.brown * 0.985 + white * 0.055, -1, 1);
+    return state.brown * 2.4;
+  }
+  state.pink[0] = 0.99765 * state.pink[0] + white * 0.099046;
+  state.pink[1] = 0.963 * state.pink[1] + white * 0.2965164;
+  state.pink[2] = 0.57 * state.pink[2] + white * 1.0526913;
+  return (state.pink[0] + state.pink[1] + state.pink[2] + white * 0.1848) * 0.22;
+}
+
+function updateKarplusCoefficients(
+  state: KarplusRenderState,
+  frequency: number,
+  settings: KarplusStrongModalSettings,
+  sampleRate: number,
+): void {
+  const waveguide = planKarplusWaveguide(frequency, sampleRate, settings);
+  state.delaySamples = waveguide.delaySeconds * sampleRate;
+  state.pickDelaySamples = waveguide.pickDelaySeconds * sampleRate;
+  state.feedback = waveguide.feedback;
+  state.dampingFrequency = waveguide.dampingFrequency;
+  const tangent = Math.tan(Math.PI * Math.min(waveguide.dispersionFrequency, sampleRate * 0.46) / sampleRate);
+  state.allpassCoefficient = (tangent - 1) / (tangent + 1);
+
+  const modes = planKarplusModalBank(frequency, sampleRate, settings);
+  state.modes.forEach((filter, index) => {
+    const mode = modes[index];
+    if (!mode) {
+      filter.gain = 0;
+      return;
+    }
+    const omega = 2 * Math.PI * mode.frequency / sampleRate;
+    const alpha = Math.sin(omega) / (2 * mode.q);
+    const a0 = 1 + alpha;
+    filter.b0 = alpha / a0;
+    filter.b1 = 0;
+    filter.b2 = -alpha / a0;
+    filter.a1 = (-2 * Math.cos(omega)) / a0;
+    filter.a2 = (1 - alpha) / a0;
+    filter.gain = mode.gain;
+  });
+}
+
+function sampleKarplusStrongModal(
+  state: KarplusRenderState,
+  settings: KarplusStrongModalSettings,
+  frequency: number,
+  elapsed: number,
+  sampleRate: number,
+): number {
+  if (state.coefficientCountdown <= 0) {
+    updateKarplusCoefficients(state, frequency, settings, sampleRate);
+    state.coefficientCountdown = 31;
+  } else {
+    state.coefficientCountdown -= 1;
+  }
+
+  let excitation = 0;
+  if (elapsed < settings.exciterDuration) {
+    const noise = nextKarplusNoise(state, settings.exciterType);
+    const cutoff = clamp(frequency * (2 + settings.exciterTone * 48), frequency * 1.5, sampleRate * 0.46);
+    const coefficient = Math.exp(-2 * Math.PI * cutoff / sampleRate);
+    state.exciterLow = (1 - coefficient) * noise + coefficient * state.exciterLow;
+    excitation = state.exciterLow * (1 - elapsed / settings.exciterDuration);
+  }
+
+  const delayedPick = readFractionalDelay(state.pickDelay, state.pickWrite, state.pickDelaySamples);
+  state.pickDelay[state.pickWrite] = excitation;
+  state.pickWrite = (state.pickWrite + 1) % state.pickDelay.length;
+  const pickedExcitation = excitation - delayedPick * 0.82;
+
+  const stringSample = readFractionalDelay(state.delay, state.delayWrite, state.delaySamples);
+  const dampingCoefficient = Math.exp(-2 * Math.PI * state.dampingFrequency / sampleRate);
+  state.dampingLow = (1 - dampingCoefficient) * stringSample + dampingCoefficient * state.dampingLow;
+  const allpass = state.allpassCoefficient * state.dampingLow
+    + state.allpassInput
+    - state.allpassCoefficient * state.allpassOutput;
+  state.allpassInput = state.dampingLow;
+  state.allpassOutput = allpass;
+  state.delay[state.delayWrite] = Math.tanh((pickedExcitation * 0.8 + allpass * state.feedback) * 1.15) / 1.15;
+  state.delayWrite = (state.delayWrite + 1) % state.delay.length;
+
+  let body = 0;
+  for (const mode of state.modes) {
+    const output = mode.b0 * stringSample + mode.b1 * mode.x1 + mode.b2 * mode.x2
+      - mode.a1 * mode.y1 - mode.a2 * mode.y2;
+    mode.x2 = mode.x1;
+    mode.x1 = stringSample;
+    mode.y2 = mode.y1;
+    mode.y1 = output;
+    body += output * mode.gain;
+  }
+  return stringSample * settings.stringMix + body * settings.bodyMix * 0.42;
 }
 
 function getRenderTrailSeconds(prepared: PreparedRenderData): number {
@@ -1443,6 +1638,10 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               entry.track.virtualAnalogSynth,
               0x9E3779B9 ^ midiNote ^ (trackIndex << 12),
             );
+            const karplusState = createKarplusRenderState(
+              sampleRate,
+              0x85EBCA6B ^ midiNote ^ (trackIndex << 12) ^ Math.floor(startFrame),
+            );
             let tonewheel = staticTonewheel;
             for (let frame = startFrame; frame < endFrame; frame += 1) {
               const t = (frame - startFrame) / sampleRate;
@@ -1518,6 +1717,23 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
                   filterCutoff,
                   sampleRate,
                 );
+              } else if (entry.track.generatorType === 'karplus-modal') {
+                const resonatorSample = sampleKarplusStrongModal(
+                  karplusState,
+                  entry.track.karplusStrongModalSynth,
+                  instantaneousFrequency,
+                  t,
+                  sampleRate,
+                );
+                const sample = applySimpleFilter(
+                  resonatorSample * voiceGain * env * tremolo,
+                  filterState,
+                  entry.track,
+                  filterCutoff,
+                  sampleRate,
+                );
+                trackLeft[frame] += sample * leftPan;
+                trackRight[frame] += sample * rightPan;
               } else {
                 const oscillatorSample = entry.track.generatorType === 'fm'
                   ? sampleFourOperatorFm(fmState, entry.track.fmSynth, instantaneousFrequency, t, duration, sampleRate)

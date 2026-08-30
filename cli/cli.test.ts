@@ -8,6 +8,7 @@ import ToneMidi from '@tonejs/midi';
 import { generateMidi, generateWav } from './generate.js';
 import { DEFAULT_FM_SETTINGS } from '../src/audio/fourOperatorFmSynth.js';
 import { DEFAULT_VIRTUAL_ANALOG_SETTINGS } from '../src/audio/virtualAnalogSynth.js';
+import { DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS } from '../src/audio/karplusStrongModalSynth.js';
 
 const { Midi } = ToneMidi;
 
@@ -437,4 +438,42 @@ test('virtual-analog tracks render audible deterministic stereo audio in CLI WAV
     peak = Math.max(peak, Math.abs(pcm.getInt16(offset, true)));
   }
   assert.ok(peak > 100, `expected audible virtual-analog output, got PCM peak ${peak}`);
+});
+
+test('Karplus-Strong modal tracks render audible deterministic audio in CLI WAV output', async () => {
+  const options = {
+    bpm: 180,
+    tracks: [{
+      name: 'Physical String',
+      trackKind: 'melodic' as const,
+      generatorType: 'karplus-modal' as const,
+      karplusStrongModalSynth: {
+        ...DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS,
+        exciterType: 'white' as const,
+        bodyMix: 0.8,
+        dispersion: 0.35,
+      },
+      numerator: 1,
+      denominator: 4,
+      sequence: '1',
+      octave: 5,
+      lengthFactor: 100,
+      release: 0.3,
+      repeats: 1,
+      delay: 0,
+      timeWarpEnabled: false,
+    }],
+    reverb: { enabled: false },
+  };
+  const first = await generateWav(options);
+  const second = await generateWav(options);
+
+  assert.equal(Buffer.from(first.subarray(0, 4)).toString('ascii'), 'RIFF');
+  assert.deepEqual(first, second, 'physical excitation rendering must be reproducible');
+  const pcm = new DataView(first.buffer, first.byteOffset + 44, first.byteLength - 44);
+  let peak = 0;
+  for (let offset = 0; offset + 1 < pcm.byteLength; offset += 2) {
+    peak = Math.max(peak, Math.abs(pcm.getInt16(offset, true)));
+  }
+  assert.ok(peak > 100, `expected audible physical-model output, got PCM peak ${peak}`);
 });

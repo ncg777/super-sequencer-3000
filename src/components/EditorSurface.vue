@@ -371,6 +371,7 @@
                 <v-btn value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-btn>
                 <v-btn value="fm" prepend-icon="mdi-waveform">4-Operator FM</v-btn>
                 <v-btn value="virtual-analog" prepend-icon="mdi-sine-wave">Virtual Analog</v-btn>
+                <v-btn value="karplus-modal" prepend-icon="mdi-guitar-acoustic">String + Modal</v-btn>
               </v-btn-toggle>
             </v-col>
           </v-row>
@@ -604,7 +605,7 @@
               </v-card>
             </div>
           </template>
-          <template v-else>
+          <template v-else-if="draftTrack.generatorType === 'virtual-analog'">
             <v-row class="compact-row">
               <v-col cols="12" sm="6" md="3">
                 <EditableSlider v-model="draftTrack.virtualAnalogSynth.drift" :label="`Analog drift (${Number(draftTrack.virtualAnalogSynth.drift).toFixed(1)} cents)`" :min="0" :max="25" :step="0.1" @update:modelValue="handleTrackDraftChange" />
@@ -700,6 +701,50 @@
                 </v-row>
               </v-col>
             </v-row>
+          </template>
+          <template v-else>
+            <div class="physical-model-grid">
+              <section class="physical-model-section" aria-labelledby="excitation-heading">
+                <div class="physical-model-header">
+                  <v-icon icon="mdi-hand-back-right-outline" />
+                  <div>
+                    <div id="excitation-heading" class="text-overline">Excitation</div>
+                    <div class="text-caption text-medium-emphasis">Pick impulse and contact point</div>
+                  </div>
+                </div>
+                <v-select v-model="draftTrack.karplusStrongModalSynth.exciterType" label="Exciter color" :items="karplusExciterOptions" density="compact" variant="outlined" hide-details class="mb-2" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.exciterDuration" :label="`Impulse length (${Number(draftTrack.karplusStrongModalSynth.exciterDuration * 1000).toFixed(1)} ms)`" :min="0.001" :max="0.12" :step="0.001" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.exciterTone" :label="`Pick brightness (${Math.round(draftTrack.karplusStrongModalSynth.exciterTone * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.pickPosition" :label="`Pick position (${Math.round(draftTrack.karplusStrongModalSynth.pickPosition * 100)}%)`" :min="0.02" :max="0.5" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+              </section>
+
+              <section class="physical-model-section" aria-labelledby="string-heading">
+                <div class="physical-model-header">
+                  <v-icon icon="mdi-chart-bell-curve-cumulative" />
+                  <div>
+                    <div id="string-heading" class="text-overline">Waveguide string</div>
+                    <div class="text-caption text-medium-emphasis">Fractional delay, loss, and stiffness</div>
+                  </div>
+                </div>
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.decay" :label="`String decay T60 (${Number(draftTrack.karplusStrongModalSynth.decay).toFixed(2)}s)`" :min="0.08" :max="30" :step="0.02" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.damping" :label="`High-frequency loss (${Math.round(draftTrack.karplusStrongModalSynth.damping * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.dispersion" :label="`Stiffness / dispersion (${Math.round(draftTrack.karplusStrongModalSynth.dispersion * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.stringMix" :label="`Direct string (${Math.round(draftTrack.karplusStrongModalSynth.stringMix * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+              </section>
+
+              <section class="physical-model-section" aria-labelledby="body-heading">
+                <div class="physical-model-header">
+                  <v-icon icon="mdi-blur-radial" />
+                  <div>
+                    <div id="body-heading" class="text-overline">Modal body</div>
+                    <div class="text-caption text-medium-emphasis">Eight inharmonic resonant modes</div>
+                  </div>
+                </div>
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.bodySize" :label="`Body size (${Math.round(draftTrack.karplusStrongModalSynth.bodySize * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.bodyDecay" :label="`Body decay T60 (${Number(draftTrack.karplusStrongModalSynth.bodyDecay).toFixed(2)}s)`" :min="0.08" :max="20" :step="0.02" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="draftTrack.karplusStrongModalSynth.bodyMix" :label="`Body level (${Math.round(draftTrack.karplusStrongModalSynth.bodyMix * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+              </section>
+            </div>
           </template>
         </v-window-item>
 
@@ -1233,6 +1278,11 @@ export default defineComponent({
         { title: 'Pink · balanced', value: 'pink' },
         { title: 'Brown · dark and weighted', value: 'brown' },
       ],
+      karplusExciterOptions: [
+        { title: 'White · hard pick', value: 'white' },
+        { title: 'Pink · natural pluck', value: 'pink' },
+        { title: 'Brown · soft strike', value: 'brown' },
+      ],
       skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
       wavetableLfoWaveformOptions: LFO_WAVEFORM_OPTIONS,
       wavetableLfoSyncRateOptions: LFO_SYNC_RATE_OPTIONS,
@@ -1585,8 +1635,8 @@ export default defineComponent({
 
 .generator-picker {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: min(100%, 780px);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(100%, 960px);
 }
 
 .generator-picker :deep(.v-btn) {
@@ -1660,12 +1710,35 @@ export default defineComponent({
   padding-top: 6px;
 }
 
+.physical-model-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.physical-model-section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--panel-border-soft);
+  background: var(--panel-inset);
+}
+
+.physical-model-header {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+  color: var(--indicator-amber);
+}
+
 @media (max-width: 960px) {
   .editor-surface {
     width: calc(100vw - 16px);
   }
 
-  .va-oscillator-grid {
+  .va-oscillator-grid,
+  .physical-model-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -56,9 +56,14 @@ import {
   type VirtualAnalogSubWaveform,
   type VirtualAnalogWaveform,
 } from './audio/virtualAnalogSynth.js';
+import {
+  DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS,
+  type KarplusExciterType,
+  type KarplusStrongModalSettings,
+} from './audio/karplusStrongModalSynth.js';
 
 export type TrackKind = 'melodic' | 'rhythmic';
-export type GeneratorType = 'tonewheel' | 'fm' | 'virtual-analog';
+export type GeneratorType = 'tonewheel' | 'fm' | 'virtual-analog' | 'karplus-modal';
 
 /** Upper bound for per-track polyphony; 1 switches the track to the monophonic glide engine. */
 export const MAX_TRACK_POLYPHONY = 16;
@@ -136,6 +141,7 @@ export interface PresetTrackData {
   tonewheelWavetable: TonewheelWavetable;
   fmSynth: FourOperatorFmSettings;
   virtualAnalogSynth: VirtualAnalogSettings;
+  karplusStrongModalSynth: KarplusStrongModalSettings;
   tremoloEnabled: boolean;
   tremoloFrequency: number;
   tremoloDepth: number;
@@ -453,6 +459,7 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
     sub: { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub },
     noise: { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise },
   },
+  karplusStrongModalSynth: { ...DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS },
   tremoloEnabled: false,
   tremoloFrequency: 5,
   tremoloDepth: 0.35,
@@ -552,6 +559,7 @@ const FM_OPERATOR_WAVEFORMS = new Set<FmOperatorWaveform>(['sine', 'triangle', '
 const VIRTUAL_ANALOG_WAVEFORMS = new Set<VirtualAnalogWaveform>(['sine', 'triangle', 'sawtooth', 'square', 'pulse']);
 const VIRTUAL_ANALOG_SUB_WAVEFORMS = new Set<VirtualAnalogSubWaveform>(['sine', 'triangle', 'sawtooth', 'square']);
 const VIRTUAL_ANALOG_NOISE_TYPES = new Set<VirtualAnalogNoiseType>(['white', 'pink', 'brown']);
+const KARPLUS_EXCITER_TYPES = new Set<KarplusExciterType>(['white', 'pink', 'brown']);
 
 type LegacyTrackFields = {
   numerator?: number;
@@ -796,6 +804,27 @@ export function normalizeVirtualAnalogSettings(value: unknown): VirtualAnalogSet
   };
 }
 
+export function normalizeKarplusStrongModalSettings(value: unknown): KarplusStrongModalSettings {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<KarplusStrongModalSettings>;
+  const exciterType = typeof raw.exciterType === 'string'
+    && KARPLUS_EXCITER_TYPES.has(raw.exciterType as KarplusExciterType)
+    ? raw.exciterType as KarplusExciterType
+    : DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.exciterType;
+  return {
+    exciterType,
+    exciterDuration: clamp(parseNumber(raw.exciterDuration, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.exciterDuration), 0.001, 0.12),
+    exciterTone: clamp(parseNumber(raw.exciterTone, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.exciterTone), 0, 1),
+    pickPosition: clamp(parseNumber(raw.pickPosition, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.pickPosition), 0.02, 0.5),
+    decay: clamp(parseNumber(raw.decay, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.decay), 0.08, 30),
+    damping: clamp(parseNumber(raw.damping, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.damping), 0, 1),
+    dispersion: clamp(parseNumber(raw.dispersion, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.dispersion), 0, 1),
+    bodySize: clamp(parseNumber(raw.bodySize, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.bodySize), 0, 1),
+    bodyDecay: clamp(parseNumber(raw.bodyDecay, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.bodyDecay), 0.08, 20),
+    bodyMix: clamp(parseNumber(raw.bodyMix, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.bodyMix), 0, 1),
+    stringMix: clamp(parseNumber(raw.stringMix, DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS.stringMix), 0, 1),
+  };
+}
+
 function normalizeFilterType(value: unknown): PresetTrackData['filterType'] {
   return typeof value === 'string' && FILTER_TYPES.has(value) ? value : DEFAULT_PRESET_TRACK_DATA.filterType;
 }
@@ -1007,6 +1036,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
       sub: { ...track.virtualAnalogSynth.sub },
       noise: { ...track.virtualAnalogSynth.noise },
     },
+    karplusStrongModalSynth: { ...track.karplusStrongModalSynth },
     tremoloEnabled: track.tremoloEnabled,
     tremoloFrequency: track.tremoloFrequency,
     tremoloDepth: track.tremoloDepth,
@@ -1115,13 +1145,16 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     monoLegato: Boolean(raw.monoLegato ?? DEFAULT_PRESET_TRACK_DATA.monoLegato),
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
-    generatorType: raw.generatorType === 'fm' || raw.generatorType === 'virtual-analog'
+    generatorType: raw.generatorType === 'fm'
+      || raw.generatorType === 'virtual-analog'
+      || raw.generatorType === 'karplus-modal'
       ? raw.generatorType
       : DEFAULT_PRESET_TRACK_DATA.generatorType,
     tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
     tonewheelWavetable: normalizeTonewheelWavetable(raw.tonewheelWavetable),
     fmSynth: normalizeFourOperatorFmSettings(raw.fmSynth),
     virtualAnalogSynth: normalizeVirtualAnalogSettings(raw.virtualAnalogSynth),
+    karplusStrongModalSynth: normalizeKarplusStrongModalSettings(raw.karplusStrongModalSynth),
     tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
     tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
     tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
@@ -1354,6 +1387,7 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.tonewheelDrawbars.some((drawbar, drawbarIndex) => drawbar !== rightTrack.tonewheelDrawbars[drawbarIndex])
       || JSON.stringify(leftTrack.fmSynth) !== JSON.stringify(rightTrack.fmSynth)
       || JSON.stringify(leftTrack.virtualAnalogSynth) !== JSON.stringify(rightTrack.virtualAnalogSynth)
+      || JSON.stringify(leftTrack.karplusStrongModalSynth) !== JSON.stringify(rightTrack.karplusStrongModalSynth)
       || leftTrack.tremoloEnabled !== rightTrack.tremoloEnabled
       || leftTrack.tremoloFrequency !== rightTrack.tremoloFrequency
       || leftTrack.tremoloDepth !== rightTrack.tremoloDepth
