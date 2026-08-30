@@ -40,8 +40,25 @@ import {
   type LfoSyncRateValue,
   type LfoWaveform,
 } from './audio/lfo.js';
+import {
+  DEFAULT_FM_SETTINGS,
+  type FmAlgorithm,
+  type FmOperatorSettings,
+  type FmOperatorWaveform,
+  type FourOperatorFmSettings,
+} from './audio/fourOperatorFmSynth.js';
+import {
+  DEFAULT_VIRTUAL_ANALOG_SETTINGS,
+  MAX_VIRTUAL_ANALOG_UNISON,
+  type VirtualAnalogNoiseType,
+  type VirtualAnalogOscillatorSettings,
+  type VirtualAnalogSettings,
+  type VirtualAnalogSubWaveform,
+  type VirtualAnalogWaveform,
+} from './audio/virtualAnalogSynth.js';
 
 export type TrackKind = 'melodic' | 'rhythmic';
+export type GeneratorType = 'tonewheel' | 'fm' | 'virtual-analog';
 
 /** Upper bound for per-track polyphony; 1 switches the track to the monophonic glide engine. */
 export const MAX_TRACK_POLYPHONY = 16;
@@ -106,8 +123,11 @@ export interface PresetTrackData {
   monoLegato: boolean;
   unisonVoices: number;
   unisonDetune: number;
+  generatorType: GeneratorType;
   tonewheelDrawbars: number[];
   tonewheelWavetable: TonewheelWavetable;
+  fmSynth: FourOperatorFmSettings;
+  virtualAnalogSynth: VirtualAnalogSettings;
   tremoloEnabled: boolean;
   tremoloFrequency: number;
   tremoloDepth: number;
@@ -403,12 +423,23 @@ export const DEFAULT_PRESET_TRACK_DATA: PresetTrackData = {
   monoLegato: true,
   unisonVoices: 1,
   unisonDetune: 0,
+  generatorType: 'tonewheel',
   tonewheelDrawbars: DEFAULT_TONEWHEEL_DRAWBARS.slice(),
   tonewheelWavetable: {
     enabled: false,
     dimensions: [],
     configurations: [],
     lfos: [],
+  },
+  fmSynth: {
+    ...DEFAULT_FM_SETTINGS,
+    operators: DEFAULT_FM_SETTINGS.operators.map((operator) => ({ ...operator })),
+  },
+  virtualAnalogSynth: {
+    ...DEFAULT_VIRTUAL_ANALOG_SETTINGS,
+    oscillators: DEFAULT_VIRTUAL_ANALOG_SETTINGS.oscillators.map((oscillator) => ({ ...oscillator })),
+    sub: { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub },
+    noise: { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise },
   },
   tremoloEnabled: false,
   tremoloFrequency: 5,
@@ -505,6 +536,10 @@ const MODULATION_RATE_VALUES = new Set<string>(MODULATION_RATE_OPTIONS);
 const SKEW_LFO_WAVEFORM_VALUES = new Set<string>(SKEW_LFO_WAVEFORM_OPTIONS.map((option) => option.value));
 const PHASER_STAGES = new Set<number>(PHASER_STAGE_OPTIONS);
 const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
+const FM_OPERATOR_WAVEFORMS = new Set<FmOperatorWaveform>(['sine', 'triangle', 'square', 'sawtooth']);
+const VIRTUAL_ANALOG_WAVEFORMS = new Set<VirtualAnalogWaveform>(['sine', 'triangle', 'sawtooth', 'square', 'pulse']);
+const VIRTUAL_ANALOG_SUB_WAVEFORMS = new Set<VirtualAnalogSubWaveform>(['sine', 'triangle', 'sawtooth', 'square']);
+const VIRTUAL_ANALOG_NOISE_TYPES = new Set<VirtualAnalogNoiseType>(['white', 'pink', 'brown']);
 
 type LegacyTrackFields = {
   numerator?: number;
@@ -651,6 +686,101 @@ function normalizeTonewheelWavetable(value: unknown): TonewheelWavetable {
     dimensions,
     configurations,
     lfos,
+  };
+}
+
+export function normalizeFourOperatorFmSettings(value: unknown): FourOperatorFmSettings {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<FourOperatorFmSettings>;
+  const algorithm = clamp(parseInteger(String(raw.algorithm ?? DEFAULT_FM_SETTINGS.algorithm), DEFAULT_FM_SETTINGS.algorithm), 1, 8) as FmAlgorithm;
+  const rawOperators = Array.isArray(raw.operators) ? raw.operators : [];
+  const operators = DEFAULT_FM_SETTINGS.operators.map((fallback, index): FmOperatorSettings => {
+    const operator = (typeof rawOperators[index] === 'object' && rawOperators[index] !== null
+      ? rawOperators[index]
+      : {}) as Partial<FmOperatorSettings>;
+    const waveform = typeof operator.waveform === 'string' && FM_OPERATOR_WAVEFORMS.has(operator.waveform as FmOperatorWaveform)
+      ? operator.waveform as FmOperatorWaveform
+      : fallback.waveform;
+    return {
+      ratio: clamp(parseNumber(operator.ratio, fallback.ratio), 0.125, 32),
+      detune: clamp(parseNumber(operator.detune, fallback.detune), -100, 100),
+      level: clamp(parseNumber(operator.level, fallback.level), 0, 1),
+      waveform,
+      attack: clamp(parseNumber(operator.attack, fallback.attack), 0, 10),
+      decay: clamp(parseNumber(operator.decay, fallback.decay), 0, 10),
+      sustain: clamp(parseNumber(operator.sustain, fallback.sustain), 0, 1),
+      release: clamp(parseNumber(operator.release, fallback.release), 0, 20),
+    };
+  });
+  return {
+    algorithm,
+    modulationIndex: clamp(parseNumber(raw.modulationIndex, DEFAULT_FM_SETTINGS.modulationIndex), 0, 32),
+    feedback: clamp(parseNumber(raw.feedback, DEFAULT_FM_SETTINGS.feedback), 0, 2),
+    operators,
+  };
+}
+
+export function normalizeVirtualAnalogSettings(value: unknown): VirtualAnalogSettings {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Partial<VirtualAnalogSettings>;
+  const rawOscillators = Array.isArray(raw.oscillators) ? raw.oscillators : [];
+  const oscillators = DEFAULT_VIRTUAL_ANALOG_SETTINGS.oscillators.map((fallback, index): VirtualAnalogOscillatorSettings => {
+    const oscillator = (typeof rawOscillators[index] === 'object' && rawOscillators[index] !== null
+      ? rawOscillators[index]
+      : {}) as Partial<VirtualAnalogOscillatorSettings>;
+    const waveform = typeof oscillator.waveform === 'string'
+      && VIRTUAL_ANALOG_WAVEFORMS.has(oscillator.waveform as VirtualAnalogWaveform)
+      ? oscillator.waveform as VirtualAnalogWaveform
+      : fallback.waveform;
+    return {
+      enabled: Boolean(oscillator.enabled ?? fallback.enabled),
+      waveform,
+      octave: clamp(parseInteger(String(oscillator.octave ?? fallback.octave), fallback.octave), -3, 3),
+      semitone: clamp(parseInteger(String(oscillator.semitone ?? fallback.semitone), fallback.semitone), -12, 12),
+      detune: clamp(parseNumber(oscillator.detune, fallback.detune), -100, 100),
+      level: clamp(parseNumber(oscillator.level, fallback.level), 0, 1),
+      pan: clamp(parseNumber(oscillator.pan, fallback.pan), -1, 1),
+      phase: clamp(parseNumber(oscillator.phase, fallback.phase), 0, 360),
+      unisonVoices: clamp(
+        parseInteger(String(oscillator.unisonVoices ?? fallback.unisonVoices), fallback.unisonVoices),
+        1,
+        MAX_VIRTUAL_ANALOG_UNISON,
+      ),
+      unisonDetune: clamp(parseNumber(oscillator.unisonDetune, fallback.unisonDetune), 0, 100),
+      stereoSpread: clamp(parseNumber(oscillator.stereoSpread, fallback.stereoSpread), 0, 1),
+      pulseWidth: clamp(parseNumber(oscillator.pulseWidth, fallback.pulseWidth), 0.05, 0.95),
+      pwmRate: clamp(parseNumber(oscillator.pwmRate, fallback.pwmRate), 0.01, 20),
+      pwmDepth: clamp(parseNumber(oscillator.pwmDepth, fallback.pwmDepth), 0, 0.45),
+    };
+  });
+  const rawSub = (typeof raw.sub === 'object' && raw.sub !== null ? raw.sub : {}) as Partial<VirtualAnalogSettings['sub']>;
+  const rawNoise = (typeof raw.noise === 'object' && raw.noise !== null ? raw.noise : {}) as Partial<VirtualAnalogSettings['noise']>;
+  const subWaveform = typeof rawSub.waveform === 'string'
+    && VIRTUAL_ANALOG_SUB_WAVEFORMS.has(rawSub.waveform as VirtualAnalogSubWaveform)
+    ? rawSub.waveform as VirtualAnalogSubWaveform
+    : DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub.waveform;
+  const noiseType = typeof rawNoise.type === 'string'
+    && VIRTUAL_ANALOG_NOISE_TYPES.has(rawNoise.type as VirtualAnalogNoiseType)
+    ? rawNoise.type as VirtualAnalogNoiseType
+    : DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise.type;
+  return {
+    oscillators,
+    drift: clamp(parseNumber(raw.drift, DEFAULT_VIRTUAL_ANALOG_SETTINGS.drift), 0, 25),
+    driftRate: clamp(parseNumber(raw.driftRate, DEFAULT_VIRTUAL_ANALOG_SETTINGS.driftRate), 0.01, 5),
+    ringMod: clamp(parseNumber(raw.ringMod, DEFAULT_VIRTUAL_ANALOG_SETTINGS.ringMod), 0, 1),
+    ringModPan: clamp(parseNumber(raw.ringModPan, DEFAULT_VIRTUAL_ANALOG_SETTINGS.ringModPan), -1, 1),
+    sub: {
+      enabled: Boolean(rawSub.enabled ?? DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub.enabled),
+      waveform: subWaveform,
+      octave: clamp(parseInteger(String(rawSub.octave ?? DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub.octave), -1), -3, 0),
+      detune: clamp(parseNumber(rawSub.detune, DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub.detune), -100, 100),
+      level: clamp(parseNumber(rawSub.level, DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub.level), 0, 1),
+      pan: clamp(parseNumber(rawSub.pan, DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub.pan), -1, 1),
+    },
+    noise: {
+      enabled: Boolean(rawNoise.enabled ?? DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise.enabled),
+      type: noiseType,
+      level: clamp(parseNumber(rawNoise.level, DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise.level), 0, 1),
+      pan: clamp(parseNumber(rawNoise.pan, DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise.pan), -1, 1),
+    },
   };
 }
 
@@ -836,6 +966,7 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
     monoLegato: track.monoLegato,
     unisonVoices: track.unisonVoices,
     unisonDetune: track.unisonDetune,
+    generatorType: track.generatorType,
     tonewheelDrawbars: track.tonewheelDrawbars.slice(),
     tonewheelWavetable: {
       enabled: track.tonewheelWavetable.enabled,
@@ -849,6 +980,16 @@ export function clonePresetTrackData(track: PresetTrackData): PresetTrackData {
         ...lfo,
         routes: lfo.routes.slice(),
       })),
+    },
+    fmSynth: {
+      ...track.fmSynth,
+      operators: track.fmSynth.operators.map((operator) => ({ ...operator })),
+    },
+    virtualAnalogSynth: {
+      ...track.virtualAnalogSynth,
+      oscillators: track.virtualAnalogSynth.oscillators.map((oscillator) => ({ ...oscillator })),
+      sub: { ...track.virtualAnalogSynth.sub },
+      noise: { ...track.virtualAnalogSynth.noise },
     },
     tremoloEnabled: track.tremoloEnabled,
     tremoloFrequency: track.tremoloFrequency,
@@ -954,8 +1095,13 @@ export function normalizePresetTrackData(value: unknown, index = 0): PresetTrack
     monoLegato: Boolean(raw.monoLegato ?? DEFAULT_PRESET_TRACK_DATA.monoLegato),
     unisonVoices: clamp(parseInteger(raw.unisonVoices?.toString(), DEFAULT_PRESET_TRACK_DATA.unisonVoices), 1, 8),
     unisonDetune: clamp(parseNumber(raw.unisonDetune, DEFAULT_PRESET_TRACK_DATA.unisonDetune), 0, 100),
+    generatorType: raw.generatorType === 'fm' || raw.generatorType === 'virtual-analog'
+      ? raw.generatorType
+      : DEFAULT_PRESET_TRACK_DATA.generatorType,
     tonewheelDrawbars: normalizeTonewheelDrawbars(raw.tonewheelDrawbars),
     tonewheelWavetable: normalizeTonewheelWavetable(raw.tonewheelWavetable),
+    fmSynth: normalizeFourOperatorFmSettings(raw.fmSynth),
+    virtualAnalogSynth: normalizeVirtualAnalogSettings(raw.virtualAnalogSynth),
     tremoloEnabled: Boolean(raw.tremoloEnabled ?? DEFAULT_PRESET_TRACK_DATA.tremoloEnabled),
     tremoloFrequency: clamp(parseNumber(raw.tremoloFrequency, DEFAULT_PRESET_TRACK_DATA.tremoloFrequency), 0.01, 40),
     tremoloDepth: clamp(parseNumber(raw.tremoloDepth, DEFAULT_PRESET_TRACK_DATA.tremoloDepth), 0, 1),
@@ -1180,7 +1326,10 @@ export function arePresetDataEqual(left: PresetData, right: PresetData): boolean
       || leftTrack.monoLegato !== rightTrack.monoLegato
       || leftTrack.unisonVoices !== rightTrack.unisonVoices
       || leftTrack.unisonDetune !== rightTrack.unisonDetune
+      || leftTrack.generatorType !== rightTrack.generatorType
       || leftTrack.tonewheelDrawbars.some((drawbar, drawbarIndex) => drawbar !== rightTrack.tonewheelDrawbars[drawbarIndex])
+      || JSON.stringify(leftTrack.fmSynth) !== JSON.stringify(rightTrack.fmSynth)
+      || JSON.stringify(leftTrack.virtualAnalogSynth) !== JSON.stringify(rightTrack.virtualAnalogSynth)
       || leftTrack.tremoloEnabled !== rightTrack.tremoloEnabled
       || leftTrack.tremoloFrequency !== rightTrack.tremoloFrequency
       || leftTrack.tremoloDepth !== rightTrack.tremoloDepth

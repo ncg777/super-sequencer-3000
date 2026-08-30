@@ -314,6 +314,14 @@ import {
 import { getChoirFormantBandGainLinear } from './audio/choir';
 import { PitchEnvelopeSynth } from './audio/pitchEnvelopeSynth';
 import { MonoGlideSynth } from './audio/monoGlideSynth';
+import {
+  FourOperatorFmSynth,
+  MonoFourOperatorFmSynth,
+} from './audio/fourOperatorFmSynth';
+import {
+  MonoVirtualAnalogSynth,
+  VirtualAnalogSynth,
+} from './audio/virtualAnalogSynth';
 import { isMonophonic, limitPolyphony, type GlideCurve, type GlideMode } from './audio/glide';
 import { claimVoices, getSynthVoiceCount, retainVoicePool, type SoundingNote } from './audio/voicePool';
 import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
@@ -343,6 +351,7 @@ import {
   type PresetLibrary,
   type PresetReverbData,
   type PresetTrackData,
+  type GeneratorType,
   type TrackKind,
 } from './presets';
 import {
@@ -368,7 +377,11 @@ interface ChoirFormantBank {
 }
 
 /** Tracks run either the pooled polyphonic engine or the single-voice glide engine. */
-type TrackSynth = Tone.PolySynth<PitchEnvelopeSynth> | MonoGlideSynth;
+type TonewheelPolySynth = Tone.PolySynth<PitchEnvelopeSynth>;
+type FmPolySynth = Tone.PolySynth<FourOperatorFmSynth>;
+type VirtualAnalogPolySynth = Tone.PolySynth<VirtualAnalogSynth>;
+type TrackSynth = TonewheelPolySynth | FmPolySynth | VirtualAnalogPolySynth
+  | MonoGlideSynth | MonoFourOperatorFmSynth | MonoVirtualAnalogSynth;
 
 /**
  * Per-track audio graph. Everything that is not always in the signal path is created
@@ -378,6 +391,7 @@ type TrackSynth = Tone.PolySynth<PitchEnvelopeSynth> | MonoGlideSynth;
  */
 interface TrackAudioChain {
   synth: TrackSynth | null;
+  synthGeneratorType: GeneratorType | null;
   synthGain: Tone.Gain | null;
   noiseSynth: Tone.NoiseSynth | null;
   filter: Tone.Filter | null;
@@ -1482,6 +1496,7 @@ export default defineComponent({
       // note, and standardized-audio-context also rejects proxied nodes on connect().
       return markRaw({
         synth: null,
+        synthGeneratorType: null,
         synthGain: null,
         noiseSynth: null,
         filter: null,
@@ -1520,15 +1535,29 @@ export default defineComponent({
     ensureTrackSynth(chain: TrackAudioChain, track: PresetTrackData): TrackSynth {
       if (!chain.synth) {
         if (isMonophonic(track.polyphony)) {
-          chain.synth = markRaw(new MonoGlideSynth());
+          if (track.generatorType === 'fm') {
+            chain.synth = markRaw(new MonoFourOperatorFmSynth());
+          } else if (track.generatorType === 'virtual-analog') {
+            chain.synth = markRaw(new MonoVirtualAnalogSynth());
+          } else {
+            chain.synth = markRaw(new MonoGlideSynth());
+          }
         } else {
-          const synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
+          let synth: TonewheelPolySynth | FmPolySynth | VirtualAnalogPolySynth;
+          if (track.generatorType === 'fm') {
+            synth = markRaw(new Tone.PolySynth(FourOperatorFmSynth));
+          } else if (track.generatorType === 'virtual-analog') {
+            synth = markRaw(new Tone.PolySynth(VirtualAnalogSynth));
+          } else {
+            synth = markRaw(new Tone.PolySynth(PitchEnvelopeSynth));
+          }
           const voiceCount = getSynthVoiceCount(track.polyphony);
           synth.maxPolyphony = voiceCount;
           // Reuse voices instead of letting Tone dispose and rebuild them every second.
           retainVoicePool(synth as unknown as Tone.PolySynth, voiceCount);
           chain.synth = synth;
         }
+        chain.synthGeneratorType = track.generatorType;
         chain.soundingNotes.length = 0;
         chain.synthGain = chain.synthGain ?? markRaw(new Tone.Gain(1));
         chain.routingSignature = '';
@@ -1544,10 +1573,12 @@ export default defineComponent({
         return;
       }
 
-      const isMono = chain.synth instanceof MonoGlideSynth;
-      if (isMono === isMonophonic(track.polyphony)) {
+      const isMono = chain.synth instanceof MonoGlideSynth
+        || chain.synth instanceof MonoFourOperatorFmSynth
+        || chain.synth instanceof MonoVirtualAnalogSynth;
+      if (chain.synthGeneratorType === track.generatorType && isMono === isMonophonic(track.polyphony)) {
         if (!isMono) {
-          const synth = chain.synth as Tone.PolySynth<PitchEnvelopeSynth>;
+          const synth = chain.synth as Tone.PolySynth;
           const voiceCount = getSynthVoiceCount(track.polyphony);
           synth.maxPolyphony = voiceCount;
           retainVoicePool(synth as unknown as Tone.PolySynth, voiceCount);
@@ -1558,6 +1589,7 @@ export default defineComponent({
       chain.synth.disconnect();
       chain.synth.dispose();
       chain.synth = null;
+      chain.synthGeneratorType = null;
       chain.soundingNotes.length = 0;
       chain.voiceSignature = '';
       chain.routingSignature = '';
@@ -1735,6 +1767,7 @@ export default defineComponent({
     getTrackRoutingSignature(track: PresetTrackData): string {
       return [
         track.trackKind,
+        track.generatorType,
         track.waveform,
         track.vibratoEnabled,
         track.tremoloEnabled,
@@ -1960,7 +1993,7 @@ export default defineComponent({
       velocity: number,
       modulationTimeSeconds?: number,
     ) {
-      if (this.isNoiseWaveform(track.waveform)) {
+      if (track.generatorType === 'tonewheel' && this.isNoiseWaveform(track.waveform)) {
         this.ensureTrackNoiseSynth(chain).triggerAttackRelease(duration, when, velocity);
         return;
       }
@@ -1969,8 +2002,12 @@ export default defineComponent({
       const synth = this.ensureTrackSynth(chain, track);
       const modulationTime = modulationTimeSeconds ?? Tone.getTransport().getSecondsAtTime(when);
       chain.modulationNoteStartSeconds = modulationTime;
-      this.applyTonewheelModulation(track, chain, modulationTime);
-      if (synth instanceof MonoGlideSynth) {
+      if (track.generatorType === 'tonewheel') {
+        this.applyTonewheelModulation(track, chain, modulationTime);
+      }
+      if (synth instanceof MonoGlideSynth
+        || synth instanceof MonoFourOperatorFmSynth
+        || synth instanceof MonoVirtualAnalogSynth) {
         synth.triggerNotes(frequencies, duration, when, velocity);
         return;
       }
@@ -2143,8 +2180,9 @@ export default defineComponent({
       setReverbOutputEnabled(chain, this.reverbEnabled);
     },
     routeTrackAudioChain(track: PresetTrackData, chain: TrackAudioChain) {
-      const isNoise = this.isNoiseWaveform(track.waveform);
-      const isChoir = this.isChoirWaveform(track.waveform);
+      const isTonewheel = track.generatorType === 'tonewheel';
+      const isNoise = isTonewheel && this.isNoiseWaveform(track.waveform);
+      const isChoir = isTonewheel && this.isChoirWaveform(track.waveform);
 
       chain.synth?.disconnect();
       chain.synthGain?.disconnect();
@@ -2223,7 +2261,7 @@ export default defineComponent({
       this.rebuildDrumInstruments(track, chain);
       this.syncTrackChainNodeOptions(track, chain);
       const routingSignature = this.getTrackRoutingSignature(track);
-      const isNoise = this.isNoiseWaveform(track.waveform);
+      const isNoise = track.generatorType === 'tonewheel' && this.isNoiseWaveform(track.waveform);
       const envelope = {
         attackCurve: 'exponential' as const,
         attack: Math.max(track.attack, ENVELOPE_SMOOTHING_SECONDS),
@@ -2248,6 +2286,58 @@ export default defineComponent({
                 type: this.getNoiseType(track.waveform),
               },
             });
+          } else if (track.generatorType === 'fm') {
+            const voiceOptions = {
+              envelope,
+              pitchEnvelope: {
+                attack: Math.max(track.pitchEnvelopeAttack, ENVELOPE_SMOOTHING_SECONDS),
+                decay: Math.max(track.pitchEnvelopeDecay, ENVELOPE_SMOOTHING_SECONDS),
+                sustain: track.pitchEnvelopeSustain,
+                release: Math.max(track.pitchEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS),
+              },
+              pitchEnvelopeAmount: track.pitchEnvelopeAmount,
+              pitchEnvelopeShape: track.pitchEnvelopeShape,
+              ...track.fmSynth,
+            } as Parameters<FourOperatorFmSynth['set']>[0];
+            const synth = this.ensureTrackSynth(chain, track);
+            if (synth instanceof MonoFourOperatorFmSynth) {
+              synth.set(voiceOptions);
+              synth.setGlide({
+                time: track.glideTime,
+                mode: track.glideMode as GlideMode,
+                constantRate: track.glideConstantRate,
+                curve: track.glideCurve as GlideCurve,
+                legato: track.monoLegato,
+              });
+            } else {
+              (synth as FmPolySynth).set(voiceOptions as Parameters<FmPolySynth['set']>[0]);
+            }
+          } else if (track.generatorType === 'virtual-analog') {
+            const voiceOptions = {
+              envelope,
+              pitchEnvelope: {
+                attack: Math.max(track.pitchEnvelopeAttack, ENVELOPE_SMOOTHING_SECONDS),
+                decay: Math.max(track.pitchEnvelopeDecay, ENVELOPE_SMOOTHING_SECONDS),
+                sustain: track.pitchEnvelopeSustain,
+                release: Math.max(track.pitchEnvelopeRelease, ENVELOPE_SMOOTHING_SECONDS),
+              },
+              pitchEnvelopeAmount: track.pitchEnvelopeAmount,
+              pitchEnvelopeShape: track.pitchEnvelopeShape,
+              ...track.virtualAnalogSynth,
+            } as Parameters<VirtualAnalogSynth['set']>[0];
+            const synth = this.ensureTrackSynth(chain, track);
+            if (synth instanceof MonoVirtualAnalogSynth) {
+              synth.set(voiceOptions);
+              synth.setGlide({
+                time: track.glideTime,
+                mode: track.glideMode as GlideMode,
+                constantRate: track.glideConstantRate,
+                curve: track.glideCurve as GlideCurve,
+                legato: track.monoLegato,
+              });
+            } else {
+              (synth as VirtualAnalogPolySynth).set(voiceOptions as Parameters<VirtualAnalogPolySynth['set']>[0]);
+            }
           } else {
             const oscillatorOptions = {
               type: this.getOscillatorType(track) as Tone.ToneOscillatorType,
@@ -2279,7 +2369,7 @@ export default defineComponent({
                 legato: track.monoLegato,
               });
             } else {
-              synth.set(voiceOptions as Parameters<Tone.PolySynth<PitchEnvelopeSynth>['set']>[0]);
+              (synth as TonewheelPolySynth).set(voiceOptions as Parameters<TonewheelPolySynth['set']>[0]);
             }
             if (this.isChoirWaveform(track.waveform)) {
               this.updateChoirFormantBank(track.waveform, this.ensureTrackChoirBank(chain).formants);
@@ -2384,6 +2474,9 @@ export default defineComponent({
     getTrackVoiceSignature(track: PresetTrackData): string {
       return [
         track.waveform,
+        track.generatorType,
+        JSON.stringify(track.fmSynth),
+        JSON.stringify(track.virtualAnalogSynth),
         track.tonewheelDrawbars,
         JSON.stringify(track.tonewheelWavetable),
         track.unisonVoices,
@@ -2407,7 +2500,7 @@ export default defineComponent({
       ].join('|');
     },
     applyTonewheelModulation(track: PresetTrackData, chain: TrackAudioChain, timeSeconds: number) {
-      if (!chain.synth || this.isNoiseWaveform(track.waveform)) {
+      if (!chain.synth || track.generatorType !== 'tonewheel' || this.isNoiseWaveform(track.waveform)) {
         return;
       }
       const oscillator = {
@@ -2418,8 +2511,8 @@ export default defineComponent({
       };
       if (chain.synth instanceof MonoGlideSynth) {
         chain.synth.set({ oscillator } as unknown as Parameters<PitchEnvelopeSynth['set']>[0]);
-      } else {
-        chain.synth.set({ oscillator } as Parameters<Tone.PolySynth<PitchEnvelopeSynth>['set']>[0]);
+      } else if (chain.synthGeneratorType === 'tonewheel') {
+        (chain.synth as TonewheelPolySynth).set({ oscillator } as Parameters<TonewheelPolySynth['set']>[0]);
       }
     },
     syncTonewheelModulationLoop(track: PresetTrackData, chain: TrackAudioChain) {
@@ -2427,7 +2520,7 @@ export default defineComponent({
         && (track.tonewheelWavetable.lfos ?? []).some((lfo) => (
           lfo.enabled && lfo.depth > 0 && lfo.routes.some((amount) => amount !== 0)
         ));
-      if (!hasActiveRoutes || track.trackKind === 'rhythmic' || this.isNoiseWaveform(track.waveform)) {
+      if (!hasActiveRoutes || track.trackKind === 'rhythmic' || track.generatorType !== 'tonewheel' || this.isNoiseWaveform(track.waveform)) {
         chain.wavetableLfoLoop?.dispose();
         chain.wavetableLfoLoop = null;
         return;
@@ -2547,7 +2640,9 @@ export default defineComponent({
       // A restart must not glide in from the pitch that was playing when the transport stopped.
       for (const chain of Object.values(this.trackSynths)) {
         chain.soundingNotes.length = 0;
-        if (chain.synth instanceof MonoGlideSynth) {
+        if (chain.synth instanceof MonoGlideSynth
+          || chain.synth instanceof MonoFourOperatorFmSynth
+          || chain.synth instanceof MonoVirtualAnalogSynth) {
           chain.synth.resetGlide();
         }
       }
@@ -2909,9 +3004,8 @@ export default defineComponent({
 }
 
 .track-drawer {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: relative;
+  align-self: flex-end;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;

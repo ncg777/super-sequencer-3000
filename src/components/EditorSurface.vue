@@ -6,7 +6,7 @@
         <v-tab v-if="draftTrack.trackKind === 'rhythmic'" value="drum-sounds" prepend-icon="mdi-album">Drum Sounds</v-tab>
         <v-tab value="playback" prepend-icon="mdi-play-circle-outline">Playback</v-tab>
         <v-tab value="time-warp" prepend-icon="mdi-chart-sankey">Time Warp</v-tab>
-        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-tab>
+        <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="generator" prepend-icon="mdi-sine-wave">Generator</v-tab>
         <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="envelopes" prepend-icon="mdi-chart-bell-curve-cumulative">Envelopes</v-tab>
         <v-tab v-if="draftTrack.trackKind !== 'rhythmic'" value="unison" prepend-icon="mdi-account-voice">Voices &amp; Glide</v-tab>
         <v-tab value="modulation" prepend-icon="mdi-sine-wave">Tremolo/Vibrato</v-tab>
@@ -304,7 +304,25 @@
           </v-row>
         </v-window-item>
 
-        <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="tonewheel" class="control-tab-panel">
+        <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="generator" class="control-tab-panel">
+          <v-row>
+            <v-col cols="12">
+              <v-btn-toggle
+                v-model="draftTrack.generatorType"
+                mandatory
+                divided
+                color="primary"
+                variant="outlined"
+                class="generator-picker"
+                @update:modelValue="handleTrackDraftChange"
+              >
+                <v-btn value="tonewheel" prepend-icon="mdi-piano">Tonewheel</v-btn>
+                <v-btn value="fm" prepend-icon="mdi-waveform">4-Operator FM</v-btn>
+                <v-btn value="virtual-analog" prepend-icon="mdi-sine-wave">Virtual Analog</v-btn>
+              </v-btn-toggle>
+            </v-col>
+          </v-row>
+          <template v-if="draftTrack.generatorType === 'tonewheel'">
           <v-row>
             <v-col cols="12">
               <v-select
@@ -454,6 +472,183 @@
               <EditableSlider :label="label + ' Drawbar (' + draftTrack.tonewheelDrawbars[index] + ')'" :min="0" :max="8" :step="1" v-model="draftTrack.tonewheelDrawbars[index]" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
+          </template>
+          <template v-else-if="draftTrack.generatorType === 'fm'">
+            <v-row>
+              <v-col cols="12" md="7">
+                <v-select
+                  v-model="draftTrack.fmSynth.algorithm"
+                  label="Algorithm"
+                  :items="fmAlgorithmOptions"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details
+                  @update:modelValue="handleTrackDraftChange"
+                />
+              </v-col>
+              <v-col cols="12" md="5" class="d-flex align-center">
+                <div class="fm-algorithm-diagram">
+                  <span class="fm-algorithm-label">Signal flow</span>
+                  <strong>{{ selectedFmAlgorithm.diagram }}</strong>
+                </div>
+              </v-col>
+            </v-row>
+            <v-row class="compact-row">
+              <v-col cols="12" md="6">
+                <EditableSlider
+                  v-model="draftTrack.fmSynth.modulationIndex"
+                  :label="`Modulation index (${Number(draftTrack.fmSynth.modulationIndex).toFixed(2)})`"
+                  :min="0"
+                  :max="32"
+                  :step="0.05"
+                  @update:modelValue="handleTrackDraftChange"
+                />
+              </v-col>
+              <v-col cols="12" md="6">
+                <EditableSlider
+                  v-model="draftTrack.fmSynth.feedback"
+                  :label="`Operator 4 feedback (${Number(draftTrack.fmSynth.feedback).toFixed(2)})`"
+                  :min="0"
+                  :max="2"
+                  :step="0.01"
+                  @update:modelValue="handleTrackDraftChange"
+                />
+              </v-col>
+            </v-row>
+
+            <div class="fm-operator-grid">
+              <v-card
+                v-for="(operator, operatorIndex) in draftTrack.fmSynth.operators"
+                :key="`fm-operator-${operatorIndex}`"
+                variant="outlined"
+                class="fm-operator"
+              >
+                <div class="fm-operator-header">
+                  <div>
+                    <div class="text-overline">Operator {{ operatorIndex + 1 }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ getFmOperatorRole(operatorIndex) }}</div>
+                  </div>
+                  <v-icon :icon="isFmCarrier(operatorIndex) ? 'mdi-volume-high' : 'mdi-transit-connection-variant'" />
+                </div>
+                <v-select
+                  v-model="operator.waveform"
+                  label="Waveform"
+                  :items="fmOperatorWaveformOptions"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  class="mb-2"
+                  @update:modelValue="handleTrackDraftChange"
+                />
+                <EditableSlider v-model="operator.ratio" :label="`Frequency ratio (${Number(operator.ratio).toFixed(3)}x)`" :min="0.125" :max="32" :step="0.125" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="operator.detune" :label="`Fine tune (${Number(operator.detune).toFixed(0)} cents)`" :min="-100" :max="100" :step="1" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="operator.level" :label="`Level (${Math.round(operator.level * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <v-divider class="my-3" />
+                <div class="text-caption text-medium-emphasis mb-1">Operator envelope</div>
+                <EditableSlider v-model="operator.attack" :label="`Attack (${Number(operator.attack).toFixed(3)}s)`" :min="0" :max="10" :step="0.005" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="operator.decay" :label="`Decay (${Number(operator.decay).toFixed(3)}s)`" :min="0" :max="10" :step="0.005" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="operator.sustain" :label="`Sustain (${Number(operator.sustain).toFixed(2)})`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="operator.release" :label="`Release (${Number(operator.release).toFixed(3)}s)`" :min="0" :max="20" :step="0.005" @update:modelValue="handleTrackDraftChange" />
+              </v-card>
+            </div>
+          </template>
+          <template v-else>
+            <v-row class="compact-row">
+              <v-col cols="12" sm="6" md="3">
+                <EditableSlider v-model="draftTrack.virtualAnalogSynth.drift" :label="`Analog drift (${Number(draftTrack.virtualAnalogSynth.drift).toFixed(1)} cents)`" :min="0" :max="25" :step="0.1" @update:modelValue="handleTrackDraftChange" />
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <EditableSlider v-model="draftTrack.virtualAnalogSynth.driftRate" :label="`Drift rate (${Number(draftTrack.virtualAnalogSynth.driftRate).toFixed(2)} Hz)`" :min="0.01" :max="5" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <EditableSlider v-model="draftTrack.virtualAnalogSynth.ringMod" :label="`Osc 1 × 2 ring (${Math.round(draftTrack.virtualAnalogSynth.ringMod * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+              </v-col>
+              <v-col cols="12" sm="6" md="3">
+                <EditableSlider v-model="draftTrack.virtualAnalogSynth.ringModPan" :label="`Ring pan (${Number(draftTrack.virtualAnalogSynth.ringModPan).toFixed(2)})`" :min="-1" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+              </v-col>
+            </v-row>
+
+            <div class="va-oscillator-grid">
+              <v-card
+                v-for="(oscillator, oscillatorIndex) in draftTrack.virtualAnalogSynth.oscillators"
+                :key="`va-oscillator-${oscillatorIndex}`"
+                variant="outlined"
+                class="va-oscillator"
+              >
+                <div class="va-oscillator-header">
+                  <div>
+                    <div class="text-overline">Oscillator {{ oscillatorIndex + 1 }}</div>
+                    <div class="text-caption text-medium-emphasis">Band-limited · {{ oscillator.unisonVoices }} voice{{ oscillator.unisonVoices === 1 ? '' : 's' }}</div>
+                  </div>
+                  <v-switch v-model="oscillator.enabled" label="On" density="compact" hide-details @update:modelValue="handleTrackDraftChange" />
+                </div>
+                <v-select v-model="oscillator.waveform" label="Waveform" :items="virtualAnalogWaveformOptions" density="compact" variant="outlined" hide-details class="mb-2" @update:modelValue="handleTrackDraftChange" />
+                <v-row class="compact-row">
+                  <v-col cols="6">
+                    <EditableSlider v-model="oscillator.octave" :label="`Octave (${oscillator.octave > 0 ? '+' : ''}${oscillator.octave})`" :min="-3" :max="3" :step="1" @update:modelValue="handleTrackDraftChange" />
+                  </v-col>
+                  <v-col cols="6">
+                    <EditableSlider v-model="oscillator.semitone" :label="`Semitone (${oscillator.semitone > 0 ? '+' : ''}${oscillator.semitone})`" :min="-12" :max="12" :step="1" @update:modelValue="handleTrackDraftChange" />
+                  </v-col>
+                </v-row>
+                <EditableSlider v-model="oscillator.detune" :label="`Fine tune (${Number(oscillator.detune).toFixed(0)} cents)`" :min="-100" :max="100" :step="1" @update:modelValue="handleTrackDraftChange" />
+                <v-row class="compact-row">
+                  <v-col cols="6">
+                    <EditableSlider v-model="oscillator.level" :label="`Level (${Math.round(oscillator.level * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                  </v-col>
+                  <v-col cols="6">
+                    <EditableSlider v-model="oscillator.pan" :label="`Pan (${Number(oscillator.pan).toFixed(2)})`" :min="-1" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                  </v-col>
+                </v-row>
+                <v-divider class="my-3" />
+                <div class="text-caption text-medium-emphasis mb-1">Unison and phase</div>
+                <EditableSlider v-model="oscillator.unisonVoices" :label="`Voices (${oscillator.unisonVoices})`" :min="1" :max="4" :step="1" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="oscillator.unisonDetune" :label="`Detune span (${Number(oscillator.unisonDetune).toFixed(0)} cents)`" :min="0" :max="100" :step="1" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="oscillator.stereoSpread" :label="`Stereo spread (${Math.round(oscillator.stereoSpread * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                <EditableSlider v-model="oscillator.phase" :label="`Start phase (${Number(oscillator.phase).toFixed(0)}°)`" :min="0" :max="360" :step="1" @update:modelValue="handleTrackDraftChange" />
+                <template v-if="oscillator.waveform === 'pulse'">
+                  <v-divider class="my-3" />
+                  <div class="text-caption text-medium-emphasis mb-1">Pulse-width modulation</div>
+                  <EditableSlider v-model="oscillator.pulseWidth" :label="`Width (${Math.round(oscillator.pulseWidth * 100)}%)`" :min="0.05" :max="0.95" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                  <EditableSlider v-model="oscillator.pwmRate" :label="`PWM rate (${Number(oscillator.pwmRate).toFixed(2)} Hz)`" :min="0.01" :max="20" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                  <EditableSlider v-model="oscillator.pwmDepth" :label="`PWM depth (${Math.round(oscillator.pwmDepth * 100)}%)`" :min="0" :max="0.45" :step="0.01" @update:modelValue="handleTrackDraftChange" />
+                </template>
+              </v-card>
+            </div>
+
+            <v-row class="va-aux-row">
+              <v-col cols="12" md="6">
+                <div class="va-aux-header">
+                  <div>
+                    <div class="text-overline">Sub oscillator</div>
+                    <div class="text-caption text-medium-emphasis">Phase-coherent low foundation</div>
+                  </div>
+                  <v-switch v-model="draftTrack.virtualAnalogSynth.sub.enabled" label="On" density="compact" hide-details @update:modelValue="handleTrackDraftChange" />
+                </div>
+                <v-select v-model="draftTrack.virtualAnalogSynth.sub.waveform" label="Waveform" :items="virtualAnalogSubWaveformOptions" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                <v-row class="compact-row">
+                  <v-col cols="6"><EditableSlider v-model="draftTrack.virtualAnalogSynth.sub.octave" :label="`Octave (${draftTrack.virtualAnalogSynth.sub.octave})`" :min="-3" :max="0" :step="1" @update:modelValue="handleTrackDraftChange" /></v-col>
+                  <v-col cols="6"><EditableSlider v-model="draftTrack.virtualAnalogSynth.sub.detune" :label="`Fine (${Number(draftTrack.virtualAnalogSynth.sub.detune).toFixed(0)} cents)`" :min="-100" :max="100" :step="1" @update:modelValue="handleTrackDraftChange" /></v-col>
+                  <v-col cols="6"><EditableSlider v-model="draftTrack.virtualAnalogSynth.sub.level" :label="`Level (${Math.round(draftTrack.virtualAnalogSynth.sub.level * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" /></v-col>
+                  <v-col cols="6"><EditableSlider v-model="draftTrack.virtualAnalogSynth.sub.pan" :label="`Pan (${Number(draftTrack.virtualAnalogSynth.sub.pan).toFixed(2)})`" :min="-1" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" /></v-col>
+                </v-row>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div class="va-aux-header">
+                  <div>
+                    <div class="text-overline">Noise source</div>
+                    <div class="text-caption text-medium-emphasis">Air, grit, and transient texture</div>
+                  </div>
+                  <v-switch v-model="draftTrack.virtualAnalogSynth.noise.enabled" label="On" density="compact" hide-details @update:modelValue="handleTrackDraftChange" />
+                </div>
+                <v-select v-model="draftTrack.virtualAnalogSynth.noise.type" label="Color" :items="virtualAnalogNoiseOptions" density="compact" variant="outlined" hide-details @update:modelValue="handleTrackDraftChange" />
+                <v-row class="compact-row">
+                  <v-col cols="6"><EditableSlider v-model="draftTrack.virtualAnalogSynth.noise.level" :label="`Level (${Math.round(draftTrack.virtualAnalogSynth.noise.level * 100)}%)`" :min="0" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" /></v-col>
+                  <v-col cols="6"><EditableSlider v-model="draftTrack.virtualAnalogSynth.noise.pan" :label="`Pan (${Number(draftTrack.virtualAnalogSynth.noise.pan).toFixed(2)})`" :min="-1" :max="1" :step="0.01" @update:modelValue="handleTrackDraftChange" /></v-col>
+                </v-row>
+              </v-col>
+            </v-row>
+          </template>
         </v-window-item>
 
         <v-window-item v-if="draftTrack.trackKind !== 'rhythmic'" value="envelopes" class="control-tab-panel">
@@ -557,13 +752,13 @@
             </v-col>
           </v-row>
 
-          <div class="envelope-section-label envelope-section-label--spaced">Unison</div>
+          <div class="envelope-section-label envelope-section-label--spaced">Unison (tonewheel only)</div>
           <v-row class="compact-row">
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Unison Voices (' + draftTrack.unisonVoices + ')'" :min="1" :max="8" :step="1" v-model="draftTrack.unisonVoices" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Unison Voices (' + draftTrack.unisonVoices + ')'" :min="1" :max="8" :step="1" v-model="draftTrack.unisonVoices" :disabled="draftTrack.generatorType !== 'tonewheel'" @update:modelValue="handleTrackDraftChange" />
             </v-col>
             <v-col cols="12" md="6">
-              <EditableSlider :label="'Unison Detune (' + Number(draftTrack.unisonDetune).toFixed(0) + ' cents)'" :min="0" :max="100" :step="1" v-model="draftTrack.unisonDetune" @update:modelValue="handleTrackDraftChange" />
+              <EditableSlider :label="'Unison Detune (' + Number(draftTrack.unisonDetune).toFixed(0) + ' cents)'" :min="0" :max="100" :step="1" v-model="draftTrack.unisonDetune" :disabled="draftTrack.generatorType !== 'tonewheel'" @update:modelValue="handleTrackDraftChange" />
             </v-col>
           </v-row>
         </v-window-item>
@@ -902,6 +1097,7 @@ import {
   type TonewheelWavetableLfo,
 } from '../audio/tonewheelWavetable';
 import { LFO_SYNC_RATE_OPTIONS, LFO_WAVEFORM_OPTIONS } from '../audio/lfo';
+import { FM_ALGORITHMS } from '../audio/fourOperatorFmSynth';
 import {
   CUSTOM_TIME_WARP_CURVE,
   TIME_WARP_CURVE_OPTIONS,
@@ -957,6 +1153,34 @@ export default defineComponent({
       modulationRateOptions: MODULATION_RATE_OPTIONS,
       phaserStageOptions: [...PHASER_STAGE_OPTIONS] as number[],
       waveformOptions: WAVEFORM_OPTIONS,
+      fmAlgorithmOptions: FM_ALGORITHMS.map((algorithm) => ({
+        title: `${algorithm.value}. ${algorithm.name}  |  ${algorithm.diagram}`,
+        value: algorithm.value,
+      })),
+      fmOperatorWaveformOptions: [
+        { title: 'Sine', value: 'sine' },
+        { title: 'Triangle', value: 'triangle' },
+        { title: 'Square', value: 'square' },
+        { title: 'Sawtooth', value: 'sawtooth' },
+      ],
+      virtualAnalogWaveformOptions: [
+        { title: 'Sine', value: 'sine' },
+        { title: 'Triangle', value: 'triangle' },
+        { title: 'Sawtooth', value: 'sawtooth' },
+        { title: 'Square', value: 'square' },
+        { title: 'Pulse / PWM', value: 'pulse' },
+      ],
+      virtualAnalogSubWaveformOptions: [
+        { title: 'Sine', value: 'sine' },
+        { title: 'Triangle', value: 'triangle' },
+        { title: 'Sawtooth', value: 'sawtooth' },
+        { title: 'Square', value: 'square' },
+      ],
+      virtualAnalogNoiseOptions: [
+        { title: 'White · bright and even', value: 'white' },
+        { title: 'Pink · balanced', value: 'pink' },
+        { title: 'Brown · dark and weighted', value: 'brown' },
+      ],
       skewLfoWaveformOptions: SKEW_LFO_WAVEFORM_OPTIONS,
       wavetableLfoWaveformOptions: LFO_WAVEFORM_OPTIONS,
       wavetableLfoSyncRateOptions: LFO_SYNC_RATE_OPTIONS,
@@ -1018,6 +1242,9 @@ export default defineComponent({
         value: index,
       }));
     },
+    selectedFmAlgorithm() {
+      return FM_ALGORITHMS.find((algorithm) => algorithm.value === this.draftTrack.fmSynth.algorithm) ?? FM_ALGORITHMS[0];
+    },
   },
   watch: {
     track: {
@@ -1046,6 +1273,22 @@ export default defineComponent({
     },
   },
   methods: {
+    isFmCarrier(operatorIndex: number): boolean {
+      return this.selectedFmAlgorithm.carriers.includes(operatorIndex);
+    },
+    getFmOperatorRole(operatorIndex: number): string {
+      const carrier = this.isFmCarrier(operatorIndex);
+      const targets = this.selectedFmAlgorithm.routes
+        .filter((route) => route.from === operatorIndex)
+        .map((route) => route.to + 1);
+      if (carrier && targets.length > 0) {
+        return `Carrier and modulator of ${targets.join(', ')}`;
+      }
+      if (carrier) {
+        return 'Audible carrier';
+      }
+      return targets.length > 0 ? `Modulates operator ${targets.join(', ')}` : 'Modulator';
+    },
     /** Shows the tempo-synced LFO cycle length translated into Hz at the current tempo. */
     formatModulationRate(rate: string): string {
       const match = rate.match(/^(\d+)\/(\d+)([DT])?$/);
@@ -1288,9 +1531,90 @@ export default defineComponent({
   margin-top: -4px;
 }
 
+.generator-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 780px);
+}
+
+.generator-picker :deep(.v-btn) {
+  width: 100%;
+}
+
+.fm-algorithm-diagram {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--instrument-text);
+  font-family: "Roboto Mono", monospace;
+}
+
+.fm-algorithm-label {
+  color: var(--instrument-muted);
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.fm-operator-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.fm-operator {
+  min-width: 0;
+  padding: 12px;
+  background: rgba(8, 13, 13, 0.42);
+}
+
+.fm-operator-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  margin-bottom: 8px;
+  color: var(--indicator-amber);
+}
+
+.va-oscillator-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.va-oscillator {
+  min-width: 0;
+  padding: 12px;
+  background: rgba(8, 13, 13, 0.42);
+}
+
+.va-oscillator-header,
+.va-aux-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  margin-bottom: 8px;
+  color: var(--indicator-amber);
+}
+
+.va-aux-row {
+  margin-top: 10px;
+  border-top: 1px solid var(--panel-border-soft);
+  padding-top: 6px;
+}
+
 @media (max-width: 960px) {
   .editor-surface {
     width: calc(100vw - 16px);
+  }
+
+  .va-oscillator-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1345,6 +1669,14 @@ export default defineComponent({
     width: calc(100vw - 10px);
     border-radius: 0;
     padding: 12px !important;
+  }
+
+  .fm-operator-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .generator-picker {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

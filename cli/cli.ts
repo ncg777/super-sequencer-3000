@@ -20,6 +20,9 @@ function presetDataToGeneratorInput(data: PresetData) {
       numerator: track.numerator,
       denominator: track.denominator,
       waveform: track.waveform,
+      generatorType: track.generatorType,
+      fmSynth: track.fmSynth,
+      virtualAnalogSynth: track.virtualAnalogSynth,
       sequence: track.sequenceInput,
       octave: track.octave,
       lengthFactor: track.lengthFactor,
@@ -168,7 +171,7 @@ function parseReverbJson(value: string): GenerateReverbOptions {
 program
   .name('gaterunner')
   .description('Generate a MIDI/WAV file from a GateRunner sequence')
-  .version('2026.8.27')
+  .version('2026.8.30')
   .requiredOption('-o, --output <file>', 'Output file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')

@@ -1,6 +1,6 @@
 # GateRunner
 
-A browser-based MIDI step sequencer and tonewheel synthesizer with effects that generates MIDI and WAV files from binary-encoded note sequences using Forte number pitch-class sets.
+A browser-based MIDI step sequencer with tonewheel, four-operator FM, and three-oscillator virtual-analog generators that produces MIDI and WAV files from binary-encoded note sequences using Forte number pitch-class sets.
 
 **Live app:** [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/)
 
@@ -18,7 +18,7 @@ GateRunner stores sequences as named presets in the browser.
 ### Multidimensional Tonewheel Wavetables
 
 Each melodic track can turn its drawbar registration into a sparse multidimensional
-wavetable from the **Tonewheel** tab.
+wavetable from the **Generator** tab after selecting **Tonewheel**.
 
 - Enabling the wavetable creates a useful **Brightness** axis with the current sound
   at one end and a bright registration at the other.
@@ -39,6 +39,54 @@ wavetable from the **Tonewheel** tab.
   to modern wavetable modulation matrices while keeping playback deterministic.
 - Browser playback updates the spectrum at control rate; browser and CLI WAV exports
   render the same modulation against absolute song time.
+
+### Four-Operator FM Synth
+
+Each melodic track can select **4-Operator FM** from the **Generator** tab.
+
+- Choose from eight routing algorithms: deep serial stacks, parallel stacks, branched
+  modulation, and a four-carrier additive layout.
+- Operators are numbered from 1 to 4. The algorithm display shows which operators are
+  audible carriers and which feed another operator's frequency input.
+- Set each operator's frequency ratio from 0.125x to 32x, fine tune by +/-100 cents,
+  choose sine/triangle/square/sawtooth, and control its output level.
+- Every operator has an independent ADSR envelope. Short modulator envelopes create
+  percussive attacks; sustained modulators retain harmonic complexity through a note.
+- **Modulation index** controls the shared frequency-deviation depth for algorithm
+  routes. **Operator 4 feedback** feeds operator 4 through a one-sample delay for
+  increasingly bright or noisy spectra.
+- The track's master amp and pitch envelopes, polyphony, mono glide/legato, tremolo,
+  vibrato, filters, effects, drive, gain, and reverb send apply to FM as they do to the
+  tonewheel generator. Tonewheel oscillator unison is not applied to FM voices.
+- Generator selection and all FM settings are stored in presets. Existing presets omit
+  the generator field and continue to load as tonewheel patches.
+- Browser playback and CLI WAV export both render the selected FM algorithm and operator
+  envelopes.
+
+### Three-Oscillator Virtual Analog Synth
+
+Select **Virtual Analog** in a melodic track's **Generator** tab for a wide stereo
+subtractive-synthesis source designed for basses, leads, pads, brass, and evolving stacks.
+
+- Three independent oscillators provide sine, triangle, sawtooth, square, and continuously
+  variable pulse waves. Each has octave, semitone, fine tune, level, pan, and start phase.
+- Every oscillator has its own one-to-four-voice unison stack, detune span, and stereo spread.
+  Gain compensation keeps larger stacks from producing a proportional level jump.
+- Pulse oscillators expose width, free-running PWM rate, and PWM depth. Each oscillator's
+  PWM starts at a different phase so layered pulses do not move in lockstep.
+- **Analog drift** gives every oscillator and unison member a separately phased and slightly
+  different-rate pitch trajectory. The sub oscillator stays pitch-stable underneath it.
+- A dedicated oscillator 1 × oscillator 2 ring-modulation path adds enharmonic and metallic
+  spectra without replacing the dry oscillators.
+- The sub oscillator has its own waveform, octave, fine tune, level, and pan. A separate
+  white, pink, or brown noise source adds air, grit, or low-frequency texture.
+- The track's amp and pitch envelopes, polyphony, true mono glide/legato, filter, modulation,
+  effects, drive, gain, and reverb send process the complete virtual-analog voice.
+- Browser playback uses Web Audio periodic-wave oscillators. CLI WAV export uses deterministic
+  polyBLEP discontinuity correction for saw, square, and pulse waves and reproducible colored
+  noise, so repeated exports of the same patch are byte-identical.
+- All source settings are normalized and stored in presets. Older presets still load as
+  tonewheel tracks and receive a non-destructive default virtual-analog patch.
 
 ### Import And Export
 
