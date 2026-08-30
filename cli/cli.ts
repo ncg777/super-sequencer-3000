@@ -23,7 +23,6 @@ function presetDataToGeneratorInput(data: PresetData) {
       generatorType: track.generatorType,
       fmSynth: track.fmSynth,
       virtualAnalogSynth: track.virtualAnalogSynth,
-      karplusStrongModalSynth: track.karplusStrongModalSynth,
       sequence: track.sequenceInput,
       octave: track.octave,
       lengthFactor: track.lengthFactor,

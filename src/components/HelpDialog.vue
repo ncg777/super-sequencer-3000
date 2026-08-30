@@ -33,7 +33,7 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Rhythmic tracks</strong>: Add a rhythmic track to use a synthesized GM-oriented drum kit instead of the melodic pitch-class encoder. Its ordered lanes map to GM percussion notes, with lane 1 using the least-significant velocity bits. Each sequence value is a decimal BigInt mask; the selected 1-7 velocity bits per lane allow simultaneous hits and velocity variation. Assign an XOR group (1-8) to choke other members of that group so only one can be active; the default is no group. When two grouped voices fire on the same step, the later/higher lane wins. Rhythmic tracks default to MIDI channel 10, but the channel remains editable for hardware routing.</li>
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
           <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, generator, gain, sequence, octave shift, note length, amp/pitch envelopes, polyphony, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
-          <li><strong>Generator</strong>: Select the tonewheel generator with classic oscillator waves, choir vowels, colored noise, and resonant spectra; a four-operator FM synthesizer; a wide three-oscillator virtual-analog synthesizer; or a Karplus-Strong waveguide coupled to an eight-mode resonant body.</li>
+          <li><strong>Generator</strong>: Select the tonewheel generator with classic oscillator waves, choir vowels, colored noise, and resonant spectra; a four-operator FM synthesizer; or a wide three-oscillator virtual-analog synthesizer.</li>
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
           <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
           <li><strong>Track Gain</strong>: Sets each track's audio level in dB. Use the velocity multiplier to control MIDI note velocity independently.</li>
@@ -50,7 +50,6 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Multidimensional Tonewheel</strong>: For melodic, non-noise tracks, build a morphable tonewheel spectrum from sparse drawbar configurations and animate its position with routed vector LFOs.</li>
           <li><strong>Four-Operator FM</strong>: Build FM timbres from four independently enveloped operators with ratios, fine tuning, levels, waveforms, modulation index, and operator 4 feedback.</li>
           <li><strong>Virtual Analog</strong>: Layer three independently tuned oscillators with per-source unison and stereo spread, PWM, analog drift, ring modulation, sub oscillator, and colored noise.</li>
-          <li><strong>String + Modal</strong>: Excite a fractional-delay string at a chosen pick position, shape its loss and stiffness, then couple it to an inharmonic modal body.</li>
           <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
           <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft, including an automatic rest trail for releases and effects.</li>
         </ul>
@@ -70,14 +69,6 @@ const visible = defineModel<boolean>({ required: true });
         <h3 class="mt-4 mb-2">Three-Oscillator Virtual Analog Synth</h3>
         <p>Open the <strong>Generator</strong> tab and select <strong>Virtual Analog</strong>. Its three full-range oscillators, sub oscillator, and noise source feed the track's shared envelope, filter, drive, modulation, and effects chain. It is suited to classic subtractive patches as well as wide modern stacks.</p>
 
-        <h3 class="mt-4 mb-2">Karplus-Strong + Modal Resonator</h3>
-        <p>Choose <strong>String + Modal</strong> for a physical-model voice. A short, colorable noise impulse enters a tuned fractional-delay feedback loop. Pick position creates a comb in the excitation, high-frequency loss controls how the string darkens, and dispersion introduces stiff-string inharmonicity.</p>
-        <ul class="pl-5">
-          <li><strong>String decay T60</strong> sets the physical time for the loop to fall by 60 dB. Feedback is calculated per note and always remains below unity.</li>
-          <li><strong>Modal body</strong> tracks eight ordered inharmonic resonances. Body size transposes the resonant structure, while body decay controls each mode's bandwidth.</li>
-          <li><strong>Mono glide</strong> retunes the delay, loss filter, dispersion stage, and every body mode together. Polyphonic tracks allocate an independent waveguide and body per voice.</li>
-          <li><strong>WAV export</strong> uses deterministic colored excitation, interpolated sample delays, nonlinear loop limiting, and matching modal coefficients.</li>
-        </ul>
         <ul>
           <li><strong>Main oscillators</strong>: Enable each source independently and choose sine, triangle, sawtooth, square, or pulse. Octave and semitone provide stepped tuning; fine tune covers ±100 cents. Level, pan, and start phase shape the blend.</li>
           <li><strong>Per-oscillator unison</strong>: Stack one to four oscillator members with a symmetric detune span and equal-power stereo spread. Gain compensation controls the level increase as members are added.</li>

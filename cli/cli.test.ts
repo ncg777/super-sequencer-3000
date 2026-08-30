@@ -8,7 +8,6 @@ import ToneMidi from '@tonejs/midi';
 import { generateMidi, generateWav } from './generate.js';
 import { DEFAULT_FM_SETTINGS } from '../src/audio/fourOperatorFmSynth.js';
 import { DEFAULT_VIRTUAL_ANALOG_SETTINGS } from '../src/audio/virtualAnalogSynth.js';
-import { DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS } from '../src/audio/karplusStrongModalSynth.js';
 
 const { Midi } = ToneMidi;
 
@@ -440,58 +439,16 @@ test('virtual-analog tracks render audible deterministic stereo audio in CLI WAV
   assert.ok(peak > 100, `expected audible virtual-analog output, got PCM peak ${peak}`);
 });
 
-test('Karplus-Strong modal tracks render audible deterministic audio in CLI WAV output', async () => {
-  const options = {
-    bpm: 180,
+test('unknown generator values fall back to tonewheel rendering', async () => {
+  const wav = await generateWav({
     tracks: [{
-      name: 'Physical String',
-      trackKind: 'melodic' as const,
-      generatorType: 'karplus-modal' as const,
-      karplusStrongModalSynth: {
-        ...DEFAULT_KARPLUS_STRONG_MODAL_SETTINGS,
-        exciterType: 'white' as const,
-        bodyMix: 0.8,
-        dispersion: 0.35,
-      },
-      numerator: 1,
-      denominator: 4,
+      generatorType: 'unsupported' as never,
       sequence: '1',
-      octave: 5,
-      lengthFactor: 100,
-      release: 1.2,
       repeats: 1,
-      delay: 0,
-      timeWarpEnabled: false,
     }],
     reverb: { enabled: false },
-  };
-  const first = await generateWav(options);
-  const second = await generateWav(options);
+  });
 
-  assert.equal(Buffer.from(first.subarray(0, 4)).toString('ascii'), 'RIFF');
-  assert.deepEqual(first, second, 'physical excitation rendering must be reproducible');
-  const pcm = new DataView(first.buffer, first.byteOffset + 44, first.byteLength - 44);
-  const averageLeftAmplitude = (startSeconds: number, endSeconds: number): number => {
-    const startOffset = Math.floor(startSeconds * 48_000) * 6;
-    const endOffset = Math.min(pcm.byteLength, Math.floor(endSeconds * 48_000) * 6);
-    let total = 0;
-    let samples = 0;
-    for (let offset = startOffset; offset + 2 < endOffset; offset += 6) {
-      const raw = pcm.getUint8(offset) | (pcm.getUint8(offset + 1) << 8) | (pcm.getUint8(offset + 2) << 16);
-      total += Math.abs((raw & 0x800000) !== 0 ? raw - 0x1000000 : raw);
-      samples += 1;
-    }
-    return total / Math.max(1, samples);
-  };
-  let peak = 0;
-  for (let offset = 0; offset + 1 < pcm.byteLength; offset += 2) {
-    peak = Math.max(peak, Math.abs(pcm.getInt16(offset, true)));
-  }
-  assert.ok(peak > 100, `expected audible physical-model output, got PCM peak ${peak}`);
-  const attackAmplitude = averageLeftAmplitude(0.02, 0.1);
-  const tailAmplitude = averageLeftAmplitude(0.9, 1.2);
-  assert.ok(
-    tailAmplitude > attackAmplitude * 0.002,
-    `expected a sustained physical tail, got attack ${attackAmplitude} and tail ${tailAmplitude}`,
-  );
+  assert.equal(Buffer.from(wav.subarray(0, 4)).toString('ascii'), 'RIFF');
+  assert.ok(wav.byteLength > 44);
 });

@@ -1,6 +1,6 @@
 # GateRunner
 
-A browser-based MIDI step sequencer with tonewheel, four-operator FM, three-oscillator virtual-analog, and Karplus-Strong plus modal-resonator generators that produces MIDI and WAV files from binary-encoded note sequences using Forte number pitch-class sets.
+A browser-based MIDI step sequencer with tonewheel, four-operator FM, and three-oscillator virtual-analog generators that produces MIDI and WAV files from binary-encoded note sequences using Forte number pitch-class sets.
 
 **Live app:** [https://ncg777.github.io/gaterunner/](https://ncg777.github.io/gaterunner/)
 
@@ -87,27 +87,6 @@ subtractive-synthesis source designed for basses, leads, pads, brass, and evolvi
   noise, so repeated exports of the same patch are byte-identical.
 - All source settings are normalized and stored in presets. Older presets still load as
   tonewheel tracks and receive a non-destructive default virtual-analog patch.
-
-### Karplus-Strong + Modal Resonator
-
-Select **String + Modal** for a hybrid physical-model generator suited to plucked strings,
-mallets, metallic keys, prepared instruments, and synthetic resonant textures.
-
-- A seeded white, pink, or brown noise impulse excites a sample-rate-corrected fractional
-  delay waveguide. Exciter tone and duration range from a hard pick to a soft strike.
-- Pick position adds the expected comb cancellation before the impulse enters the string.
-- String T60 is converted to a frequency-aware loop gain that remains strictly below unity.
-  A bridge-loss low-pass, first-order allpass dispersion, and soft nonlinear loop limiter
-  keep bright, long-decay patches expressive and stable.
-- Eight frequency-tracked, inharmonic resonant modes model a coupled body. Body size shifts
-  the modal structure, body decay changes bandwidth, and direct/body levels are independent.
-- Polyphonic tracks allocate one complete waveguide and modal bank per voice. Monophonic
-  glide retunes the delay line and all body modes along the selected glide trajectory.
-- Browser playback uses Web Audio fractional delays and filters. CLI WAV export uses a
-  deterministic interpolated-delay implementation with matching planner math, so repeated
-  renders of a patch are byte-identical.
-- The complete physical patch is normalized and stored in presets; older presets receive
-  defaults without changing their selected generator.
 
 ### Import And Export
 
