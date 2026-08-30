@@ -1,12 +1,66 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { claimVoices, getSynthVoiceCount, type SoundingNote } from '../audio/voicePool.js';
+import {
+  claimVoices,
+  getSynthVoiceCount,
+  prewarmVoicePool,
+  retainVoicePool,
+  type SoundingNote,
+} from '../audio/voicePool.js';
 
 test('allocates more Tone voices than the musical voice count so release tails never drop a note', () => {
   assert.ok(getSynthVoiceCount(1) > 1);
   assert.ok(getSynthVoiceCount(8) > 8);
   assert.equal(getSynthVoiceCount(32), 32);
+});
+
+test('rebinds Tone garbage collection so pooled voices are retained', () => {
+  let clearedTimer = -1;
+  let scheduledCollector: (() => void) | null = null;
+  let disposed = 0;
+  const availableVoice = { dispose: () => { disposed += 1; } };
+  const synth = {
+    context: {
+      clearInterval: (id: number) => { clearedTimer = id; },
+      setInterval: (callback: () => void, _interval: number) => {
+        scheduledCollector = callback;
+        return 11;
+      },
+    },
+    _voices: [availableVoice, { dispose() {} }],
+    _availableVoices: [availableVoice],
+    _averageActiveVoices: 0,
+    activeVoices: 0,
+    _gcTimeout: 7,
+    _collectGarbage: () => { throw new Error('old collector should not run'); },
+  };
+
+  retainVoicePool(synth as never, 2);
+  assert.equal(clearedTimer, 7);
+  assert.equal(synth._gcTimeout, 11);
+  assert.ok(scheduledCollector);
+  (scheduledCollector as () => void)();
+  assert.equal(disposed, 0);
+  assert.equal(synth._voices.length, 2);
+});
+
+test('prewarms musical voices without consuming already available voices', () => {
+  const existingVoice = { dispose() {} };
+  const synth = {
+    _voices: [existingVoice],
+    _availableVoices: [existingVoice],
+    _getNextAvailableVoice() {
+      const voice = { dispose() {} };
+      this._voices.push(voice);
+      return voice;
+    },
+  };
+
+  prewarmVoicePool(synth as never, 4);
+  assert.equal(synth._voices.length, 4);
+  assert.equal(synth._availableVoices.length, 4);
+  assert.equal(new Set(synth._availableVoices).size, 4);
 });
 
 test('claims voices without stealing while the track stays inside its polyphony', () => {

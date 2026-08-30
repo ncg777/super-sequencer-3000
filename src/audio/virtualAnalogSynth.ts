@@ -193,6 +193,14 @@ export function getVirtualAnalogUnisonPan(memberIndex: number, voiceCount: numbe
   return clamp(center + position * spread, -1, 1);
 }
 
+export function shouldStartVirtualAnalogMember(
+  settings: VirtualAnalogOscillatorSettings,
+  memberIndex: number,
+): boolean {
+  const voiceCount = Math.max(1, Math.min(MAX_VIRTUAL_ANALOG_UNISON, Math.round(settings.unisonVoices)));
+  return settings.enabled && memberIndex < voiceCount;
+}
+
 function pulseWidthToToneValue(width: number): number {
   return clamp(width, 0.05, 0.95) * 2 - 1;
 }
@@ -222,6 +230,9 @@ export class VirtualAnalogSynth extends Monophonic<VirtualAnalogSynthOptions> {
   private driftDepth: number;
   private driftRate: number;
   private pitchEnvelopeShape = 0;
+  private sourceStartTime: number | null = null;
+  private sourceStopTime: number | null = null;
+  private silenceTimeout: number | null = null;
 
   constructor(options?: Partial<VirtualAnalogSynthOptions>) {
     const defaults = VirtualAnalogSynth.getDefaults();
@@ -262,35 +273,7 @@ export class VirtualAnalogSynth extends Monophonic<VirtualAnalogSynthOptions> {
         phase: oscillatorIndex * 120 + 23,
         type: 'sine',
       }).start();
-      const members = Array.from({ length: MAX_VIRTUAL_ANALOG_UNISON }, (_, memberIndex) => {
-        const ratio = new Tone.Multiply({ context: this.context, value: 1 });
-        const drift = new Tone.Add({ context: this.context, value: 0 });
-        const driftLfo = new Tone.LFO({
-          context: this.context,
-          frequency: merged.driftRate * (1 + oscillatorIndex * 0.071 + memberIndex * 0.037),
-          min: -merged.drift,
-          max: merged.drift,
-          phase: (oscillatorIndex * 137 + memberIndex * 83 + 37) % 360,
-          type: 'sine',
-        }).start();
-        const memberDetune = new Tone.Add({ context: this.context, value: 0 });
-        const oscillator = new Tone.OmniOscillator({
-          context: this.context,
-          type: settings.waveform,
-          frequency: 0,
-          phase: settings.phase + memberIndex * 17,
-          ...(oscillatorIndex === 0 && memberIndex === 0 ? { onstop: () => this.onsilence(this) } : {}),
-        });
-        const gain = new Tone.Gain({ context: this.context, gain: 0 });
-        const panner = new Tone.Panner({ context: this.context, pan: 0 });
-        this.frequency.chain(ratio, oscillator.frequency);
-        this.detune.chain(drift, memberDetune, oscillator.detune);
-        driftLfo.connect(drift.addend);
-        oscillator.chain(gain, panner, this.mix);
-        gain.connect(ringTap);
-        return { oscillator, ratio, drift, driftLfo, detune: memberDetune, gain, panner };
-      });
-      return { members, ringTap, pwmLfo };
+      return { members: [], ringTap, pwmLfo };
     });
 
     this.ringMultiply = new Tone.Multiply({ context: this.context, value: 0 });
@@ -351,11 +334,54 @@ export class VirtualAnalogSynth extends Monophonic<VirtualAnalogSynthOptions> {
     this.pitchEnvelope.releaseCurve = curve.slice().reverse();
   }
 
+  private createOscillatorMember(
+    settings: VirtualAnalogOscillatorSettings,
+    oscillatorIndex: number,
+    memberIndex: number,
+  ): OscillatorMemberNodes {
+    const ratio = new Tone.Multiply({ context: this.context, value: 1 });
+    const drift = new Tone.Add({ context: this.context, value: 0 });
+    const driftLfo = new Tone.LFO({
+      context: this.context,
+      frequency: this.driftRate * (1 + oscillatorIndex * 0.071 + memberIndex * 0.037),
+      min: -this.driftDepth,
+      max: this.driftDepth,
+      phase: (oscillatorIndex * 137 + memberIndex * 83 + 37) % 360,
+      type: 'sine',
+    }).start();
+    const memberDetune = new Tone.Add({ context: this.context, value: 0 });
+    const oscillator = new Tone.OmniOscillator({
+      context: this.context,
+      type: settings.waveform,
+      frequency: 0,
+      phase: settings.phase + memberIndex * 17,
+    });
+    const gain = new Tone.Gain({ context: this.context, gain: 0 });
+    const panner = new Tone.Panner({ context: this.context, pan: 0 });
+    this.frequency.chain(ratio, oscillator.frequency);
+    this.detune.chain(drift, memberDetune, oscillator.detune);
+    driftLfo.connect(drift.addend);
+    oscillator.chain(gain, panner, this.mix);
+    gain.connect(this.oscillatorGroups[oscillatorIndex].ringTap);
+    return { oscillator, ratio, drift, driftLfo, detune: memberDetune, gain, panner };
+  }
+
+  private ensureOscillatorMembers(settings: VirtualAnalogOscillatorSettings, oscillatorIndex: number): void {
+    const voiceCount = settings.enabled
+      ? Math.max(1, Math.min(MAX_VIRTUAL_ANALOG_UNISON, Math.round(settings.unisonVoices)))
+      : 0;
+    const members = this.oscillatorGroups[oscillatorIndex].members;
+    while (members.length < voiceCount) {
+      members.push(this.createOscillatorMember(settings, oscillatorIndex, members.length));
+    }
+  }
+
   private applyOscillatorSettings(settings: VirtualAnalogOscillatorSettings, oscillatorIndex: number): void {
     const group = this.oscillatorGroups[oscillatorIndex];
     const voiceCount = Math.max(1, Math.min(MAX_VIRTUAL_ANALOG_UNISON, Math.round(settings.unisonVoices)));
     const activeGain = settings.enabled ? settings.level / Math.sqrt(voiceCount) : 0;
     const ratio = getVirtualAnalogFrequencyRatio(settings.octave, settings.semitone);
+    this.ensureOscillatorMembers(settings, oscillatorIndex);
 
     group.pwmLfo.disconnect();
     group.pwmLfo.set({
@@ -423,6 +449,15 @@ export class VirtualAnalogSynth extends Monophonic<VirtualAnalogSynthOptions> {
   }
 
   set(props: Partial<VirtualAnalogSynthOptions>): this {
+    const now = this.now();
+    const lifecycleScheduled = this.sourceStartTime !== null
+      && (this.sourceStopTime === null || now < this.sourceStopTime);
+    const startsInFuture = lifecycleScheduled && now < this.sourceStartTime!;
+    if (startsInFuture) {
+      this.stopAudibleSources(now);
+    } else if (lifecycleScheduled && this.sourceStopTime !== null) {
+      this.restartAudibleSources(now);
+    }
     if (props.envelope) {
       this.envelope.set(props.envelope);
     }
@@ -437,22 +472,87 @@ export class VirtualAnalogSynth extends Monophonic<VirtualAnalogSynthOptions> {
       this.applyPitchEnvelopeShape();
     }
     this.applySettings(props);
+    if (lifecycleScheduled) {
+      const admissionTime = Math.max(now, this.sourceStartTime!);
+      this.startAudibleSources(admissionTime);
+      if (this.sourceStopTime !== null) {
+        this.stopAudibleSources(this.sourceStopTime);
+      }
+    }
     return this;
   }
 
-  protected startSources(time: number): void {
-    this.oscillatorGroups.forEach((group) => group.members.forEach((member) => member.oscillator.start(time)));
-    this.subOscillator.start(time);
-    this.noiseSource.start(time);
+  private startAudibleSources(time: number): void {
+    this.oscillatorGroups.forEach((group, oscillatorIndex) => group.members.forEach((member, memberIndex) => {
+      if (member.oscillator.state !== 'started'
+        && shouldStartVirtualAnalogMember(this.oscillatorSettings[oscillatorIndex], memberIndex)) {
+        member.oscillator.start(time);
+      }
+    }));
+    if (this.subGain.gain.value > 0 && this.subOscillator.state !== 'started') {
+      this.subOscillator.start(time);
+    }
+    if (this.noiseGain.gain.value > 0 && this.noiseSource.state !== 'started') {
+      this.noiseSource.start(time);
+    }
   }
 
-  protected stopSources(time: number): void {
+  private stopAudibleSources(time: number): void {
     this.oscillatorGroups.forEach((group) => group.members.forEach((member) => member.oscillator.stop(time)));
     this.subOscillator.stop(time);
     this.noiseSource.stop(time);
   }
 
+  private restartAudibleSources(time: number): void {
+    this.oscillatorGroups.forEach((group) => group.members.forEach((member) => {
+      if (member.oscillator.state === 'started') {
+        member.oscillator.restart(time);
+      }
+    }));
+    if (this.subGain.gain.value > 0 && this.subOscillator.state === 'started') {
+      this.subOscillator.restart(time);
+    }
+    if (this.noiseGain.gain.value > 0 && this.noiseSource.state === 'started') {
+      this.noiseSource.restart(time);
+    }
+  }
+
+  private clearSilenceTimeout(): void {
+    if (this.silenceTimeout !== null) {
+      this.context.clearTimeout(this.silenceTimeout);
+      this.silenceTimeout = null;
+    }
+  }
+
+  private completeRelease(): void {
+    this.stopAudibleSources(this.now());
+    this.sourceStartTime = null;
+    this.sourceStopTime = null;
+    this.silenceTimeout = null;
+    this.onsilence(this);
+  }
+
+  protected startSources(time: number): void {
+    this.sourceStartTime = time;
+    this.startAudibleSources(time);
+  }
+
+  protected stopSources(time: number): void {
+    this.sourceStopTime = time;
+    this.stopAudibleSources(time);
+    this.clearSilenceTimeout();
+    this.silenceTimeout = this.context.setTimeout(
+      () => this.completeRelease(),
+      Math.max(0, time - this.now()),
+    );
+  }
+
   protected _triggerEnvelopeAttack(time: number, velocity: number): void {
+    if (this.sourceStopTime !== null) {
+      this.clearSilenceTimeout();
+      this.restartAudibleSources(time);
+    }
+    this.sourceStopTime = null;
     this.startSources(time);
     this.envelope.triggerAttack(time, velocity);
     this.pitchEnvelope.triggerAttack(time);
@@ -470,6 +570,7 @@ export class VirtualAnalogSynth extends Monophonic<VirtualAnalogSynthOptions> {
   }
 
   dispose(): this {
+    this.clearSilenceTimeout();
     this.oscillatorGroups.forEach((group) => {
       group.members.forEach((member) => {
         member.oscillator.dispose();
@@ -562,10 +663,8 @@ export class MonoVirtualAnalogSynth extends VirtualAnalogSynth {
   }
 
   protected startSources(time: number): void {
-    if (!this.sourcesRunning) {
-      this.sourcesRunning = true;
-      super.startSources(time);
-    }
+    this.sourcesRunning = true;
+    super.startSources(time);
   }
 
   protected stopSources(_time: number): void {

@@ -6,6 +6,7 @@ import {
   getVirtualAnalogFrequencyRatio,
   getVirtualAnalogUnisonDetune,
   getVirtualAnalogUnisonPan,
+  shouldStartVirtualAnalogMember,
 } from '../audio/virtualAnalogSynth.js';
 import {
   arePresetDataEqual,
@@ -29,6 +30,20 @@ test('virtual-analog tuning and unison helpers produce symmetric voices', () => 
     [-0.75, 0, 0.75],
   );
   assert.equal(getVirtualAnalogUnisonPan(0, 1, 2, 1), 1);
+});
+
+test('virtual-analog voices start only configured oscillator members', () => {
+  const twoVoiceOscillator = { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.oscillators[0], unisonVoices: 2 };
+  assert.deepEqual(
+    [0, 1, 2, 3].map((memberIndex) => shouldStartVirtualAnalogMember(twoVoiceOscillator, memberIndex)),
+    [true, true, false, false],
+  );
+
+  const disabledOscillator = { ...twoVoiceOscillator, enabled: false };
+  assert.deepEqual(
+    [0, 1, 2, 3].map((memberIndex) => shouldStartVirtualAnalogMember(disabledOscillator, memberIndex)),
+    [false, false, false, false],
+  );
 });
 
 test('legacy tracks remain tonewheel tracks and receive the default virtual-analog patch', () => {
@@ -122,3 +137,4 @@ test('preset equality detects virtual-analog-only edits', () => {
   draft.tracks[0].virtualAnalogSynth.oscillators[2].pulseWidth = 0.7;
   assert.equal(arePresetDataEqual(saved, draft), false);
 });
+

@@ -323,7 +323,7 @@ import {
   VirtualAnalogSynth,
 } from './audio/virtualAnalogSynth';
 import { isMonophonic, limitPolyphony, type GlideCurve, type GlideMode } from './audio/glide';
-import { claimVoices, getSynthVoiceCount, retainVoicePool, type SoundingNote } from './audio/voicePool';
+import { claimVoices, getSynthVoiceCount, prewarmVoicePool, retainVoicePool, type SoundingNote } from './audio/voicePool';
 import { createDrumInstrument, type DrumInstrument } from './audio/drumKit';
 import { interpolateModulatedTonewheelDrawbars } from './audio/tonewheelWavetable';
 import {
@@ -1555,6 +1555,7 @@ export default defineComponent({
           synth.maxPolyphony = voiceCount;
           // Reuse voices instead of letting Tone dispose and rebuild them every second.
           retainVoicePool(synth as unknown as Tone.PolySynth, voiceCount);
+          prewarmVoicePool(synth as unknown as Tone.PolySynth, track.polyphony);
           chain.synth = synth;
         }
         chain.synthGeneratorType = track.generatorType;
@@ -1582,6 +1583,7 @@ export default defineComponent({
           const voiceCount = getSynthVoiceCount(track.polyphony);
           synth.maxPolyphony = voiceCount;
           retainVoicePool(synth as unknown as Tone.PolySynth, voiceCount);
+          prewarmVoicePool(synth as unknown as Tone.PolySynth, track.polyphony);
         }
         return;
       }

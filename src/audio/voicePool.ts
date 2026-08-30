@@ -62,11 +62,36 @@ export function claimVoices(
 }
 
 interface PolySynthInternals {
+  context: {
+    clearInterval(id: number): void;
+    setInterval(callback: () => void, interval: number): number;
+  };
   _voices: Array<{ dispose(): void }>;
   _availableVoices: Array<{ dispose(): void }>;
   _averageActiveVoices: number;
   activeVoices: number;
+  _gcTimeout: number;
   _collectGarbage(): void;
+  _getNextAvailableVoice(): { dispose(): void } | undefined;
+}
+
+/** Allocate the musical voices before playback so the first dense chord does no graph construction. */
+export function prewarmVoicePool(synth: Tone.PolySynth, voiceCount: number): void {
+  const internals = synth as unknown as PolySynthInternals;
+  const target = Math.max(1, Math.min(MAX_POOLED_VOICES, Math.round(voiceCount)));
+  if (internals._voices.length >= target) {
+    return;
+  }
+
+  const available = internals._availableVoices.splice(0);
+  while (internals._voices.length < target) {
+    const voice = internals._getNextAvailableVoice();
+    if (!voice) {
+      break;
+    }
+    available.push(voice);
+  }
+  internals._availableVoices.push(...available);
 }
 
 /**
@@ -100,4 +125,9 @@ export function retainVoicePool(synth: Tone.PolySynth, poolSize = MAX_POOLED_VOI
     }
     firstAvailable.dispose();
   };
+
+  if (internals._gcTimeout !== -1) {
+    internals.context.clearInterval(internals._gcTimeout);
+  }
+  internals._gcTimeout = internals.context.setInterval(internals._collectGarbage.bind(internals), 1);
 }
