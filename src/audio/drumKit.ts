@@ -84,18 +84,86 @@ function register(owned: any[], ...nodes: any[]): void {
   owned.push(...nodes.filter(Boolean));
 }
 
-/**
- * Tone stops and restarts the twelve oscillator nodes behind a MetalSynth on every hit,
- * and the discarded nodes are only released once `onended` fires - which never happens
- * while an offline render is still being scheduled. The stale nodes stay wired to the
- * shared frequency signals, so each further hit walks an ever larger graph during cycle
- * detection and a long WAV export grows quadratically. Holding the oscillators open
- * keeps that cost linear; the envelope alone shapes each hit, as it already did.
- *
- * Realtime playback does not have that problem (`onended` fires and releases the stale
- * nodes), and holding twelve FM oscillators open per metal voice would burn CPU
- * continuously between hits, so the workaround is only applied to offline contexts.
- */
+interface TriggerVoice {
+  connect(destination: any): unknown;
+  triggerAttackRelease(...args: any[]): unknown;
+  triggerRelease?(time?: any): unknown;
+  dispose?(): unknown;
+}
+
+interface PooledVoice<T extends TriggerVoice> {
+  voice: T;
+  availableAt: number;
+  lastStartAt: number;
+}
+
+function timeToSeconds(value: Tone.Unit.Time): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  try {
+    return Tone.Time(value).toSeconds();
+  } catch {
+    return 0;
+  }
+}
+
+function createTriggeredVoicePool<T extends TriggerVoice>(
+  createVoice: () => T,
+  getBusyDuration: (durationSeconds: number) => number,
+  owned: any[],
+): T {
+  const voices: PooledVoice<T>[] = [];
+  const destinations: any[] = [];
+  const createAvailableVoice = (): PooledVoice<T> => {
+    const voice = createVoice();
+    register(owned, voice);
+    destinations.forEach((destination) => voice.connect(destination));
+    const entry = {
+      voice,
+      availableAt: Number.NEGATIVE_INFINITY,
+      lastStartAt: Number.NEGATIVE_INFINITY,
+    };
+    voices.push(entry);
+    return entry;
+  };
+
+  const pool = {
+    connect(destination: any) {
+      destinations.push(destination);
+      voices.forEach(({ voice }) => voice.connect(destination));
+      return pool;
+    },
+    triggerAttackRelease(...args: any[]) {
+      const duration = args.length >= 4 ? args[1] : args[0];
+      const time = args.length >= 4 ? args[2] : args[1];
+      const startSeconds = timeToSeconds(time);
+      const durationSeconds = Math.max(0, timeToSeconds(duration));
+      const entry = voices.find((candidate) => (
+        candidate.availableAt <= startSeconds && candidate.lastStartAt < startSeconds
+      ));
+      const selected = entry ?? createAvailableVoice();
+      selected.voice.triggerAttackRelease(...args);
+      selected.availableAt = startSeconds + Math.max(0.001, getBusyDuration(durationSeconds));
+      selected.lastStartAt = startSeconds;
+      return pool;
+    },
+    triggerRelease(time: Tone.Unit.Time) {
+      const releaseSeconds = timeToSeconds(time);
+      voices.forEach((entry) => {
+        if (entry.availableAt > releaseSeconds) {
+          entry.voice.triggerRelease?.(time);
+          entry.availableAt = Math.max(entry.availableAt, releaseSeconds + 0.001);
+        }
+      });
+      return pool;
+    },
+  };
+
+  return pool as T;
+}
+
 function keepMetalOscillatorsRunning(metal: Tone.MetalSynth): void {
   if (!metal.context.isOffline) {
     return;
@@ -105,7 +173,6 @@ function keepMetalOscillatorsRunning(metal: Tone.MetalSynth): void {
     envelope: Tone.Envelope;
     _triggerEnvelopeRelease: (time: number) => unknown;
   };
-  // A non-zero sustain is what stops the attack from scheduling a matching oscillator stop.
   internals.envelope.sustain = 1e-6;
   internals._triggerEnvelopeRelease = (time: number) => {
     internals.envelope.triggerRelease(time);
@@ -270,13 +337,25 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const noiseDecay = Number(parameters.noiseDecay ?? 0.2);
       const snap = clamp(Number(parameters.snap ?? 0.7), 0, 1);
       const mix = clamp(Number(parameters.mix ?? 0.5), 0, 1);
-      const tone = new Tone.Synth({ oscillator: { type: 'triangle' } as any, envelope: { attack: 0.001, decay: toneDecay, sustain: 0, release: toneDecay * 0.3 } });
-      const noise = new Tone.NoiseSynth({ noise: { type: noiseType as any }, envelope: { attack: 0.002, decay: noiseDecay, sustain: 0, release: noiseDecay * 0.25 } });
-      const snapSynth = new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.0005, decay: 0.015, sustain: 0, release: 0.005 } });
+      const tone = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'triangle' } as any, envelope: { attack: 0.001, decay: toneDecay, sustain: 0, release: toneDecay * 0.3 } }),
+        (duration) => Math.max(0.001 + toneDecay, duration + toneDecay * 0.3),
+        owned,
+      );
+      const noise = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({ noise: { type: noiseType as any }, envelope: { attack: 0.002, decay: noiseDecay, sustain: 0, release: noiseDecay * 0.25 } }),
+        (duration) => Math.max(noiseDecay + 0.002, duration + noiseDecay * 0.25),
+        owned,
+      );
+      const snapSynth = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.0005, decay: 0.015, sustain: 0, release: 0.005 } }),
+        (duration) => Math.max(0.0155, duration + 0.005),
+        owned,
+      );
       const toneGain = new Tone.Gain(1 - mix);
       const noiseGain = new Tone.Gain(mix);
       const snapGain = new Tone.Gain(snap);
-      register(owned, tone, noise, snapSynth, toneGain, noiseGain, snapGain);
+      register(owned, tone, toneGain, noiseGain, snapGain);
       tone.connect(toneGain).connect(inputGain);
       noise.connect(noiseGain).connect(inputGain);
       snapSynth.connect(snapGain).connect(inputGain);
@@ -300,22 +379,34 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const tailDecay = Number(parameters.noiseDecay ?? 0.24);
       const snap = clamp(Number(parameters.snap ?? 0.85), 0, 1);
       const mix = clamp(Number(parameters.mix ?? 0.55), 0, 1);
-      const body = new Tone.NoiseSynth({
-        noise: { type: noiseType as any },
-        envelope: { attack: 0.0006, decay: burstDecay, sustain: 0, release: burstDecay * 0.35 },
-      });
-      const tail = new Tone.NoiseSynth({
-        noise: { type: noiseType as any },
-        envelope: { attack: 0.0025, decay: tailDecay, sustain: 0, release: tailDecay * 0.35 },
-      });
-      const snapSynth = new Tone.NoiseSynth({
-        noise: { type: 'white' as any },
-        envelope: { attack: 0.0002, decay: 0.005, sustain: 0, release: 0.002 },
-      });
+      const body = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({
+          noise: { type: noiseType as any },
+          envelope: { attack: 0.0006, decay: burstDecay, sustain: 0, release: burstDecay * 0.35 },
+        }),
+        (duration) => Math.max(0.0006 + burstDecay, duration + burstDecay * 0.35),
+        owned,
+      );
+      const tail = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({
+          noise: { type: noiseType as any },
+          envelope: { attack: 0.0025, decay: tailDecay, sustain: 0, release: tailDecay * 0.35 },
+        }),
+        (duration) => Math.max(0.0025 + tailDecay, duration + tailDecay * 0.35),
+        owned,
+      );
+      const snapSynth = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({
+          noise: { type: 'white' as any },
+          envelope: { attack: 0.0002, decay: 0.005, sustain: 0, release: 0.002 },
+        }),
+        (duration) => Math.max(0.0052, duration + 0.002),
+        owned,
+      );
       const toneFilter = new Tone.Filter({ type: 'bandpass', frequency: color, Q: 1.35 });
       const noiseFilter = new Tone.Filter({ type: 'highpass', frequency: Math.max(1400, color * 1.5), Q: 0.8 });
       const snapFilter = new Tone.Filter({ type: 'highpass', frequency: Math.max(3200, color * 2.3), Q: 0.7 });
-      register(owned, body, tail, snapSynth, toneFilter, noiseFilter, snapFilter);
+      register(owned, toneFilter, noiseFilter, snapFilter);
       body.connect(toneFilter).connect(inputGain);
       tail.connect(noiseFilter).connect(inputGain);
       snapSynth.connect(snapFilter).connect(inputGain);
@@ -350,16 +441,21 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     case 'hatOpen': {
       const tune = Number(parameters.tune ?? 300);
       const decay = Number(parameters.decay ?? 0.08);
-      const metal = new Tone.MetalSynth({
-        envelope: { attack: 0.001, decay, release: decay * 0.3 },
-        harmonicity: Number(parameters.harmonicity ?? 5.1),
-        modulationIndex: Number(parameters.modIndex ?? 32),
-        resonance: Number(parameters.brightness ?? 8000),
-        octaves: 1.5,
-      });
-      metal.frequency.value = tune;
-      keepMetalOscillatorsRunning(metal);
-      register(owned, metal);
+      const metal = createTriggeredVoicePool(
+        () => {
+          const voice = new Tone.MetalSynth({
+            envelope: { attack: 0.001, decay, release: decay * 0.3 },
+            harmonicity: Number(parameters.harmonicity ?? 5.1),
+            modulationIndex: Number(parameters.modIndex ?? 32),
+            resonance: Number(parameters.brightness ?? 8000),
+            octaves: 1.5,
+          });
+          keepMetalOscillatorsRunning(voice);
+          return voice;
+        },
+        (duration) => duration + decay * 0.3,
+        owned,
+      );
       metal.connect(inputGain);
       const live = { tune };
       return finish({
@@ -379,19 +475,31 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const decay = Number(parameters.decay ?? 1.4);
       const brightness = Number(parameters.brightness ?? 12000);
       const wash = clamp(Number(parameters.wash ?? 0.65), 0, 1);
-      const metal = new Tone.MetalSynth({
-        envelope: { attack: 0.001, decay, release: decay * 0.7 },
-        harmonicity: Number(parameters.harmonicity ?? 2.2),
-        modulationIndex: Number(parameters.modIndex ?? 55),
-        resonance: brightness,
-        octaves: 2,
-      });
-      metal.frequency.value = tune;
-      keepMetalOscillatorsRunning(metal);
-      const washNoise = new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.002, decay: Math.max(0.3, decay * 1.15), sustain: 0, release: Math.max(0.12, decay * 0.45) } });
+      const metal = createTriggeredVoicePool(
+        () => {
+          const voice = new Tone.MetalSynth({
+            envelope: { attack: 0.001, decay, release: decay * 0.7 },
+            harmonicity: Number(parameters.harmonicity ?? 2.2),
+            modulationIndex: Number(parameters.modIndex ?? 55),
+            resonance: brightness,
+            octaves: 2,
+          });
+          keepMetalOscillatorsRunning(voice);
+          return voice;
+        },
+        (duration) => duration + decay * 0.7,
+        owned,
+      );
+      const washDecay = Math.max(0.3, decay * 1.15);
+      const washRelease = Math.max(0.12, decay * 0.45);
+      const washNoise = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.002, decay: washDecay, sustain: 0, release: washRelease } }),
+        (duration) => Math.max(0.002 + washDecay, duration + washRelease),
+        owned,
+      );
       const noiseFilter = new Tone.Filter({ type: 'highpass', frequency: Math.max(2200, brightness * 0.35), Q: 0.8 });
       const noiseGain = new Tone.Gain(wash);
-      register(owned, metal, washNoise, noiseFilter, noiseGain);
+      register(owned, noiseFilter, noiseGain);
       metal.connect(inputGain);
       washNoise.connect(noiseFilter).connect(noiseGain).connect(inputGain);
       const live = { tune, wash };
@@ -410,13 +518,25 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const tune = Number(parameters.tune ?? 260);
       const decay = Number(parameters.decay ?? 0.09);
       const snap = clamp(Number(parameters.snap ?? 0.9), 0, 1);
-      const low = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.0005, decay, sustain: 0, release: 0.015 } });
-      const high = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.0005, decay: decay * 0.52, sustain: 0, release: 0.008 } });
-      const stick = new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.0002, decay: 0.008, sustain: 0, release: 0.003 } });
+      const low = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.0005, decay, sustain: 0, release: 0.015 } }),
+        (duration) => Math.max(0.0005 + decay, duration + 0.015),
+        owned,
+      );
+      const high = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.0005, decay: decay * 0.52, sustain: 0, release: 0.008 } }),
+        (duration) => Math.max(0.0005 + decay * 0.52, duration + 0.008),
+        owned,
+      );
+      const stick = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.0002, decay: 0.008, sustain: 0, release: 0.003 } }),
+        (duration) => Math.max(0.0082, duration + 0.003),
+        owned,
+      );
       const toneGain = new Tone.Gain(0.68);
       const noiseGain = new Tone.Gain(snap);
       const snapFilter = new Tone.Filter({ type: 'bandpass', frequency: Number(parameters.color ?? 4800), Q: 2.8 });
-      register(owned, low, high, stick, toneGain, noiseGain, snapFilter);
+      register(owned, toneGain, noiseGain, snapFilter);
       low.connect(toneGain);
       high.connect(toneGain).connect(inputGain);
       stick.connect(snapFilter).connect(noiseGain).connect(inputGain);
@@ -440,10 +560,18 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const decay = Number(parameters.decay ?? 0.34);
       const sweep = Number(parameters.sweep ?? 1.3);
       const sweepTime = Number(parameters.sweepTime ?? 0.035);
-      const body = new Tone.MembraneSynth({ octaves: sweep, pitchDecay: sweepTime, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay, sustain: 0.025, release: decay * 0.45 } });
-      const shell = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.001, decay: decay * 0.48, sustain: 0, release: 0.035 } });
+      const body = createTriggeredVoicePool(
+        () => new Tone.MembraneSynth({ octaves: sweep, pitchDecay: sweepTime, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay, sustain: 0.025, release: decay * 0.45 } }),
+        (duration) => Math.max(0.001 + decay, duration + decay * 0.45),
+        owned,
+      );
+      const shell = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.001, decay: decay * 0.48, sustain: 0, release: 0.035 } }),
+        (duration) => Math.max(0.001 + decay * 0.48, duration + 0.035),
+        owned,
+      );
       const toneGain = new Tone.Gain(0.22);
-      register(owned, body, shell, toneGain);
+      register(owned, toneGain);
       body.connect(inputGain);
       shell.connect(toneGain).connect(inputGain);
       return finish({
@@ -462,11 +590,19 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const tune = Number(parameters.tune ?? 196);
       const decay = Number(parameters.decay ?? 0.26);
       const snap = clamp(Number(parameters.snap ?? 0.16), 0, 1);
-      const body = new Tone.MembraneSynth({ octaves: Number(parameters.sweep ?? 0.35), pitchDecay: Number(parameters.sweepTime ?? 0.018), oscillator: { type: 'sine' }, envelope: { attack: 0.0008, decay, sustain: 0, release: decay * 0.18 } });
-      const slap = new Tone.NoiseSynth({ noise: { type: 'pink' as any }, envelope: { attack: 0.0005, decay: 0.018, sustain: 0, release: 0.006 } });
+      const body = createTriggeredVoicePool(
+        () => new Tone.MembraneSynth({ octaves: Number(parameters.sweep ?? 0.35), pitchDecay: Number(parameters.sweepTime ?? 0.018), oscillator: { type: 'sine' }, envelope: { attack: 0.0008, decay, sustain: 0, release: decay * 0.18 } }),
+        (duration) => Math.max(0.0008 + decay, duration + decay * 0.18),
+        owned,
+      );
+      const slap = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({ noise: { type: 'pink' as any }, envelope: { attack: 0.0005, decay: 0.018, sustain: 0, release: 0.006 } }),
+        (duration) => Math.max(0.0005 + 0.018, duration + 0.006),
+        owned,
+      );
       const snapFilter = new Tone.Filter({ type: 'bandpass', frequency: Number(parameters.color ?? 3200), Q: 1.6 });
       const snapGain = new Tone.Gain(snap);
-      register(owned, body, slap, snapFilter, snapGain);
+      register(owned, snapFilter, snapGain);
       body.connect(inputGain);
       slap.connect(snapFilter).connect(snapGain).connect(inputGain);
       return finish({
@@ -482,11 +618,19 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     case 'timbaleLow': {
       const tune = Number(parameters.tune ?? 260);
       const decay = Number(parameters.decay ?? 0.22);
-      const body = new Tone.MembraneSynth({ octaves: Number(parameters.sweep ?? 0.15), pitchDecay: Number(parameters.sweepTime ?? 0.01), envelope: { attack: 0.0005, decay, sustain: 0, release: decay * 0.16 } });
-      const shell = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.0004, decay: decay * 0.32, sustain: 0, release: 0.012 } });
+      const body = createTriggeredVoicePool(
+        () => new Tone.MembraneSynth({ octaves: Number(parameters.sweep ?? 0.15), pitchDecay: Number(parameters.sweepTime ?? 0.01), envelope: { attack: 0.0005, decay, sustain: 0, release: decay * 0.16 } }),
+        (duration) => Math.max(0.0005 + decay, duration + decay * 0.16),
+        owned,
+      );
+      const shell = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.0004, decay: decay * 0.32, sustain: 0, release: 0.012 } }),
+        (duration) => Math.max(0.0004 + decay * 0.32, duration + 0.012),
+        owned,
+      );
       const toneFilter = new Tone.Filter({ type: 'bandpass', frequency: Number(parameters.color ?? 4400), Q: 1.2 });
       const toneGain = new Tone.Gain(clamp(Number(parameters.snap ?? 0.3), 0, 0.55));
-      register(owned, body, shell, toneFilter, toneGain);
+      register(owned, toneFilter, toneGain);
       body.connect(inputGain);
       shell.connect(toneFilter).connect(toneGain).connect(inputGain);
       return finish({
@@ -501,11 +645,19 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     case 'cowbell': {
       const tune = Number(parameters.tune ?? 560);
       const decay = Number(parameters.decay ?? 0.22);
-      const low = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.0005, decay, sustain: 0, release: decay * 0.22 } });
-      const high = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.0005, decay: decay * 0.72, sustain: 0, release: decay * 0.16 } });
+      const low = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.0005, decay, sustain: 0, release: decay * 0.22 } }),
+        (duration) => Math.max(0.0005 + decay, duration + decay * 0.22),
+        owned,
+      );
+      const high = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.0005, decay: decay * 0.72, sustain: 0, release: decay * 0.16 } }),
+        (duration) => Math.max(0.0005 + decay * 0.72, duration + decay * 0.16),
+        owned,
+      );
       const toneFilter = new Tone.Filter({ type: 'bandpass', frequency: Number(parameters.brightness ?? 7000) * 0.24, Q: 0.65 });
       const toneGain = new Tone.Gain(0.48);
-      register(owned, low, high, toneFilter, toneGain);
+      register(owned, toneFilter, toneGain);
       low.connect(toneFilter);
       high.connect(toneFilter).connect(toneGain).connect(inputGain);
       return finish({
@@ -520,11 +672,23 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     case 'chimes': {
       const tune = Number(parameters.tune ?? 1047);
       const decay = Number(parameters.decay ?? 2.6);
-      const fundamental = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay, sustain: 0, release: decay * 0.55 } });
-      const partialA = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: decay * 0.72, sustain: 0, release: decay * 0.38 } });
-      const partialB = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: decay * 0.48, sustain: 0, release: decay * 0.25 } });
+      const fundamental = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay, sustain: 0, release: decay * 0.55 } }),
+        (duration) => Math.max(0.001 + decay, duration + decay * 0.55),
+        owned,
+      );
+      const partialA = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: decay * 0.72, sustain: 0, release: decay * 0.38 } }),
+        (duration) => Math.max(0.001 + decay * 0.72, duration + decay * 0.38),
+        owned,
+      );
+      const partialB = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: decay * 0.48, sustain: 0, release: decay * 0.25 } }),
+        (duration) => Math.max(0.001 + decay * 0.48, duration + decay * 0.25),
+        owned,
+      );
       const toneGain = new Tone.Gain(0.62);
-      register(owned, fundamental, partialA, partialB, toneGain);
+      register(owned, toneGain);
       fundamental.connect(toneGain);
       partialA.connect(toneGain);
       partialB.connect(toneGain).connect(inputGain);
@@ -543,10 +707,18 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     case 'triangle': {
       const tune = Number(parameters.tune ?? 880);
       const decay = Number(parameters.decay ?? 1.1);
-      const ring = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.0005, decay, sustain: 0, release: decay * 0.9 } });
-      const overtone = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.0003, decay: decay * 0.62, sustain: 0, release: decay * 0.42 } });
+      const ring = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.0005, decay, sustain: 0, release: decay * 0.9 } }),
+        (duration) => Math.max(0.0005 + decay, duration + decay * 0.9),
+        owned,
+      );
+      const overtone = createTriggeredVoicePool(
+        () => new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.0003, decay: decay * 0.62, sustain: 0, release: decay * 0.42 } }),
+        (duration) => Math.max(0.0003 + decay * 0.62, duration + decay * 0.42),
+        owned,
+      );
       const toneGain = new Tone.Gain(0.56);
-      register(owned, ring, overtone, toneGain);
+      register(owned, toneGain);
       ring.connect(toneGain);
       overtone.connect(toneGain).connect(inputGain);
       return finish({
@@ -565,13 +737,25 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const tune = Number(parameters.tune ?? 320);
       const decay = Number(parameters.decay ?? 1.8);
       const wash = clamp(Number(parameters.wash ?? 0.38), 0.12, 0.75);
-      const bow = new Tone.MetalSynth({ envelope: { attack: 0.0007, decay, release: decay * 0.72 }, harmonicity: Number(parameters.harmonicity ?? 2.8), modulationIndex: Number(parameters.modIndex ?? 42), resonance: Number(parameters.brightness ?? 11000), octaves: 1.35 });
-      bow.frequency.value = tune;
-      keepMetalOscillatorsRunning(bow);
-      const washNoise = new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.001, decay: decay * 0.95, sustain: 0, release: decay * 0.5 } });
+      const bow = createTriggeredVoicePool(
+        () => {
+          const voice = new Tone.MetalSynth({ envelope: { attack: 0.0007, decay, release: decay * 0.72 }, harmonicity: Number(parameters.harmonicity ?? 2.8), modulationIndex: Number(parameters.modIndex ?? 42), resonance: Number(parameters.brightness ?? 11000), octaves: 1.35 });
+          keepMetalOscillatorsRunning(voice);
+          return voice;
+        },
+        (duration) => duration + decay * 0.72,
+        owned,
+      );
+      const washDecay = decay * 0.95;
+      const washRelease = decay * 0.5;
+      const washNoise = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({ noise: { type: 'white' as any }, envelope: { attack: 0.001, decay: washDecay, sustain: 0, release: washRelease } }),
+        (duration) => Math.max(0.001 + washDecay, duration + washRelease),
+        owned,
+      );
       const noiseFilter = new Tone.Filter({ type: 'bandpass', frequency: 7200, Q: 0.38 });
       const noiseGain = new Tone.Gain(wash);
-      register(owned, bow, washNoise, noiseFilter, noiseGain);
+      register(owned, noiseFilter, noiseGain);
       bow.connect(inputGain);
       washNoise.connect(noiseFilter).connect(noiseGain).connect(inputGain);
       return finish({
@@ -588,12 +772,18 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const decay = Number(parameters.decay ?? 0.12);
       const color = Number(parameters.color ?? 7500);
       const snap = clamp(Number(parameters.snap ?? 0.85), 0, 1);
-      const noise = new Tone.NoiseSynth({
-        noise: { type: 'white' },
-        envelope: { attack: 0.0003, decay: Math.max(0.009, decay * 0.18), sustain: 0, release: 0.006 },
-      });
+      const noiseDecay = Math.max(0.009, decay * 0.18);
+      const noiseRelease = 0.006;
+      const noise = createTriggeredVoicePool(
+        () => new Tone.NoiseSynth({
+          noise: { type: 'white' },
+          envelope: { attack: 0.0003, decay: noiseDecay, sustain: 0, release: noiseRelease },
+        }),
+        (duration) => Math.max(0.0003 + noiseDecay, duration + noiseRelease),
+        owned,
+      );
       const noiseFilter = new Tone.Filter({ type: 'bandpass', frequency: color, Q: 1.25 });
-      register(owned, noise, noiseFilter);
+      register(owned, noiseFilter);
       noise.connect(noiseFilter).connect(inputGain);
       return finish({
         node: postVca, filter, preGain: inputGain, voice: noise,
