@@ -316,6 +316,61 @@ test('rhythmic tracks render synthesized audio in CLI WAV output', async () => {
   assert.ok(wavBytes.subarray(44).some((value) => value !== 0));
 });
 
+test('rhythmic WAV export remains valid across time-warp curves', async () => {
+  const curves = ['invlin', 'dip', 'step16', 'bounceout', 'sin8', 'f5', 'fm_strong3'];
+  for (const curve of curves) {
+    const wavBytes = await generateWav({
+      bpm: 120,
+      tracks: [{
+        name: `Warped ${curve}`,
+        trackKind: 'rhythmic',
+        drumLanes: [
+          { voiceId: 'kick', parameters: {}, xorGroup: 0 },
+          { voiceId: 'snare', parameters: {}, xorGroup: 0 },
+          { voiceId: 'clap', parameters: {}, xorGroup: 0 },
+          { voiceId: 'shaker', parameters: {}, xorGroup: 0 },
+        ],
+        drumVelocityBits: 2,
+        numerator: 1,
+        denominator: 8,
+        sequence: '1 2 4 8',
+        lengthFactor: 100,
+        lengthOffset: 0,
+        midiChannel: 10,
+        repeats: 1,
+        delay: 0,
+        timeWarpEnabled: true,
+        timeWarpCurve: curve,
+        timeWarpRepeats: 2,
+        timeWarpAmount: 100,
+        timeWarpNoteLengths: true,
+      }],
+      reverb: { enabled: false },
+    });
+
+    assert.equal(Buffer.from(wavBytes.subarray(0, 4)).toString('ascii'), 'RIFF', curve);
+    assert.ok(wavBytes.length > 44, `${curve} should produce WAV payload`);
+    assert.ok(wavBytes.subarray(44).some((value) => value !== 0), `${curve} should produce audio`);
+  }
+
+  const customWav = await generateWav({
+    bpm: 120,
+    tracks: [{
+      trackKind: 'rhythmic',
+      drumLanes: [{ voiceId: 'clap', parameters: {}, xorGroup: 0 }],
+      sequence: '1 1 1 1',
+      denominator: 8,
+      timeWarpEnabled: true,
+      timeWarpCurve: 'custom',
+      timeWarpExpression: '1 / (T - T)',
+      timeWarpAmount: 100,
+    }],
+    reverb: { enabled: false },
+  });
+  assert.equal(Buffer.from(customWav.subarray(0, 4)).toString('ascii'), 'RIFF');
+  assert.ok(customWav.subarray(44).some((value) => value !== 0));
+});
+
 test('CLI WAV output applies per-track fade in and fade out in bars', async () => {
   const wavBytes = await generateWav({
     bpm: 60,

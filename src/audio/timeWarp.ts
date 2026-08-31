@@ -808,7 +808,8 @@ export function resolveTimeWarpFunction(curveName: string, customExpression = ''
 export function warpNormalizedTime(t: number, curve: TimeWarpFn, amount: number): number {
   const safeT = Number.isFinite(t) ? t : 0;
   const safeAmount = clamp(amount, 0, 1);
-  const target = Number.isFinite(curve(safeT)) ? curve(safeT) : safeT;
+  const targetValue = curve(safeT);
+  const target = Number.isFinite(targetValue) ? targetValue : safeT;
   return clamp01(safeT + safeAmount * (target - safeT));
 }
 

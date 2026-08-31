@@ -300,21 +300,28 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const tailDecay = Number(parameters.noiseDecay ?? 0.24);
       const snap = clamp(Number(parameters.snap ?? 0.85), 0, 1);
       const mix = clamp(Number(parameters.mix ?? 0.55), 0, 1);
-      const noise = new Tone.Noise({ type: noiseType as any });
+      const body = new Tone.NoiseSynth({
+        noise: { type: noiseType as any },
+        envelope: { attack: 0.0006, decay: burstDecay, sustain: 0, release: burstDecay * 0.35 },
+      });
+      const tail = new Tone.NoiseSynth({
+        noise: { type: noiseType as any },
+        envelope: { attack: 0.0025, decay: tailDecay, sustain: 0, release: tailDecay * 0.35 },
+      });
+      const snapSynth = new Tone.NoiseSynth({
+        noise: { type: 'white' as any },
+        envelope: { attack: 0.0002, decay: 0.005, sustain: 0, release: 0.002 },
+      });
       const toneFilter = new Tone.Filter({ type: 'bandpass', frequency: color, Q: 1.35 });
       const noiseFilter = new Tone.Filter({ type: 'highpass', frequency: Math.max(1400, color * 1.5), Q: 0.8 });
       const snapFilter = new Tone.Filter({ type: 'highpass', frequency: Math.max(3200, color * 2.3), Q: 0.7 });
-      const toneGain = new Tone.Gain(0);
-      const noiseGain = new Tone.Gain(0);
-      const snapGain = new Tone.Gain(0);
-      register(owned, noise, toneFilter, noiseFilter, snapFilter, toneGain, noiseGain, snapGain);
-      noise.connect(toneFilter).connect(toneGain).connect(inputGain);
-      noise.connect(noiseFilter).connect(noiseGain).connect(inputGain);
-      noise.connect(snapFilter).connect(snapGain).connect(inputGain);
-      noise.start();
+      register(owned, body, tail, snapSynth, toneFilter, noiseFilter, snapFilter);
+      body.connect(toneFilter).connect(inputGain);
+      tail.connect(noiseFilter).connect(inputGain);
+      snapSynth.connect(snapFilter).connect(inputGain);
       const burstOffsets = [0, 0.012, 0.024, 0.041];
       return finish({
-        node: postVca, filter, preGain: inputGain, voice: noise,
+        node: postVca, filter, preGain: inputGain, voice: body, voice2: tail, voice3: snapSynth,
         trigger(time, velocity, duration) {
           const naturalDuration = burstOffsets[burstOffsets.length - 1] + tailDecay + 0.04;
           const safeDuration = Math.max(naturalDuration, duration ?? 0.18);
@@ -323,10 +330,18 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
           const transientLevel = velocity * snap;
           scheduleVelocityEnvelope(time, velocity, safeDuration);
           burstOffsets.forEach((offset, index) => {
-            scheduleGainEnvelope((toneGain as any).gain, time + offset, bodyLevel * (1 - index * 0.16), 0.0006, burstDecay * (1 + index * 0.22));
-            scheduleGainEnvelope((snapGain as any).gain, time + offset, transientLevel * (1 - index * 0.14), 0.0002, 0.005 + index * 0.0015);
+            body.triggerAttackRelease(
+              Math.max(0.004, burstDecay * (1 + index * 0.22)),
+              time + offset,
+              bodyLevel * (1 - index * 0.16),
+            );
+            snapSynth.triggerAttackRelease(
+              0.006 + index * 0.0015,
+              time + offset,
+              transientLevel * (1 - index * 0.14),
+            );
           });
-          scheduleGainEnvelope((noiseGain as any).gain, time + 0.016, tailLevel, 0.0025, tailDecay);
+          tail.triggerAttackRelease(Math.max(0.02, tailDecay), time + 0.016, tailLevel);
         },
       });
     }
@@ -573,19 +588,24 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
       const decay = Number(parameters.decay ?? 0.12);
       const color = Number(parameters.color ?? 7500);
       const snap = clamp(Number(parameters.snap ?? 0.85), 0, 1);
-      const noise = new Tone.Noise({ type: 'white' });
+      const noise = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.0003, decay: Math.max(0.009, decay * 0.18), sustain: 0, release: 0.006 },
+      });
       const noiseFilter = new Tone.Filter({ type: 'bandpass', frequency: color, Q: 1.25 });
-      const noiseGain = new Tone.Gain(0);
-      register(owned, noise, noiseFilter, noiseGain);
-      noise.connect(noiseFilter).connect(noiseGain).connect(inputGain);
-      noise.start();
+      register(owned, noise, noiseFilter);
+      noise.connect(noiseFilter).connect(inputGain);
       return finish({
         node: postVca, filter, preGain: inputGain, voice: noise,
         trigger(time, velocity) {
           scheduleVelocityEnvelope(time, velocity, decay + 0.04);
           [0, 0.011, 0.026, 0.044, 0.067].forEach((offset, index) => {
             const peak = velocity * snap * (0.62 + index * 0.07);
-            scheduleGainEnvelope((noiseGain as any).gain, time + offset, peak, 0.0003, Math.max(0.009, decay * (0.14 + index * 0.035)));
+            noise.triggerAttackRelease(
+              Math.max(0.012, decay * (0.18 + index * 0.035)),
+              time + offset,
+              peak,
+            );
           });
         },
       });

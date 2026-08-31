@@ -127,6 +127,16 @@
             <v-icon size="18">mdi-headphones</v-icon>
           </v-btn>
           <v-btn
+            class="track-duplicate-btn"
+            icon
+            size="x-small"
+            variant="text"
+            :title="`Duplicate ${entry.track.name}`"
+            @click.stop="$emit('duplicate-track', entry.track.id)"
+          >
+            <v-icon size="18">mdi-content-copy</v-icon>
+          </v-btn>
+          <v-btn
             class="track-delete-btn"
             icon
             size="x-small"
@@ -211,6 +221,7 @@ export default defineComponent({
     'commit-track-name',
     'toggle-muted',
     'toggle-soloed',
+    'duplicate-track',
     'remove-track',
     'bitmask-sequence-input',
   ],

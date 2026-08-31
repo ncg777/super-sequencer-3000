@@ -223,6 +223,7 @@
           @commit-track-name="commitTrackName"
           @toggle-muted="toggleTrackMuted"
           @toggle-soloed="toggleTrackSoloed"
+          @duplicate-track="duplicateTrack"
           @remove-track="removeTrack"
           @bitmask-sequence-input="handleBitmaskSequenceInput"
         />
@@ -806,6 +807,31 @@ export default defineComponent({
       this.selectedTrackId = nextTrack.id;
       this.handleDraftChange();
     },
+    duplicateTrack(trackId: string) {
+      const sourceTrack = this.tracks.find((track) => track.id === trackId);
+      if (!sourceTrack) {
+        return;
+      }
+
+      const sourceIndex = this.tracks.findIndex((track) => track.id === trackId);
+      const duplicatedTrack = normalizePresetTrackData({
+        ...clonePresetTrackData(sourceTrack),
+        id: undefined,
+        name: this.buildUniqueTrackName(`${sourceTrack.name} (copy)`),
+      }, this.tracks.length);
+
+      this.tracks = [
+        ...this.tracks.slice(0, sourceIndex + 1),
+        duplicatedTrack,
+        ...this.tracks.slice(sourceIndex + 1),
+      ];
+      this.trackMixStates = {
+        ...this.trackMixStates,
+        [duplicatedTrack.id]: { muted: false, soloed: false },
+      };
+      this.selectedTrackId = duplicatedTrack.id;
+      this.handleDraftChange();
+    },
     handleTrackNameInput(trackId: string, nextName: string) {
       this.tracks = this.tracks.map((track) => track.id === trackId ? { ...track, name: nextName } : track);
       this.refreshDirtyState();
@@ -1003,7 +1029,7 @@ export default defineComponent({
       noteVelocities?: number[][],
       drumVoiceIds?: DrumVoiceId[][],
     ): TrackScheduledEvent[] {
-      if (trackNotes.length === 0) {
+      if (trackNotes.length === 0 || !Number.isFinite(totalLoopDuration) || !(totalLoopDuration > 0)) {
         return [];
       }
 
@@ -1024,12 +1050,19 @@ export default defineComponent({
       const quantizeDivisions = track.timeWarpQuantize > 0
         ? Math.max(1, Math.round((trackNotes.length / warpChunks) * track.timeWarpQuantize))
         : 0;
+      if (![trackQuant, trackPeriod, delaySeconds, paddingBeforeSeconds, repeatPeriod, chunkPeriod].every(Number.isFinite)
+        || !(chunkPeriod > 0)) {
+        return [];
+      }
       const activationMasks = this.activationMasks;
       const events: TrackScheduledEvent[] = [];
       let order = 0;
 
       for (let repeat = 0; repeat < track.repeats; repeat += 1) {
         const loopStart = delaySeconds + repeat * repeatPeriod + paddingBeforeSeconds;
+        if (!Number.isFinite(loopStart)) {
+          continue;
+        }
         for (let i = 0; i < trackNotes.length; i += 1) {
           const notes = trackNotes[i];
           if (notes.length === 0) {
@@ -1038,6 +1071,9 @@ export default defineComponent({
 
           const durSteps = this.getTrackStepDuration(trackNotes, i);
           const baseDuration = ((durSteps * track.lengthFactor / 100.0) + track.lengthOffset) * trackQuant;
+          if (!Number.isFinite(baseDuration)) {
+            continue;
+          }
           const localTime = i * trackQuant;
           const chunkIndex = Math.min(warpChunks - 1, Math.floor(localTime / chunkPeriod));
           const chunkStart = loopStart + chunkIndex * chunkPeriod;
@@ -1061,7 +1097,8 @@ export default defineComponent({
             }
           }
 
-          if (eventTime >= totalLoopDuration || duration <= 0) {
+          if (!Number.isFinite(eventTime) || !Number.isFinite(duration)
+            || eventTime < 0 || eventTime >= totalLoopDuration || duration <= 0) {
             continue;
           }
 
@@ -1072,7 +1109,8 @@ export default defineComponent({
             loopDuration: totalLoopDuration,
             masks: activationMasks,
           });
-          if (!gated) {
+          if (!gated || !Number.isFinite(gated.time) || !Number.isFinite(gated.duration)
+            || gated.time < 0 || gated.duration <= 0) {
             continue;
           }
 
@@ -1260,70 +1298,95 @@ export default defineComponent({
 
       const liveReverbChain = this.reverbChain;
       const liveTrackSynths = this.trackSynths;
-      const rendered = await Tone.Offline((offlineContext) => {
-        this.trackOfflineRenderProgress(offlineContext, renderDuration, (ratio) => {
-          this.setWavExportProgress(
-            RENDER_PROGRESS_START + (RENDER_PROGRESS_END - RENDER_PROGRESS_START) * ratio,
-            'Rendering audio...',
-          );
-        });
+      let offlineReverbChain: ReverbAudioChain | null = null;
+      const offlineTrackChains: TrackAudioChain[] = [];
+      let rendered: unknown;
+      try {
+        rendered = await Tone.Offline((offlineContext) => {
+          try {
+            this.trackOfflineRenderProgress(offlineContext, renderDuration, (ratio) => {
+              this.setWavExportProgress(
+                RENDER_PROGRESS_START + (RENDER_PROGRESS_END - RENDER_PROGRESS_START) * ratio,
+                'Rendering audio...',
+              );
+            });
 
-        this.reverbChain = null;
-        this.trackSynths = markRaw({});
-        this.getOrCreateReverbChain();
+            this.reverbChain = null;
+            this.trackSynths = markRaw({});
+            this.getOrCreateReverbChain();
+            offlineReverbChain = this.reverbChain;
 
-        const offlineTransport = Tone.getTransport();
-        offlineTransport.stop();
-        offlineTransport.seconds = 0;
+            const offlineTransport = Tone.getTransport();
+            offlineTransport.stop();
+            offlineTransport.seconds = 0;
 
-        for (const entry of schedulableTracks) {
-          scheduledTracks += 1;
-          this.setWavExportProgress(
-            SCHEDULE_PROGRESS_START
-              + (RENDER_PROGRESS_START - SCHEDULE_PROGRESS_START) * (scheduledTracks / schedulableTracks.length),
-            'Scheduling tracks...',
-          );
+            for (const entry of schedulableTracks) {
+              scheduledTracks += 1;
+              this.setWavExportProgress(
+                SCHEDULE_PROGRESS_START
+                  + (RENDER_PROGRESS_START - SCHEDULE_PROGRESS_START) * (scheduledTracks / schedulableTracks.length),
+                'Scheduling tracks...',
+              );
 
-          const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration, entry.trackIndex, entry.noteVelocities, entry.drumVoiceIds);
-          if (events.length === 0) {
-            continue;
-          }
-
-          const chain = this.createTrackAudioChain({
-            echoPingPong: entry.track.echoPingPong,
-            maxDelay: this.getTrackEchoMaxDelay(entry.track),
-            phaserStages: entry.track.phaserStages,
-            phaserCenterFrequency: this.midiToFrequency(entry.track.phaserCenter),
-          });
-          this.trackSynths[`offline-${entry.track.id}`] = chain;
-          this.updateTrackChainSettings(entry.track, chain);
-          this.scheduleTrackFadeEnvelope(
-            entry.track,
-            entry.notes,
-            chain.fadeGain.gain,
-            this.getTrackDelaySeconds(entry.track),
-          );
-
-          for (const event of events) {
-            this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain);
-            if (entry.track.trackKind === 'rhythmic') {
-              const noteVelocities = event.noteVelocities ?? event.notes.map(() => event.velocity);
-              for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
-                const voiceId = event.drumVoiceIds?.[noteIndex];
-                const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
-                this.chokeDrumXorGroup(chain, voiceId, event.time);
-                instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
+              const events = this.buildTrackEvents(entry.track, entry.notes, loopDuration, entry.trackIndex, entry.noteVelocities, entry.drumVoiceIds);
+              if (events.length === 0) {
+                continue;
               }
-            } else {
-              this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity, event.time);
-            }
-          }
-        }
 
-        offlineTransport.start(0);
+              const chain = this.createTrackAudioChain({
+                echoPingPong: entry.track.echoPingPong,
+                maxDelay: this.getTrackEchoMaxDelay(entry.track),
+                phaserStages: entry.track.phaserStages,
+                phaserCenterFrequency: this.midiToFrequency(entry.track.phaserCenter),
+              });
+              offlineTrackChains.push(chain);
+              this.trackSynths[`offline-${entry.track.id}`] = chain;
+              this.updateTrackChainSettings(entry.track, chain);
+              this.scheduleTrackFadeEnvelope(
+                entry.track,
+                entry.notes,
+                chain.fadeGain.gain,
+                this.getTrackDelaySeconds(entry.track),
+              );
+
+              for (const event of events) {
+                this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain);
+                if (entry.track.trackKind === 'rhythmic') {
+                  const noteVelocities = event.noteVelocities ?? event.notes.map(() => event.velocity);
+                  for (let noteIndex = 0; noteIndex < event.notes.length; noteIndex += 1) {
+                    const voiceId = event.drumVoiceIds?.[noteIndex];
+                    const instrument = voiceId ? chain.drumInstruments[voiceId] : undefined;
+                    this.chokeDrumXorGroup(chain, voiceId, event.time);
+                    instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
+                  }
+                } else {
+                  this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity, event.time);
+                }
+              }
+            }
+
+            offlineTransport.start(0);
+          } finally {
+            this.reverbChain = liveReverbChain;
+            this.trackSynths = liveTrackSynths;
+          }
+        }, renderDuration, 2, WAV_EXPORT_SAMPLE_RATE);
+      } finally {
         this.reverbChain = liveReverbChain;
         this.trackSynths = liveTrackSynths;
-      }, renderDuration, 2, WAV_EXPORT_SAMPLE_RATE);
+        for (const chain of offlineTrackChains) {
+          try {
+            this.disposeTrackChain(chain);
+          } catch {
+          }
+        }
+        if (offlineReverbChain) {
+          try {
+            disposeReverbAudioChain(offlineReverbChain);
+          } catch {
+          }
+        }
+      }
 
       this.setWavExportProgress(ENCODE_PROGRESS_START, 'Encoding WAV...');
       await this.$nextTick();
@@ -2845,11 +2908,10 @@ export default defineComponent({
       }
     },
     stopSequencer() {
-      if(!this.isRunning) return;
       this.isRunning = false;
       this.stopTrackLoops();
       Tone.getTransport().stop();
-      Tone.getTransport().seconds=0;
+      Tone.getTransport().seconds = 0;
     },
     playTrackStep(track: PresetTrackData, event: TrackScheduledEvent, when: Tone.Unit.Seconds) {
       if (!this.audibleTrackIds.has(track.id)) {

@@ -391,7 +391,7 @@ function buildTrackEvents(
   trackIndex: number,
   activationMasks: readonly bigint[],
 ): TrackScheduledEvent[] {
-  if (entry.actualNotes.length === 0) {
+  if (entry.actualNotes.length === 0 || !Number.isFinite(totalLoopDuration) || !(totalLoopDuration > 0)) {
     return [];
   }
 
@@ -412,11 +412,18 @@ function buildTrackEvents(
   const quantizeDivisions = entry.track.timeWarpQuantize > 0
     ? Math.max(1, Math.round((entry.actualNotes.length / warpChunks) * entry.track.timeWarpQuantize))
     : 0;
+  if (![entry.quant, trackPeriod, delaySeconds, paddingBeforeSeconds, repeatPeriod, chunkPeriod].every(Number.isFinite)
+    || !(chunkPeriod > 0)) {
+    return [];
+  }
   const events: TrackScheduledEvent[] = [];
   let order = 0;
 
   for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
     const loopStart = delaySeconds + repeat * repeatPeriod + paddingBeforeSeconds;
+    if (!Number.isFinite(loopStart)) {
+      continue;
+    }
     for (let i = 0; i < entry.actualNotes.length; i += 1) {
       const notes = entry.actualNotes[i];
       if (notes.length === 0) {
@@ -425,6 +432,9 @@ function buildTrackEvents(
 
       const durSteps = getStepDuration(entry.actualNotes, i);
       const baseDuration = ((durSteps * entry.track.lengthFactor) / 100.0 + entry.track.lengthOffset) * entry.quant;
+      if (!Number.isFinite(baseDuration)) {
+        continue;
+      }
       const localTime = i * entry.quant;
       const chunkIndex = Math.min(warpChunks - 1, Math.floor(localTime / chunkPeriod));
       const chunkStart = loopStart + chunkIndex * chunkPeriod;
@@ -448,7 +458,8 @@ function buildTrackEvents(
         }
       }
 
-      if (eventTime >= totalLoopDuration || duration <= 0) {
+      if (!Number.isFinite(eventTime) || !Number.isFinite(duration)
+        || eventTime < 0 || eventTime >= totalLoopDuration || duration <= 0) {
         continue;
       }
 
@@ -459,7 +470,8 @@ function buildTrackEvents(
         loopDuration: totalLoopDuration,
         masks: activationMasks,
       });
-      if (!gated) {
+      if (!gated || !Number.isFinite(gated.time) || !Number.isFinite(gated.duration)
+        || gated.time < 0 || gated.duration <= 0) {
         continue;
       }
 
