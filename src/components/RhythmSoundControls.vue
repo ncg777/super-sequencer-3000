@@ -49,6 +49,17 @@ function parameterValue(definition: DrumParameterDefinition): number | string {
   return selectedLane.value?.parameters[definition.name] ?? '';
 }
 
+function parameterLabel(definition: DrumParameterDefinition): string {
+  const value = parameterValue(definition);
+  if (typeof value === 'number' && definition.step !== undefined) {
+    const stepText = String(definition.step);
+    const decimalIndex = stepText.indexOf('.');
+    const decimalPlaces = decimalIndex >= 0 ? stepText.length - decimalIndex - 1 : 0;
+    return `${definition.label} (${value.toFixed(decimalPlaces)})`;
+  }
+  return `${definition.label} (${value})`;
+}
+
 function voiceLabel(voiceId: string): string {
   return DRUM_VOICE_OPTIONS.find((option) => option.value === voiceId)?.title ?? voiceId;
 }
@@ -82,7 +93,7 @@ function voiceLabel(voiceId: string): string {
         <v-select
           v-if="definition.kind === 'select'"
           :model-value="String(parameterValue(definition))"
-          :label="definition.label"
+          :label="parameterLabel(definition)"
           :items="definition.options"
           density="compact"
           variant="outlined"
@@ -92,7 +103,7 @@ function voiceLabel(voiceId: string): string {
         <EditableSlider
           v-else
           :model-value="Number(parameterValue(definition))"
-          :label="definition.label"
+          :label="parameterLabel(definition)"
           :min="definition.min ?? 0"
           :max="definition.max ?? 1"
           :step="definition.step ?? 1"

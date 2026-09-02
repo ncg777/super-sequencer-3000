@@ -34,6 +34,24 @@ test('track sequence padding defaults to zero and normalizes fractional bar dura
   assert.equal(arePresetDataEqual(changed, DEFAULT_PRESET_DATA), false);
 });
 
+test('legacy synth fields are discarded while breath controls are normalized', () => {
+  const normalized = normalizePresetTrackData({
+    generatorType: 'fm',
+    fmSynth: { algorithm: 8 },
+    virtualAnalogSynth: { drift: 25 },
+    breathEnabled: true,
+    breathLevel: -100,
+    breathHarmonic: 99,
+  });
+
+  assert.equal('generatorType' in normalized, false);
+  assert.equal('fmSynth' in normalized, false);
+  assert.equal('virtualAnalogSynth' in normalized, false);
+  assert.equal(normalized.breathEnabled, true);
+  assert.equal(normalized.breathLevel, -60);
+  assert.equal(normalized.breathHarmonic, 8);
+});
+
 test('mergePresetTracks appends independent tracks with unique IDs and names', () => {
   const current = clonePresetData(DEFAULT_PRESET_DATA);
   current.bpm = 111;

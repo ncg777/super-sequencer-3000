@@ -32,8 +32,8 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Track Activation (B)</strong>: Optional collapsible song-level sequence of nonnegative decimal bitmasks. Blank disables gating. When set, its <code>N</code> values split the full longest-track loop into <code>N</code> equal wall-clock chunks. Bit 0 controls the first track, bit 1 the second, and so on (deleting a track shifts later bits). A mask of <code>0</code> silences every track for that chunk. Activation uses each note's final post-time-warp onset; inactive onsets are omitted, and active notes are clipped at the first later inactive chunk boundary. Example: <code>1 2 3 0</code>. The track strip darkens inactive chunks.</li>
           <li><strong>Rhythmic tracks</strong>: Add a rhythmic track to use a synthesized GM-oriented drum kit instead of the melodic pitch-class encoder. Its ordered lanes map to GM percussion notes, with lane 1 using the least-significant velocity bits. Each sequence value is a decimal BigInt mask; the selected 1-7 velocity bits per lane allow simultaneous hits and velocity variation. Assign an XOR group (1-8) to choke other members of that group so only one can be active; the default is no group. When two grouped voices fire on the same step, the later/higher lane wins. Rhythmic tracks default to MIDI channel 10, but the channel remains editable for hardware routing.</li>
           <li><strong>Numerator/Denominator</strong>: Set per-track rhythmic grid while all tracks share one tempo.</li>
-          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, generator, gain, sequence, octave shift, note length, amp/pitch envelopes, polyphony, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
-          <li><strong>Generator</strong>: Select the tonewheel generator with classic oscillator waves, choir vowels, colored noise, and resonant spectra; a four-operator FM synthesizer; or a wide three-oscillator virtual-analog synthesizer.</li>
+          <li><strong>Tracks</strong>: Each preset can contain multiple tracks with their own MIDI channel, waveform, gain, sequence, octave shift, note length, amp/pitch envelopes, polyphony, modulation, tanh drive, chorus, flanger, phaser, filter, echo, and reverb send.</li>
+          <li><strong>Generator</strong>: Shape the tonewheel engine with classic oscillator waves, choir vowels, colored noise, resonant spectra, flute harmonics, fixed pulse spectra, drawbars, and optional breath noise.</li>
           <li><strong>Sequence</strong>: Input a sequence of numbers per track to generate notes based on their binary representation.</li>
           <li><strong>Octave Shift</strong>: Adjusts the octave of the notes played for the selected track.</li>
           <li><strong>Track Gain</strong>: Sets each track's audio level in dB. Use the velocity multiplier to control MIDI note velocity independently.</li>
@@ -48,39 +48,22 @@ const visible = defineModel<boolean>({ required: true });
           <li><strong>Chorus/Flanger/Phaser</strong>: Tempo-synced modulation effects whose LFO completes one cycle per selected note division (e.g. 4/1 sweeps over four whole notes, 1/8T warbles per eighth triplet), so they follow the BPM automatically.</li>
           <li><strong>Phaser</strong>: A classic phaser pedal: a cascade of first-order allpass stages (each stage pair creates one notch) whose poles are spaced one octave apart around the Center frequency and swept by the LFO over ±(Sweep % of 5 octaves). Stages picks the pole count (classic pedals use 4), Feedback resonates the notches, Resonance sharpens each pole, and Wet sets the dry/phase-shifted mix (always at least 50% wet so the notches stay audible).</li>
           <li><strong>Multidimensional Tonewheel</strong>: For melodic, non-noise tracks, build a morphable tonewheel spectrum from sparse drawbar configurations and animate its position with routed vector LFOs.</li>
-          <li><strong>Four-Operator FM</strong>: Build FM timbres from four independently enveloped operators with ratios, fine tuning, levels, waveforms, modulation index, and operator 4 feedback.</li>
-          <li><strong>Virtual Analog</strong>: Layer three independently tuned oscillators with per-source unison and stereo spread, PWM, analog drift, ring modulation, sub oscillator, and colored noise.</li>
+          <li><strong>Breath noise</strong>: Add one filtered pink-noise layer to each melodic event. Level controls the blend, while Harmonic tracks the event's mean pitch to set the filter center.</li>
           <li><strong>Import/Export</strong>: Export one preset or the full library as JSON for backup and sharing, then import those files later without overwriting your existing presets.</li>
           <li><strong>WAV Export</strong>: Render and download an offline WAV mix of all tracks in the current draft, including an automatic rest trail for releases and effects.</li>
         </ul>
 
-        <h3 class="mt-4 mb-2">Four-Operator FM Synth</h3>
-        <p>Open the <strong>Generator</strong> tab and select <strong>4-Operator FM</strong>. FM synthesis changes an operator's instantaneous frequency with the output of another operator. This creates sidebands and evolving spectra that range from clean bells and electric pianos to basses, brass, and noisy percussion.</p>
+        <h3 class="mt-4 mb-2">Melodic Sound Palette</h3>
+        <p>The <strong>Generator</strong> tab uses one tonewheel-based melodic engine. Choose a source shape, mix its nine drawbars, and optionally add breath noise before the track's shared envelope, filter, drive, modulation, and effects.</p>
         <ul>
-          <li><strong>Algorithm</strong>: Selects the signal flow. Operators shown after a <code>&gt;</code> modulate the next operator; operators joined with <code>+</code> are parallel. A carrier reaches the audible output, while a modulator changes another operator's spectrum.</li>
-          <li><strong>Modulation index</strong>: Scales frequency deviation across every route in the selected algorithm. Low values stay close to sine waves; higher values create more and stronger sidebands.</li>
-          <li><strong>Operator 4 feedback</strong>: Feeds operator 4 into its own frequency through a one-sample delay. Raise it gradually to move from extra brightness into dense, noise-like spectra.</li>
-          <li><strong>Frequency ratio and fine tune</strong>: Ratio multiplies the played note frequency. Whole-number ratios tend toward harmonic spectra; fractional or detuned ratios create inharmonic bells and metallic sounds.</li>
-          <li><strong>Operator level</strong>: Sets both a carrier's audible contribution and a modulator's strength before the global modulation index.</li>
-          <li><strong>Operator envelope</strong>: Each operator has its own ADSR. A fast-decaying modulator adds an attack transient without forcing the carrier to fade; longer modulator envelopes make the timbre evolve throughout the note.</li>
-          <li><strong>Shared track controls</strong>: Master amp and pitch envelopes, polyphony, mono glide and legato, modulation, filters, effects, drive, gain, and reverb sends process the complete FM voice. Tonewheel oscillator unison is disabled for FM.</li>
-        </ul>
-
-        <h3 class="mt-4 mb-2">Three-Oscillator Virtual Analog Synth</h3>
-        <p>Open the <strong>Generator</strong> tab and select <strong>Virtual Analog</strong>. Its three full-range oscillators, sub oscillator, and noise source feed the track's shared envelope, filter, drive, modulation, and effects chain. It is suited to classic subtractive patches as well as wide modern stacks.</p>
-
-        <ul>
-          <li><strong>Main oscillators</strong>: Enable each source independently and choose sine, triangle, sawtooth, square, or pulse. Octave and semitone provide stepped tuning; fine tune covers ±100 cents. Level, pan, and start phase shape the blend.</li>
-          <li><strong>Per-oscillator unison</strong>: Stack one to four oscillator members with a symmetric detune span and equal-power stereo spread. Gain compensation controls the level increase as members are added.</li>
-          <li><strong>Pulse-width modulation</strong>: Pulse waves expose width, PWM rate, and modulation depth. PWM is generated per voice and its phase is offset between oscillators.</li>
-          <li><strong>Analog drift</strong>: Depth sets slow pitch movement in cents; rate controls its base speed. Every oscillator member uses a different phase and subtly different rate so the stack moves organically rather than as one vibrato.</li>
-          <li><strong>Ring modulation</strong>: Multiplies oscillator 1 by oscillator 2 and mixes the result through a separate panned path. Small amounts add edge; larger amounts emphasize sum-and-difference frequencies.</li>
-          <li><strong>Sub and noise</strong>: The pitch-stable sub has waveform, octave, fine tune, level, and pan. White noise is brightest, pink is balanced, and brown emphasizes lower frequencies.</li>
-          <li><strong>Shared track controls</strong>: Master amp and pitch envelopes, polyphony, mono glide and legato, filters, modulation, effects, drive, gain, and reverb sends process the complete voice.</li>
+          <li><strong>Flute</strong>: Uses a compact, fundamental-led harmonic spectrum for a soft acoustic starting point.</li>
+          <li><strong>Pulse 25% and 12.5%</strong>: Use fixed narrow-duty spectra for brighter, leaner tones without a per-voice PWM graph.</li>
+          <li><strong>Breath noise</strong>: Adds one pink-noise source per track event. Level sets its gain and Harmonic sets the pitch-relative center of its band-pass filter.</li>
+          <li><strong>Legacy presets</strong>: Retired FM and virtual-analog fields are ignored during import, while compatible waveform, envelope, sequence, and effect settings are retained.</li>
         </ul>
 
         <h3 class="mt-4 mb-2">Multidimensional Tonewheel Wavetable</h3>
-        <p>Select <strong>Tonewheel</strong> in the <strong>Generator</strong> tab to turn a melodic track's nine drawbars into a morphable spectrum. Instead of keeping one fixed drawbar registration, you place named registrations at points in a space with up to 16 independent morph axes. GateRunner continuously interpolates the drawbars at the current position, so one axis could represent brightness, another body, and another harmonic complexity.</p>
+        <p>Open the <strong>Generator</strong> tab to turn a melodic track's nine drawbars into a morphable spectrum. Instead of keeping one fixed drawbar registration, you place named registrations at points in a space with up to 16 independent morph axes. GateRunner continuously interpolates the drawbars at the current position, so one axis could represent brightness, another body, and another harmonic complexity.</p>
         <p>This feature affects the additive tonewheel spectrum used by melodic waveforms. Rhythmic tracks do not use it, and noise waveforms bypass the tonewheel drawbar spectrum.</p>
 
         <h4 class="mt-3 mb-2">Axes and Configurations</h4>

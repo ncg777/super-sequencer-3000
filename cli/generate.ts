@@ -45,18 +45,12 @@ import {
   type TonewheelWavetable,
 } from '../src/audio/tonewheelWavetable.js';
 import {
-  DEFAULT_FM_SETTINGS,
-  FM_ALGORITHMS,
-  type FourOperatorFmSettings,
-} from '../src/audio/fourOperatorFmSynth.js';
-import {
-  getVirtualAnalogFrequencyRatio,
-  getVirtualAnalogUnisonDetune,
-  getVirtualAnalogUnisonPan,
-  type VirtualAnalogSettings,
-  type VirtualAnalogWaveform,
-} from '../src/audio/virtualAnalogSynth.js';
-import { normalizeVirtualAnalogSettings } from '../src/presets.js';
+  BREATH_FILTER_Q,
+  PULSE_DUTY,
+  getFluteHarmonicAmplitude,
+  getPulseHarmonicAmplitude,
+  isPulseWaveform,
+} from '../src/audio/spectra.js';
 
 export interface GenerateTrackOptions {
   /** Optional display name for the track. */
@@ -73,12 +67,18 @@ export interface GenerateTrackOptions {
   denominator?: number;
   /** Oscillator shape metadata (not used by MIDI export). */
   waveform?: string;
-  /** Melodic sound generator. Omitted values retain legacy tonewheel behavior. */
-  generatorType?: 'tonewheel' | 'fm' | 'virtual-analog';
-  /** Four-operator FM patch used when generatorType is fm. */
-  fmSynth?: FourOperatorFmSettings;
-  /** Three-oscillator virtual-analog patch used when generatorType is virtual-analog. */
-  virtualAnalogSynth?: VirtualAnalogSettings;
+  /** @deprecated Legacy generator values are accepted and normalized to tonewheel. */
+  generatorType?: string;
+  /** @deprecated Legacy FM settings are ignored. */
+  fmSynth?: unknown;
+  /** @deprecated Legacy virtual-analog settings are ignored. */
+  virtualAnalogSynth?: unknown;
+  /** Add one filtered pink-noise breath layer per melodic note event. */
+  breathEnabled?: boolean;
+  /** Breath layer level in dB (-60 to 0). */
+  breathLevel?: number;
+  /** Breath filter center as a multiple of the event's mean note frequency (0.5-8). */
+  breathHarmonic?: number;
   /** Space-separated integers to encode as notes, e.g. "1 2 4 8 16". */
   sequence?: string;
   /** Octave shift (0-10). */
@@ -275,7 +275,7 @@ export interface GenerateOptions {
 
 let pcs12Initialized = false;
 
-type NormalizedTrack = Required<GenerateTrackOptions>;
+type NormalizedTrack = Required<Omit<GenerateTrackOptions, 'generatorType' | 'fmSynth' | 'virtualAnalogSynth'>>;
 type NormalizedReverb = Required<GenerateReverbOptions>;
 
 interface TrackRenderData {
@@ -503,33 +503,8 @@ function normalizeTonewheelDrawbars(value: unknown): number[] {
   });
 }
 
-function normalizeFmSettings(value: FourOperatorFmSettings | undefined): FourOperatorFmSettings {
-  const raw = value ?? DEFAULT_FM_SETTINGS;
-  return {
-    algorithm: clamp(Math.round(raw.algorithm ?? DEFAULT_FM_SETTINGS.algorithm), 1, 8) as FourOperatorFmSettings['algorithm'],
-    modulationIndex: clamp(raw.modulationIndex ?? DEFAULT_FM_SETTINGS.modulationIndex, 0, 32),
-    feedback: clamp(raw.feedback ?? DEFAULT_FM_SETTINGS.feedback, 0, 2),
-    operators: DEFAULT_FM_SETTINGS.operators.map((fallback, index) => {
-      const operator = raw.operators?.[index] ?? fallback;
-      const waveform = ['sine', 'triangle', 'square', 'sawtooth'].includes(operator.waveform)
-        ? operator.waveform
-        : fallback.waveform;
-      return {
-        ratio: clamp(operator.ratio, 0.125, 32),
-        detune: clamp(operator.detune, -100, 100),
-        level: clamp(operator.level, 0, 1),
-        waveform,
-        attack: clamp(operator.attack, 0, 10),
-        decay: clamp(operator.decay, 0, 10),
-        sustain: clamp(operator.sustain, 0, 1),
-        release: clamp(operator.release, 0, 20),
-      };
-    }),
-  };
-}
-
-function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrackOptions>> {
-  const fallbackTrack: Required<GenerateTrackOptions> = {
+function normalizeTracks(options: GenerateOptions): NormalizedTrack[] {
+  const fallbackTrack: NormalizedTrack = {
     name: 'Track 1',
     trackKind: 'melodic',
     drumLanes: [],
@@ -537,9 +512,9 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     numerator: clamp(options.numerator ?? 4, 1, 16),
     denominator: clamp(options.denominator ?? 5, 1, 16),
     waveform: options.waveform ?? 'sine',
-    generatorType: 'tonewheel',
-    fmSynth: normalizeFmSettings(undefined),
-    virtualAnalogSynth: normalizeVirtualAnalogSettings(undefined),
+    breathEnabled: false,
+    breathLevel: -18,
+    breathHarmonic: 2,
     sequence: options.sequence ?? '1 2 4 8 16',
     octave: clamp(options.octave ?? 6, 0, 10),
     lengthFactor: clamp(options.lengthFactor ?? 100, 0, 400),
@@ -623,12 +598,9 @@ function normalizeTracks(options: GenerateOptions): Array<Required<GenerateTrack
     numerator: clamp(track.numerator ?? fallbackTrack.numerator, 1, 16),
     denominator: clamp(track.denominator ?? fallbackTrack.denominator, 1, 16),
     waveform: track.waveform ?? fallbackTrack.waveform,
-    generatorType: track.generatorType === 'fm'
-      || track.generatorType === 'virtual-analog'
-      ? track.generatorType
-      : 'tonewheel',
-    fmSynth: normalizeFmSettings(track.fmSynth),
-    virtualAnalogSynth: normalizeVirtualAnalogSettings(track.virtualAnalogSynth),
+    breathEnabled: Boolean(track.breathEnabled ?? fallbackTrack.breathEnabled),
+    breathLevel: clamp(track.breathLevel ?? fallbackTrack.breathLevel, -60, 0),
+    breathHarmonic: clamp(track.breathHarmonic ?? fallbackTrack.breathHarmonic, 0.5, 8),
     sequence: track.sequence ?? fallbackTrack.sequence,
     octave: clamp(track.octave ?? fallbackTrack.octave, 0, 10),
     lengthFactor: clamp(track.lengthFactor ?? fallbackTrack.lengthFactor, 0, 400),
@@ -780,6 +752,19 @@ async function prepareRenderData(options: GenerateOptions): Promise<PreparedRend
 }
 
 function sampleOscillator(phase: number, waveform: string): number {
+  if (waveform === 'flute' || isPulseWaveform(waveform)) {
+    const harmonicCount = waveform === 'flute' ? 5 : 32;
+    let sample = 0;
+    let energy = 0;
+    for (let harmonic = 1; harmonic <= harmonicCount; harmonic += 1) {
+      const amplitude = waveform === 'flute'
+        ? getFluteHarmonicAmplitude(harmonic)
+        : getPulseHarmonicAmplitude(PULSE_DUTY[waveform], harmonic);
+      sample += amplitude * Math.sin(2 * Math.PI * harmonic * phase);
+      energy += amplitude * amplitude;
+    }
+    return sample / Math.max(1, Math.sqrt(energy));
+  }
   switch (waveform) {
     case 'square':
       return phase < 0.5 ? 1 : -1;
@@ -832,215 +817,71 @@ function getAdsrLevel(
   return clamp(level, 0, 1);
 }
 
-interface FmRenderState {
-  phases: number[];
-  outputs: number[];
-  feedback: number;
-}
-
-function sampleFourOperatorFm(
-  state: FmRenderState,
-  settings: FourOperatorFmSettings,
-  baseFrequency: number,
-  elapsed: number,
-  gateDuration: number,
-  sampleRate: number,
-): number {
-  const algorithm = FM_ALGORITHMS.find((candidate) => candidate.value === settings.algorithm) ?? FM_ALGORITHMS[0];
-  for (let operatorIndex = 3; operatorIndex >= 0; operatorIndex -= 1) {
-    const operator = settings.operators[operatorIndex];
-    const modulation = algorithm.routes
-      .filter((route) => route.to === operatorIndex)
-      .reduce((sum, route) => sum + state.outputs[route.from], 0);
-    const feedback = operatorIndex === 3 ? state.feedback * settings.feedback : 0;
-    const frequency = baseFrequency * operator.ratio * Math.pow(2, operator.detune / 1200)
-      + baseFrequency * settings.modulationIndex * modulation
-      + baseFrequency * feedback;
-    state.phases[operatorIndex] = (state.phases[operatorIndex] + Math.max(0, frequency) / sampleRate) % 1;
-    state.outputs[operatorIndex] = sampleOscillator(state.phases[operatorIndex], operator.waveform)
-      * operator.level
-      * getAdsrLevel(elapsed, gateDuration, operator);
-  }
-  state.feedback = state.outputs[3];
-  const normalizer = 1 / Math.sqrt(algorithm.carriers.length);
-  return algorithm.carriers.reduce((sum, operatorIndex) => sum + state.outputs[operatorIndex], 0) * normalizer;
-}
-
-interface VirtualAnalogRenderState {
-  phases: number[][];
-  triangles: number[][];
-  subPhase: number;
-  subTriangle: number;
-  noiseSeed: number;
+interface BreathRenderState {
+  seed: number;
   pink: [number, number, number];
-  brown: number;
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
 }
 
-function createVirtualAnalogRenderState(settings: VirtualAnalogSettings, seed: number): VirtualAnalogRenderState {
-  return {
-    phases: settings.oscillators.map((oscillator) => Array.from(
-      { length: oscillator.unisonVoices },
-      (_, memberIndex) => ((oscillator.phase + memberIndex * 17) % 360) / 360,
-    )),
-    triangles: settings.oscillators.map((oscillator) => Array(oscillator.unisonVoices).fill(0)),
-    subPhase: 0,
-    subTriangle: 0,
-    noiseSeed: (seed >>> 0) || 1,
-    pink: [0, 0, 0],
-    brown: 0,
-  };
-}
-
-function polyBlep(phase: number, phaseIncrement: number): number {
-  if (phase < phaseIncrement) {
-    const normalized = phase / phaseIncrement;
-    return normalized + normalized - normalized * normalized - 1;
-  }
-  if (phase > 1 - phaseIncrement) {
-    const normalized = (phase - 1) / phaseIncrement;
-    return normalized * normalized + normalized + normalized + 1;
-  }
-  return 0;
-}
-
-function sampleBandLimitedOscillator(
-  phase: number,
-  phaseIncrement: number,
-  waveform: VirtualAnalogWaveform,
-  pulseWidth: number,
-  previousTriangle: number,
-): { sample: number; triangle: number } {
-  if (waveform === 'sine') {
-    return { sample: Math.sin(2 * Math.PI * phase), triangle: previousTriangle };
-  }
-
-  const safeIncrement = clamp(phaseIncrement, 1e-7, 0.49);
-  if (waveform === 'sawtooth') {
-    return { sample: 2 * phase - 1 - polyBlep(phase, safeIncrement), triangle: previousTriangle };
-  }
-
-  const width = waveform === 'square' ? 0.5 : clamp(pulseWidth, 0.05, 0.95);
-  const fallingPhase = (phase - width + 1) % 1;
-  const pulse = (phase < width ? 1 : -1)
-    + polyBlep(phase, safeIncrement)
-    - polyBlep(fallingPhase, safeIncrement);
-  if (waveform !== 'triangle') {
-    return { sample: pulse, triangle: previousTriangle };
-  }
-
-  const triangle = clamp((1 - safeIncrement * 4) * previousTriangle + safeIncrement * 4 * pulse, -1, 1);
-  return { sample: triangle, triangle };
-}
-
-function nextVirtualAnalogNoise(state: VirtualAnalogRenderState, type: VirtualAnalogSettings['noise']['type']): number {
-  let seed = state.noiseSeed;
+function nextPinkNoise(state: BreathRenderState): number {
+  let seed = state.seed;
   seed ^= seed << 13;
   seed ^= seed >>> 17;
   seed ^= seed << 5;
-  state.noiseSeed = seed >>> 0;
-  const white = (state.noiseSeed / 0xFFFFFFFF) * 2 - 1;
-  if (type === 'pink') {
-    state.pink[0] = 0.99765 * state.pink[0] + white * 0.099046;
-    state.pink[1] = 0.963 * state.pink[1] + white * 0.2965164;
-    state.pink[2] = 0.57 * state.pink[2] + white * 1.0526913;
-    return clamp((state.pink[0] + state.pink[1] + state.pink[2] + white * 0.1848) * 0.11, -1, 1);
-  }
-  if (type === 'brown') {
-    state.brown = clamp((state.brown + white * 0.02) / 1.02, -0.3, 0.3);
-    return state.brown * 3.3;
-  }
-  return white;
+  state.seed = seed >>> 0;
+  const white = (state.seed / 0xFFFFFFFF) * 2 - 1;
+  state.pink[0] = 0.99765 * state.pink[0] + white * 0.099046;
+  state.pink[1] = 0.963 * state.pink[1] + white * 0.2965164;
+  state.pink[2] = 0.57 * state.pink[2] + white * 1.0526913;
+  return clamp((state.pink[0] + state.pink[1] + state.pink[2] + white * 0.1848) * 0.11, -1, 1);
 }
 
-function getEqualPowerPan(pan: number): [number, number] {
-  const angle = (clamp(pan, -1, 1) + 1) * Math.PI / 4;
-  return [Math.cos(angle), Math.sin(angle)];
-}
-
-function sampleVirtualAnalog(
-  state: VirtualAnalogRenderState,
-  settings: VirtualAnalogSettings,
-  baseFrequency: number,
-  elapsed: number,
+function renderBreathNoise(
+  left: Float32Array,
+  right: Float32Array,
+  startFrame: number,
+  endFrame: number,
   sampleRate: number,
-): { left: number; right: number } {
-  let left = 0;
-  let right = 0;
-  const ringTaps = [0, 0];
+  duration: number,
+  track: NormalizedTrack,
+  notes: number[],
+  a4: number,
+  seed: number,
+): void {
+  const meanFrequency = notes.reduce((sum, note) => sum + midiToFrequency(note, a4), 0) / notes.length;
+  const centerFrequency = clamp(meanFrequency * track.breathHarmonic, 20, sampleRate * 0.45);
+  const omega = 2 * Math.PI * centerFrequency / sampleRate;
+  const alpha = Math.sin(omega) / (2 * BREATH_FILTER_Q);
+  const denominator = 1 + alpha;
+  const b0 = alpha / denominator;
+  const b2 = -b0;
+  const a1 = -2 * Math.cos(omega) / denominator;
+  const a2 = (1 - alpha) / denominator;
+  const state: BreathRenderState = {
+    seed: (seed >>> 0) || 1,
+    pink: [0, 0, 0],
+    x1: 0,
+    x2: 0,
+    y1: 0,
+    y2: 0,
+  };
+  const gain = dbToGain(track.breathLevel) * Math.SQRT1_2;
 
-  settings.oscillators.forEach((oscillator, oscillatorIndex) => {
-    if (!oscillator.enabled || oscillator.level <= 0) {
-      return;
-    }
-    const memberGain = oscillator.level / Math.sqrt(oscillator.unisonVoices);
-    for (let memberIndex = 0; memberIndex < oscillator.unisonVoices; memberIndex += 1) {
-      const unisonDetune = getVirtualAnalogUnisonDetune(memberIndex, oscillator.unisonVoices, oscillator.unisonDetune);
-      const driftPhase = oscillatorIndex * 2.17 + memberIndex * 1.31;
-      const driftRate = settings.driftRate * (1 + oscillatorIndex * 0.071 + memberIndex * 0.037);
-      const drift = Math.sin(2 * Math.PI * driftRate * elapsed + driftPhase) * settings.drift;
-      const frequency = baseFrequency
-        * getVirtualAnalogFrequencyRatio(oscillator.octave, oscillator.semitone)
-        * 2 ** ((oscillator.detune + unisonDetune + drift) / 1200);
-      const increment = clamp(frequency / sampleRate, 0, 0.49);
-      const pwm = oscillator.pulseWidth
-        + Math.sin(2 * Math.PI * oscillator.pwmRate * elapsed + oscillatorIndex * 2.094) * oscillator.pwmDepth;
-      const sampled = sampleBandLimitedOscillator(
-        state.phases[oscillatorIndex][memberIndex],
-        increment,
-        oscillator.waveform,
-        pwm,
-        state.triangles[oscillatorIndex][memberIndex],
-      );
-      state.triangles[oscillatorIndex][memberIndex] = sampled.triangle;
-      state.phases[oscillatorIndex][memberIndex] = (state.phases[oscillatorIndex][memberIndex] + increment) % 1;
-      const weighted = sampled.sample * memberGain;
-      const pan = getVirtualAnalogUnisonPan(
-        memberIndex,
-        oscillator.unisonVoices,
-        oscillator.pan,
-        oscillator.stereoSpread,
-      );
-      const [leftPan, rightPan] = getEqualPowerPan(pan);
-      left += weighted * leftPan;
-      right += weighted * rightPan;
-      if (oscillatorIndex < 2) {
-        ringTaps[oscillatorIndex] += weighted;
-      }
-    }
-  });
-
-  if (settings.ringMod > 0) {
-    const ring = ringTaps[0] * ringTaps[1] * settings.ringMod;
-    const [leftPan, rightPan] = getEqualPowerPan(settings.ringModPan);
-    left += ring * leftPan;
-    right += ring * rightPan;
+  for (let frame = startFrame; frame < endFrame; frame += 1) {
+    const elapsed = (frame - startFrame) / sampleRate;
+    const input = nextPinkNoise(state);
+    const filtered = b0 * input + b2 * state.x2 - a1 * state.y1 - a2 * state.y2;
+    state.x2 = state.x1;
+    state.x1 = input;
+    state.y2 = state.y1;
+    state.y1 = filtered;
+    const sample = filtered * gain * getAdsrLevel(elapsed, duration, track);
+    left[frame] += sample;
+    right[frame] += sample;
   }
-
-  if (settings.sub.enabled && settings.sub.level > 0) {
-    const frequency = baseFrequency * (2 ** settings.sub.octave) * (2 ** (settings.sub.detune / 1200));
-    const increment = clamp(frequency / sampleRate, 0, 0.49);
-    const sampled = sampleBandLimitedOscillator(
-      state.subPhase,
-      increment,
-      settings.sub.waveform,
-      0.5,
-      state.subTriangle,
-    );
-    state.subTriangle = sampled.triangle;
-    state.subPhase = (state.subPhase + increment) % 1;
-    const [leftPan, rightPan] = getEqualPowerPan(settings.sub.pan);
-    left += sampled.sample * settings.sub.level * leftPan;
-    right += sampled.sample * settings.sub.level * rightPan;
-  }
-
-  if (settings.noise.enabled && settings.noise.level > 0) {
-    const noise = nextVirtualAnalogNoise(state, settings.noise.type) * settings.noise.level;
-    const [leftPan, rightPan] = getEqualPowerPan(settings.noise.pan);
-    left += noise * leftPan;
-    right += noise * rightPan;
-  }
-
-  return { left: left * 0.72, right: right * 0.72 };
 }
 
 function getRenderTrailSeconds(prepared: PreparedRenderData): number {
@@ -1049,7 +890,6 @@ function getRenderTrailSeconds(prepared: PreparedRenderData): number {
     ...prepared.tracks.map((entry) => Math.max(
       entry.track.release,
       entry.track.pitchEnvelopeRelease,
-      ...(entry.track.generatorType === 'fm' ? entry.track.fmSynth.operators.map((operator) => operator.release) : []),
     )),
   );
   const echoTrail = Math.max(
@@ -1415,10 +1255,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
       }
 
       const startFrame = Math.max(0, Math.floor(start * sampleRate));
-      const operatorRelease = entry.track.generatorType === 'fm'
-        ? Math.max(...entry.track.fmSynth.operators.map((operator) => operator.release))
-        : 0;
-      const voiceRelease = Math.max(entry.track.release, operatorRelease);
+      const voiceRelease = entry.track.release;
       const endFrame = Math.min(frameCount, Math.ceil((start + duration + voiceRelease) * sampleRate));
       const voicedNotes = limitPolyphony(notes, entry.track.polyphony);
       // High-note priority already picked the winner, so the glide follows a single pitch.
@@ -1439,7 +1276,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
         : null;
 
       for (const midiNote of voicedNotes) {
-          const voiceCount = entry.track.generatorType === 'tonewheel' ? entry.track.unisonVoices : 1;
+      const voiceCount = entry.track.unisonVoices;
 
           for (let voice = 0; voice < voiceCount; voice += 1) {
             const detuneOffset = voiceCount === 1 ? 0 : ((voice / (voiceCount - 1)) - 0.5) * entry.track.unisonDetune;
@@ -1452,11 +1289,6 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             const filterState = { low: 0, high: 0, band: 0 };
             const filterStateRight = { low: 0, high: 0, band: 0 };
             let phase = 0;
-            const fmState: FmRenderState = { phases: [0, 0.25, 0, 0.25], outputs: [0, 0, 0, 0], feedback: 0 };
-            const virtualAnalogState = createVirtualAnalogRenderState(
-              entry.track.virtualAnalogSynth,
-              0x9E3779B9 ^ midiNote ^ (trackIndex << 12),
-            );
             let tonewheel = staticTonewheel;
             for (let frame = startFrame; frame < endFrame; frame += 1) {
               const t = (frame - startFrame) / sampleRate;
@@ -1510,42 +1342,16 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               const instantaneousFrequency = frequency * vibrato * pitchEnvelopeRatio * (
                 glidePlan && glidePlan.seconds > 0 ? getGlideFrequency(glidePlan, t) / glidePlan.toFrequency : 1
               );
-              if (entry.track.generatorType === 'virtual-analog') {
-                const oscillatorSample = sampleVirtualAnalog(
-                  virtualAnalogState,
-                  entry.track.virtualAnalogSynth,
-                  instantaneousFrequency,
-                  t,
-                  sampleRate,
-                );
-                trackLeft[frame] += applySimpleFilter(
-                  oscillatorSample.left * voiceGain * env * tremolo,
-                  filterState,
-                  entry.track,
-                  filterCutoff,
-                  sampleRate,
-                );
-                trackRight[frame] += applySimpleFilter(
-                  oscillatorSample.right * voiceGain * env * tremolo,
-                  filterStateRight,
-                  entry.track,
-                  filterCutoff,
-                  sampleRate,
-                );
-              } else {
-                const oscillatorSample = entry.track.generatorType === 'fm'
-                  ? sampleFourOperatorFm(fmState, entry.track.fmSynth, instantaneousFrequency, t, duration, sampleRate)
-                  : sampleTonewheel(phase, entry.track.waveform, tonewheel);
-                const sample = applySimpleFilter(
-                  oscillatorSample * voiceGain * env * tremolo,
-                  filterState,
-                  entry.track,
-                  filterCutoff,
-                  sampleRate,
-                );
-                trackLeft[frame] += sample * leftPan;
-                trackRight[frame] += sample * rightPan;
-              }
+              const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, tonewheel);
+              const sample = applySimpleFilter(
+                oscillatorSample * voiceGain * env * tremolo,
+                filterState,
+                entry.track,
+                filterCutoff,
+                sampleRate,
+              );
+              trackLeft[frame] += sample * leftPan;
+              trackRight[frame] += sample * rightPan;
 
               phase += phaseIncrement * vibrato * pitchEnvelopeRatio * (
                 glidePlan && glidePlan.seconds > 0 ? getGlideFrequency(glidePlan, t) / glidePlan.toFrequency : 1
@@ -1555,6 +1361,20 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               }
             }
           }
+        }
+        if (entry.track.breathEnabled && voicedNotes.length > 0) {
+          renderBreathNoise(
+            trackLeft,
+            trackRight,
+            startFrame,
+            endFrame,
+            sampleRate,
+            duration,
+            entry.track,
+            voicedNotes,
+            prepared.a4,
+            0x9E3779B9 ^ event.order ^ (trackIndex << 12),
+          );
         }
     }
 

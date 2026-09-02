@@ -6,8 +6,6 @@ import { join } from 'node:path';
 import test from 'node:test';
 import ToneMidi from '@tonejs/midi';
 import { generateMidi, generateWav } from './generate.js';
-import { DEFAULT_FM_SETTINGS } from '../src/audio/fourOperatorFmSynth.js';
-import { DEFAULT_VIRTUAL_ANALOG_SETTINGS } from '../src/audio/virtualAnalogSynth.js';
 
 const { Midi } = ToneMidi;
 
@@ -408,66 +406,60 @@ test('CLI WAV output applies per-track fade in and fade out in bars', async () =
   assert.ok(middleAmplitude > fadeOutAmplitude * 3, `${middleAmplitude} should exceed fade-out amplitude ${fadeOutAmplitude}`);
 });
 
-test('four-operator FM tracks render audible audio in CLI WAV output', async () => {
-  const wavBytes = await generateWav({
+test('legacy FM and virtual-analog settings are silently normalized to tonewheel rendering', async () => {
+  const track = {
+    name: 'Legacy Synth',
+    trackKind: 'melodic' as const,
+    waveform: 'triangle',
+    numerator: 1,
+    denominator: 4,
+    sequence: '1',
+    octave: 5,
+    lengthFactor: 100,
+    lengthOffset: 0,
+    midiChannel: 1,
+    repeats: 1,
+    delay: 0,
+    timeWarpEnabled: false,
+  };
+  const tonewheel = await generateWav({
+    bpm: 120,
+    tracks: [track],
+    reverb: { enabled: false },
+  });
+  const legacyFm = await generateWav({
     bpm: 120,
     tracks: [{
-      name: 'FM Bell',
-      trackKind: 'melodic',
+      ...track,
       generatorType: 'fm',
-      fmSynth: {
-        ...DEFAULT_FM_SETTINGS,
-        algorithm: 4,
-        modulationIndex: 7.5,
-        feedback: 0.2,
-        operators: DEFAULT_FM_SETTINGS.operators.map((operator, index) => ({
-          ...operator,
-          ratio: [1, 2, 3, 7][index],
-          sustain: index === 0 ? 0.8 : 0.1,
-        })),
-      },
-      numerator: 1,
-      denominator: 4,
-      sequence: '1',
-      octave: 5,
-      lengthFactor: 100,
-      lengthOffset: 0,
-      midiChannel: 1,
-      repeats: 1,
-      delay: 0,
-      timeWarpEnabled: false,
+      fmSynth: { algorithm: 8, modulationIndex: 32 },
+    }],
+    reverb: { enabled: false },
+  });
+  const legacyVirtualAnalog = await generateWav({
+    bpm: 120,
+    tracks: [{
+      ...track,
+      generatorType: 'virtual-analog',
+      virtualAnalogSynth: { drift: 25, ringMod: 1 },
     }],
     reverb: { enabled: false },
   });
 
-  assert.equal(Buffer.from(wavBytes.subarray(0, 4)).toString('ascii'), 'RIFF');
-  const pcm = new DataView(wavBytes.buffer, wavBytes.byteOffset + 44, wavBytes.byteLength - 44);
-  let peak = 0;
-  for (let offset = 0; offset + 1 < pcm.byteLength; offset += 2) {
-    peak = Math.max(peak, Math.abs(pcm.getInt16(offset, true)));
-  }
-  assert.ok(peak > 100, `expected audible FM output, got PCM peak ${peak}`);
+  assert.deepEqual(legacyFm, tonewheel);
+  assert.deepEqual(legacyVirtualAnalog, tonewheel);
 });
 
-test('virtual-analog tracks render audible deterministic stereo audio in CLI WAV output', async () => {
+test('flute with breath noise renders audible deterministic CLI audio', async () => {
   const options = {
     bpm: 120,
     tracks: [{
-      name: 'VA Stack',
+      name: 'Breathy Flute',
       trackKind: 'melodic' as const,
-      generatorType: 'virtual-analog' as const,
-      virtualAnalogSynth: {
-        ...DEFAULT_VIRTUAL_ANALOG_SETTINGS,
-        oscillators: DEFAULT_VIRTUAL_ANALOG_SETTINGS.oscillators.map((oscillator, index) => ({
-          ...oscillator,
-          waveform: index === 2 ? 'pulse' as const : oscillator.waveform,
-          unisonVoices: index < 2 ? 3 : 1,
-          stereoSpread: index < 2 ? 0.8 : 0,
-        })),
-        ringMod: 0.2,
-        sub: { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.sub, enabled: true, level: 0.25 },
-        noise: { ...DEFAULT_VIRTUAL_ANALOG_SETTINGS.noise, enabled: true, level: 0.04 },
-      },
+      waveform: 'flute',
+      breathEnabled: true,
+      breathLevel: -18,
+      breathHarmonic: 5,
       numerator: 1,
       denominator: 4,
       sequence: '1',
@@ -485,13 +477,13 @@ test('virtual-analog tracks render audible deterministic stereo audio in CLI WAV
   const second = await generateWav(options);
 
   assert.equal(Buffer.from(first.subarray(0, 4)).toString('ascii'), 'RIFF');
-  assert.deepEqual(first, second, 'virtual-analog noise and drift rendering must be reproducible');
+  assert.deepEqual(first, second, 'breath-noise rendering must be reproducible');
   const pcm = new DataView(first.buffer, first.byteOffset + 44, first.byteLength - 44);
   let peak = 0;
   for (let offset = 0; offset + 1 < pcm.byteLength; offset += 2) {
     peak = Math.max(peak, Math.abs(pcm.getInt16(offset, true)));
   }
-  assert.ok(peak > 100, `expected audible virtual-analog output, got PCM peak ${peak}`);
+  assert.ok(peak > 100, `expected audible flute output, got PCM peak ${peak}`);
 });
 
 test('unknown generator values fall back to tonewheel rendering', async () => {
