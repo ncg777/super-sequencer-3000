@@ -151,8 +151,8 @@ const DRUM_MIDI_NOTES: Record<DrumVoiceId, number> = {
 };
 
 const SHARED_DEFAULT_PARAMETERS: DrumParameterBag = {
-  echoSend: 0,
-  reverbSend: 0,
+  echoSend: -96,
+  reverbSend: -96,
   filterType: 'lowpass',
   filterFrequency: 20000,
   filterResonance: 1,

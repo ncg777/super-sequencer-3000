@@ -31,8 +31,8 @@ test('uses the standard GM note mapping for the default lanes', () => {
     getDrumParameterDefinitions('snare').find((definition) => definition.name === 'tune'),
     { name: 'tune', label: 'Tune', min: 80, max: 400, step: 1 },
   );
-  assert.equal(getDefaultDrumParameters('kick').echoSend, 0);
-  assert.equal(getDefaultDrumParameters('kick').reverbSend, 0);
+  assert.equal(getDefaultDrumParameters('kick').echoSend, -96);
+  assert.equal(getDefaultDrumParameters('kick').reverbSend, -96);
   assert.deepEqual(
     getDrumParameterDefinitions('kick').find((definition) => definition.name === 'echoSend'),
     { name: 'echoSend', label: 'Echo Send (dB)', min: -96, max: 0, step: 0.5 },
@@ -45,6 +45,10 @@ test('normalizes per-drum effect sends in decibels', () => {
   assert.equal(parameters.echoSend, -18.5);
   assert.equal(parameters.reverbSend, -96);
   assert.equal(normalizeDrumParameters('snare', { echoSend: 6 }).echoSend, 0);
+  assert.deepEqual(
+    normalizeDrumParameters('snare', {}),
+    getDefaultDrumParameters('snare'),
+  );
 });
 
 test('supports every Tone biquad filter type for drum voices', () => {

@@ -229,8 +229,8 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     gain: Number(parameters.filterGain ?? 0),
   });
   const postVca = new Tone.Gain(1);
-  const echoSend = new Tone.Gain(sendLevelToGain(parameters.echoSend ?? 0));
-  const reverbSend = new Tone.Gain(sendLevelToGain(parameters.reverbSend ?? 0));
+  const echoSend = new Tone.Gain(sendLevelToGain(parameters.echoSend ?? -96));
+  const reverbSend = new Tone.Gain(sendLevelToGain(parameters.reverbSend ?? -96));
   register(owned, inputGain, distortion, filter, postVca, echoSend, reverbSend);
   inputGain.connect(distortion);
   distortion.connect(filter);
@@ -267,8 +267,8 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     reverbSend,
     update(nextParameters) {
       const next = normalizeDrumParameters(voiceId, nextParameters);
-      echoSend.gain.value = sendLevelToGain(next.echoSend ?? 0);
-      reverbSend.gain.value = sendLevelToGain(next.reverbSend ?? 0);
+      echoSend.gain.value = sendLevelToGain(next.echoSend ?? -96);
+      reverbSend.gain.value = sendLevelToGain(next.reverbSend ?? -96);
       const soundChanged = Object.entries(next).some(([name, value]) => (
         name !== 'echoSend' && name !== 'reverbSend' && currentParameters[name] !== value
       ));
