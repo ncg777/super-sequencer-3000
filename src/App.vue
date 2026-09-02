@@ -903,6 +903,7 @@ export default defineComponent({
         [trackId]: { ...state, muted: !state.muted },
       };
       this.updateTrackMixStates();
+      this.scheduleTrackLoopRebuild();
     },
     toggleTrackSoloed(trackId: string) {
       const state = this.getTrackMixState(trackId);
@@ -911,6 +912,7 @@ export default defineComponent({
         [trackId]: { ...state, soloed: !state.soloed },
       };
       this.updateTrackMixStates();
+      this.scheduleTrackLoopRebuild();
     },
     async removeCurrentTrack() {
       const currentTrack = this.currentTrack;

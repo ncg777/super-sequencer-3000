@@ -97,6 +97,16 @@ interface PooledVoice<T extends TriggerVoice> {
   lastStartAt: number;
 }
 
+/** Per-layer polyphony ceiling for a single GM drum voice. */
+const MAX_POOLED_DRUM_VOICES = 2;
+
+/**
+ * Tone.MetalSynth keeps six FM oscillators plus their whole signal graph running for as
+ * long as the instance exists, so an idle instance still costs render-thread time. Cymbal
+ * layers therefore get a much tighter ceiling than the cheap oscillator/noise layers.
+ */
+const MAX_POOLED_METAL_VOICES = 2;
+
 function timeToSeconds(value: Tone.Unit.Time): number {
   if (typeof value === 'number') {
     return value;
@@ -113,7 +123,9 @@ function createTriggeredVoicePool<T extends TriggerVoice>(
   createVoice: () => T,
   getBusyDuration: (durationSeconds: number) => number,
   owned: any[],
+  maxVoices = MAX_POOLED_DRUM_VOICES,
 ): T {
+  const voiceLimit = Math.max(1, Math.trunc(maxVoices));
   const voices: PooledVoice<T>[] = [];
   const destinations: any[] = [];
   const createAvailableVoice = (): PooledVoice<T> => {
@@ -140,10 +152,23 @@ function createTriggeredVoicePool<T extends TriggerVoice>(
       const time = args.length >= 4 ? args[2] : args[1];
       const startSeconds = timeToSeconds(time);
       const durationSeconds = Math.max(0, timeToSeconds(duration));
-      const entry = voices.find((candidate) => (
+      let selected = voices.find((candidate) => (
         candidate.availableAt <= startSeconds && candidate.lastStartAt < startSeconds
       ));
-      const selected = entry ?? createAvailableVoice();
+      if (!selected) {
+        if (voices.length < voiceLimit) {
+          selected = createAvailableVoice();
+        } else {
+          // Dense patterns with long tails would otherwise grow the pool without bound
+          // until the audio thread can no longer render in realtime; steal instead.
+          selected = voices.reduce((oldest, candidate) => (
+            candidate.lastStartAt < oldest.lastStartAt ? candidate : oldest
+          ));
+          if (selected.lastStartAt >= startSeconds) {
+            return pool;
+          }
+        }
+      }
       selected.voice.triggerAttackRelease(...args);
       selected.availableAt = startSeconds + Math.max(0.001, getBusyDuration(durationSeconds));
       selected.lastStartAt = startSeconds;
@@ -455,6 +480,7 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
         },
         (duration) => duration + decay * 0.3,
         owned,
+        MAX_POOLED_METAL_VOICES,
       );
       metal.connect(inputGain);
       const live = { tune };
@@ -489,6 +515,7 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
         },
         (duration) => duration + decay * 0.7,
         owned,
+        MAX_POOLED_METAL_VOICES,
       );
       const washDecay = Math.max(0.3, decay * 1.15);
       const washRelease = Math.max(0.12, decay * 0.45);
@@ -745,6 +772,7 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
         },
         (duration) => duration + decay * 0.72,
         owned,
+        MAX_POOLED_METAL_VOICES,
       );
       const washDecay = decay * 0.95;
       const washRelease = decay * 0.5;
