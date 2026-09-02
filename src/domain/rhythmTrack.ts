@@ -35,6 +35,19 @@ export type DrumVoiceId = typeof DRUM_VOICE_IDS[number];
 export type DrumParameterValue = number | string;
 export type DrumParameterBag = Record<string, DrumParameterValue>;
 
+export const DRUM_FILTER_TYPE_OPTIONS = [
+  'lowpass',
+  'highpass',
+  'bandpass',
+  'lowshelf',
+  'highshelf',
+  'notch',
+  'allpass',
+  'peaking',
+] as const;
+
+export type DrumFilterType = typeof DRUM_FILTER_TYPE_OPTIONS[number];
+
 export interface DrumParameterDefinition {
   name: string;
   label: string;
@@ -138,6 +151,8 @@ const DRUM_MIDI_NOTES: Record<DrumVoiceId, number> = {
 };
 
 const SHARED_DEFAULT_PARAMETERS: DrumParameterBag = {
+  echoSend: 0,
+  reverbSend: 0,
   filterType: 'lowpass',
   filterFrequency: 20000,
   filterResonance: 1,
@@ -182,7 +197,9 @@ const VOICE_DEFAULT_PARAMETERS: Record<DrumVoiceId, DrumParameterBag> = {
 };
 
 const PARAMETER_DEFINITIONS: Record<string, DrumParameterDefinition> = {
-  filterType: { name: 'filterType', label: 'Filter', kind: 'select', options: ['lowpass', 'highpass', 'bandpass'] },
+  echoSend: { name: 'echoSend', label: 'Echo Send (dB)', min: -96, max: 0, step: 0.5 },
+  reverbSend: { name: 'reverbSend', label: 'Reverb Send (dB)', min: -96, max: 0, step: 0.5 },
+  filterType: { name: 'filterType', label: 'Filter', kind: 'select', options: DRUM_FILTER_TYPE_OPTIONS },
   filterFrequency: { name: 'filterFrequency', label: 'Filter Freq', min: 20, max: 20000, step: 1 },
   filterResonance: { name: 'filterResonance', label: 'Filter Reso', min: 0.1, max: 20, step: 0.1 },
   filterRolloff: { name: 'filterRolloff', label: 'Filter Slope', min: -96, max: -12, step: 12 },

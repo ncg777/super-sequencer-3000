@@ -434,8 +434,11 @@ interface TrackAudioChain {
   echo: Tone.FeedbackDelay | Tone.PingPongDelay | null;
   echoPingPong: boolean;
   maxDelay: number;
+  echoReturnGain: Tone.Gain;
   dryGain: Tone.Gain;
   reverbSend: Tone.Gain;
+  drumReverbFadeGain: Tone.Gain;
+  drumReverbTrackGain: Tone.Gain;
   outputGain: Tone.Gain;
   fadeGain: Tone.Gain;
   mixGain: Tone.Gain;
@@ -886,7 +889,9 @@ export default defineComponent({
       return this.audibleTrackIds.has(trackId);
     },
     applyTrackMixState(track: PresetTrackData, chain: TrackAudioChain) {
-      chain.mixGain.gain.value = this.isTrackAudible(track.id) ? 1 : 0;
+      const audible = this.isTrackAudible(track.id);
+      chain.mixGain.gain.value = audible ? 1 : 0;
+      chain.drumReverbTrackGain.gain.value = audible ? this.dbToGain(track.gain) : 0;
     },
     updateTrackMixStates() {
       for (const track of this.tracks) {
@@ -1349,6 +1354,7 @@ export default defineComponent({
                 entry.notes,
                 chain.fadeGain.gain,
                 this.getTrackDelaySeconds(entry.track),
+                chain.drumReverbFadeGain.gain,
               );
 
               for (const event of events) {
@@ -1590,14 +1596,18 @@ export default defineComponent({
       const outputGain = markRaw(new Tone.Gain(1));
       const fadeGain = markRaw(new Tone.Gain(1));
       const mixGain = markRaw(new Tone.Gain(1));
+      const echoReturnGain = markRaw(new Tone.Gain(1));
       const dryGain = markRaw(new Tone.Gain(1).toDestination());
       const reverbSend = markRaw(new Tone.Gain(0));
+      const drumReverbFadeGain = markRaw(new Tone.Gain(1));
+      const drumReverbTrackGain = markRaw(new Tone.Gain(1));
 
       // Only the always-on backbone is wired here; sources and effects join the chain
       // when routeTrackAudioChain runs for the track's current settings.
       mixGain.connect(dryGain);
       reverbSend.connect(this.getOrCreateReverbChain().lowCut);
-      mixGain.connect(reverbSend);
+      drumReverbFadeGain.connect(drumReverbTrackGain);
+      drumReverbTrackGain.connect(reverbSend);
 
       // markRaw keeps Vue from deep-proxying the chain: the scheduler touches it on every
       // note, and standardized-audio-context also rejects proxied nodes on connect().
@@ -1622,8 +1632,11 @@ export default defineComponent({
         echo: null,
         echoPingPong,
         maxDelay,
+        echoReturnGain,
         dryGain,
         reverbSend,
+        drumReverbFadeGain,
+        drumReverbTrackGain,
         outputGain,
         fadeGain,
         mixGain,
@@ -1819,6 +1832,18 @@ export default defineComponent({
         this.rebuildDrumInstruments(currentTrack, chain, true);
       }, 120);
     },
+    routeDrumInstrument(track: PresetTrackData, chain: TrackAudioChain, instrument: DrumInstrument) {
+      instrument.node.disconnect();
+      instrument.echoSend.disconnect();
+      instrument.reverbSend.disconnect();
+      instrument.node.connect(chain.sourceBus);
+      instrument.node.connect(instrument.echoSend);
+      instrument.node.connect(instrument.reverbSend);
+      if (track.echoEnabled) {
+        instrument.echoSend.connect(this.ensureTrackEcho(chain));
+      }
+      instrument.reverbSend.connect(chain.drumReverbFadeGain);
+    },
     rebuildDrumInstruments(track: PresetTrackData, chain: TrackAudioChain, force = false) {
       if (track.trackKind !== 'rhythmic') {
         if (chain.drumRebuildTimer !== null) {
@@ -1869,7 +1894,7 @@ export default defineComponent({
       }
       chain.drumChokeMap = buildDrumChokeMap(track.drumLanes);
       if (chain.routingSignature) {
-        Object.values(chain.drumInstruments).forEach((instrument) => instrument.node.connect(chain.sourceBus));
+        Object.values(chain.drumInstruments).forEach((instrument) => this.routeDrumInstrument(track, chain, instrument));
       }
       chain.drumSignature = signature;
       chain.drumParameterSignature = parameterSignature;
@@ -2272,8 +2297,11 @@ export default defineComponent({
       chain.phaser?.dispose();
       chain.wavetableLfoLoop?.dispose();
       chain.echo?.dispose();
+      chain.echoReturnGain.dispose();
       chain.dryGain.dispose();
       chain.reverbSend.dispose();
+      chain.drumReverbFadeGain.dispose();
+      chain.drumReverbTrackGain.dispose();
       chain.outputGain.dispose();
       chain.fadeGain.dispose();
       chain.mixGain.dispose();
@@ -2322,12 +2350,13 @@ export default defineComponent({
       chain.flanger?.disconnect();
       chain.phaser?.disconnect();
       chain.echo?.disconnect();
+      chain.echoReturnGain.disconnect();
       chain.filter?.disconnect();
+      chain.mixGain.disconnect();
 
       if (track.trackKind === 'rhythmic') {
         Object.values(chain.drumInstruments).forEach((instrument) => {
-          instrument.node.disconnect();
-          instrument.node.connect(chain.sourceBus);
+          this.routeDrumInstrument(track, chain, instrument);
         });
       } else if (isNoise) {
         this.ensureTrackNoiseSynth(chain).connect(chain.sourceBus);
@@ -2358,7 +2387,7 @@ export default defineComponent({
       if (track.phaserEnabled) {
         signalChain.push(this.ensureTrackPhaser(chain));
       }
-      if (track.echoEnabled) {
+      if (track.echoEnabled && track.trackKind !== 'rhythmic') {
         signalChain.push(this.ensureTrackEcho(chain));
       }
       if (track.filterEnabled) {
@@ -2366,6 +2395,15 @@ export default defineComponent({
       }
       signalChain.push(chain.fadeGain, chain.mixGain);
       Tone.connectSeries(...signalChain);
+      chain.mixGain.connect(chain.dryGain);
+      if (track.trackKind === 'rhythmic') {
+        if (track.echoEnabled) {
+          this.ensureTrackEcho(chain).connect(chain.echoReturnGain);
+          chain.echoReturnGain.connect(chain.sourceBus);
+        }
+      } else {
+        chain.mixGain.connect(chain.reverbSend);
+      }
     },
     updateTrackChainSettings(track: PresetTrackData, chain: TrackAudioChain) {
       chain.modulationTrack = track;
@@ -2525,9 +2563,10 @@ export default defineComponent({
           // Tone rejects a delay time above the node's maxDelay, which would abort playback.
           delayTime: Math.min(this.getEchoDelaySeconds(track.echoDelay), chain.maxDelay),
           feedback: this.clampNormalRange(track.echoFeedback),
-          wet: this.dbToWetMix(track.echoWet),
+          wet: track.trackKind === 'rhythmic' ? 1 : this.dbToWetMix(track.echoWet),
         });
       }
+      chain.echoReturnGain.gain.value = this.dbToGain(track.echoWet);
       if (track.chorusEnabled) {
         this.ensureTrackChorus(chain).set({
           frequency: this.getModulationRateHz(track.chorusRate),
@@ -2757,6 +2796,8 @@ export default defineComponent({
       for (const chain of Object.values(this.trackSynths)) {
         chain.fadeGain.gain.cancelScheduledValues(Tone.now());
         chain.fadeGain.gain.value = 1;
+        chain.drumReverbFadeGain.gain.cancelScheduledValues(Tone.now());
+        chain.drumReverbFadeGain.gain.value = 1;
         chain.soundingNotes.length = 0;
         if (chain.synth instanceof MonoGlideSynth
           || chain.synth instanceof MonoFourOperatorFmSynth
@@ -2770,6 +2811,7 @@ export default defineComponent({
       trackNotes: number[][],
       gain: TrackAudioChain['fadeGain']['gain'],
       startTime: number,
+      additionalGain?: TrackAudioChain['fadeGain']['gain'],
     ) {
       const activeDuration = track.repeats * this.getTrackRepeatDuration(track, trackNotes);
       const barSeconds = this.getTrackBarSeconds(track);
@@ -2778,14 +2820,16 @@ export default defineComponent({
         track.fadeIn * barSeconds,
         track.fadeOut * barSeconds,
       );
-      if (points.length === 0) {
-        gain.setValueAtTime(1, startTime);
-        return;
-      }
+      for (const targetGain of additionalGain ? [gain, additionalGain] : [gain]) {
+        if (points.length === 0) {
+          targetGain.setValueAtTime(1, startTime);
+          continue;
+        }
 
-      gain.setValueAtTime(points[0].gain, startTime + points[0].time);
-      for (const point of points.slice(1)) {
-        gain.linearRampToValueAtTime(point.gain, startTime + point.time);
+        targetGain.setValueAtTime(points[0].gain, startTime + points[0].time);
+        for (const point of points.slice(1)) {
+          targetGain.linearRampToValueAtTime(point.gain, startTime + point.time);
+        }
       }
     },
     scheduleTrackLoopRebuild() {
@@ -2841,7 +2885,13 @@ export default defineComponent({
             const currentTrack = this.trackById.get(trackId) ?? entry.track;
             const currentNotes = this.computeActualNotes(currentTrack);
             const chain = this.getOrCreateTrackChain(currentTrack);
-            this.scheduleTrackFadeEnvelope(currentTrack, currentNotes, chain.fadeGain.gain, when);
+            this.scheduleTrackFadeEnvelope(
+              currentTrack,
+              currentNotes,
+              chain.fadeGain.gain,
+              when,
+              chain.drumReverbFadeGain.gain,
+            );
           }, [{ time: this.getTrackDelaySeconds(entry.track) }]));
           fadePart.loop = true;
           fadePart.loopStart = 0;

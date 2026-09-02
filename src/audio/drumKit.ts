@@ -3,6 +3,7 @@ import {
   getDefaultDrumParameters,
   normalizeDrumParameters,
   type DrumParameterBag,
+  type DrumParameterValue,
   type DrumVoiceId,
 } from '../domain/rhythmTrack.js';
 
@@ -10,6 +11,8 @@ export interface DrumInstrument {
   node: any;
   filter: Tone.Filter;
   preGain: Tone.Gain;
+  echoSend: Tone.Gain;
+  reverbSend: Tone.Gain;
   voice?: any;
   voice2?: any;
   voice3?: any;
@@ -22,6 +25,11 @@ export interface DrumInstrument {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function sendLevelToGain(value: DrumParameterValue): number {
+  const decibels = Number(value);
+  return decibels <= -96 ? 0 : Tone.dbToGain(decibels);
 }
 
 function powerWaveShaperSample(value: number, drive: number, power: number): number {
@@ -221,7 +229,9 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     gain: Number(parameters.filterGain ?? 0),
   });
   const postVca = new Tone.Gain(1);
-  register(owned, inputGain, distortion, filter, postVca);
+  const echoSend = new Tone.Gain(sendLevelToGain(parameters.echoSend ?? 0));
+  const reverbSend = new Tone.Gain(sendLevelToGain(parameters.reverbSend ?? 0));
+  register(owned, inputGain, distortion, filter, postVca, echoSend, reverbSend);
   inputGain.connect(distortion);
   distortion.connect(filter);
   filter.connect(postVca);
@@ -250,8 +260,21 @@ export function createDrumInstrument(voiceId: DrumVoiceId, rawParameters: DrumPa
     }
   };
 
-  const finish = (instrument: Omit<DrumInstrument, 'dispose' | 'choke'>): DrumInstrument => ({
+  let currentParameters = parameters;
+  const finish = (instrument: Omit<DrumInstrument, 'dispose' | 'choke' | 'echoSend' | 'reverbSend'>): DrumInstrument => ({
     ...instrument,
+    echoSend,
+    reverbSend,
+    update(nextParameters) {
+      const next = normalizeDrumParameters(voiceId, nextParameters);
+      echoSend.gain.value = sendLevelToGain(next.echoSend ?? 0);
+      reverbSend.gain.value = sendLevelToGain(next.reverbSend ?? 0);
+      const soundChanged = Object.entries(next).some(([name, value]) => (
+        name !== 'echoSend' && name !== 'reverbSend' && currentParameters[name] !== value
+      ));
+      currentParameters = next;
+      return soundChanged ? instrument.update?.(next) === true : true;
+    },
     choke(time) {
       try {
         const gain = (postVca as any).gain;

@@ -5,12 +5,14 @@ import {
   createDefaultRhythmLanes,
   decodeRhythmMasks,
   drumVoiceMidiNote,
+  DRUM_FILTER_TYPE_OPTIONS,
   getDefaultDrumParameters,
   getDrumParameterDefinitions,
   createDefaultDrumLane,
   decodeRhythmSequence,
   getDrumXorGroupMembers,
   normalizeDrumLanes,
+  normalizeDrumParameters,
   normalizeDrumVelocityBits,
   normalizeDrumXorGroup,
   parseRhythmSequenceInput,
@@ -29,6 +31,29 @@ test('uses the standard GM note mapping for the default lanes', () => {
     getDrumParameterDefinitions('snare').find((definition) => definition.name === 'tune'),
     { name: 'tune', label: 'Tune', min: 80, max: 400, step: 1 },
   );
+  assert.equal(getDefaultDrumParameters('kick').echoSend, 0);
+  assert.equal(getDefaultDrumParameters('kick').reverbSend, 0);
+  assert.deepEqual(
+    getDrumParameterDefinitions('kick').find((definition) => definition.name === 'echoSend'),
+    { name: 'echoSend', label: 'Echo Send (dB)', min: -96, max: 0, step: 0.5 },
+  );
+});
+
+test('normalizes per-drum effect sends in decibels', () => {
+  const parameters = normalizeDrumParameters('snare', { echoSend: -18.5, reverbSend: -120 });
+
+  assert.equal(parameters.echoSend, -18.5);
+  assert.equal(parameters.reverbSend, -96);
+  assert.equal(normalizeDrumParameters('snare', { echoSend: 6 }).echoSend, 0);
+});
+
+test('supports every Tone biquad filter type for drum voices', () => {
+  const filterDefinition = getDrumParameterDefinitions('kick').find((definition) => definition.name === 'filterType');
+
+  assert.deepEqual(filterDefinition?.options, DRUM_FILTER_TYPE_OPTIONS);
+  assert.equal(normalizeDrumParameters('kick', { filterType: 'peaking' }).filterType, 'peaking');
+  assert.equal(normalizeDrumParameters('kick', { filterType: 'notch' }).filterType, 'notch');
+  assert.equal(normalizeDrumParameters('kick', { filterType: 'peak' }).filterType, 'lowpass');
 });
 
 test('normalizes lanes to unique known voices with complete defaults', () => {
