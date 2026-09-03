@@ -5,6 +5,28 @@ function nextXorshift32(state: number): number {
   return state >>> 0;
 }
 
+function yieldToMainThread(): Promise<void> {
+  const scheduler = (globalThis as typeof globalThis & {
+    scheduler?: { yield?: () => Promise<void> };
+  }).scheduler;
+  if (scheduler?.yield) {
+    return scheduler.yield();
+  }
+  if (typeof MessageChannel !== 'undefined') {
+    return new Promise<void>((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.addEventListener('message', () => {
+        channel.port1.close();
+        channel.port2.close();
+        resolve();
+      }, { once: true });
+      channel.port1.start();
+      channel.port2.postMessage(undefined);
+    });
+  }
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 export interface EncodeWavOptions {  /**
    * Invoked with a 0..1 ratio while the PCM data is being interleaved.
    */
@@ -17,11 +39,17 @@ export interface EncodeWavOptions {  /**
   dither?: boolean;
 }
 
-export async function encodeWavFromChannels(
+interface WavEncoder {
+  bytes: Uint8Array;
+  frameCount: number;
+  encodeFrames: (startFrame: number, endFrame: number) => void;
+}
+
+function createWavEncoder(
   channels: Float32Array[],
   sampleRate: number,
   options: EncodeWavOptions = {},
-): Promise<Uint8Array> {
+): WavEncoder {
   const numChannels = channels.length;
   const frameCount = channels[0]?.length ?? 0;
   const bitDepth = 24;
@@ -64,7 +92,6 @@ export async function encodeWavFromChannels(
   offset += 4;
 
   // WAV PCM has no Int24Array, so pack each signed sample into three little-endian bytes.
-  const chunkSize = 65536;
   const dither = options.dither !== false;
   // One LSB of 24-bit audio. TPDF dither is the difference of two independent
   // uniform random values in [0, 1 LSB), giving triangular noise of ±1 LSB.
@@ -73,9 +100,8 @@ export async function encodeWavFromChannels(
   let ditherStateB = 0x243f6a88;
   let writeIndex = 0;
 
-  for (let chunkStart = 0; chunkStart < frameCount; chunkStart += chunkSize) {
-    const chunkEnd = Math.min(frameCount, chunkStart + chunkSize);
-    for (let frame = chunkStart; frame < chunkEnd; frame += 1) {
+  const encodeFrames = (startFrame: number, endFrame: number) => {
+    for (let frame = startFrame; frame < endFrame; frame += 1) {
       for (let channel = 0; channel < numChannels; channel += 1) {
         const raw = channels[channel][frame];
         if (dither) {
@@ -94,13 +120,40 @@ export async function encodeWavFromChannels(
         writeIndex += 1;
       }
     }
+  };
 
-    options.onProgress?.(chunkEnd / frameCount);
-    if (chunkEnd < frameCount) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  return { bytes, frameCount, encodeFrames };
+}
+
+export function encodeWavFromChannelsSync(
+  channels: Float32Array[],
+  sampleRate: number,
+  options: EncodeWavOptions = {},
+): Uint8Array {
+  const encoder = createWavEncoder(channels, sampleRate, options);
+  encoder.encodeFrames(0, encoder.frameCount);
+  options.onProgress?.(1);
+  return encoder.bytes;
+}
+
+export async function encodeWavFromChannels(
+  channels: Float32Array[],
+  sampleRate: number,
+  options: EncodeWavOptions = {},
+): Promise<Uint8Array> {
+  const encoder = createWavEncoder(channels, sampleRate, options);
+  const chunkSize = 262144;
+
+  for (let chunkStart = 0; chunkStart < encoder.frameCount; chunkStart += chunkSize) {
+    const chunkEnd = Math.min(encoder.frameCount, chunkStart + chunkSize);
+    encoder.encodeFrames(chunkStart, chunkEnd);
+
+    options.onProgress?.(chunkEnd / encoder.frameCount);
+    if (chunkEnd < encoder.frameCount) {
+      await yieldToMainThread();
     }
   }
 
   options.onProgress?.(1);
-  return bytes;
+  return encoder.bytes;
 }

@@ -1,6 +1,6 @@
 {
   "name": "gaterunner",
-  "version": "2026.9.2",
+  "version": "2026.9.3",
   "scripts": {
     "build": "run-p type-check \"build-only {@}\" --",
     "build-only": "vite build",
@@ -8,6 +8,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "type-check": "vue-tsc --build --force",
+    "bench:wav": "tsx cli/bench.ts",
     "cli": "tsx cli/cli.ts",
     "mcp": "tsx cli/mcp.ts"
   },

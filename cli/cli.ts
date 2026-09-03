@@ -175,7 +175,7 @@ function parseReverbJson(value: string): GenerateReverbOptions {
 program
   .name('gaterunner')
   .description('Generate a MIDI/WAV file from a GateRunner sequence')
-  .version('2026.9.2')
+  .version('2026.9.3')
   .requiredOption('-o, --output <file>', 'Output file path')
   .option('-f, --format <type>', 'Output format: midi or wav', 'midi')
   .option('--bpm <number>', 'Shared tempo in beats per minute (1-499)', '90')
@@ -207,6 +207,8 @@ program
   .option('-p, --preset <file>', 'JSON preset file to load instead of individual generation parameters')
   .option('--tracks <json>', 'JSON array of tracks with per-track sequence, instrument, filter, echoDelay notation (1/1..1/16T), and reverb send controls', parseTracksJson)
   .option('--reverb <json>', 'JSON object with global reverb enabled, decay, preDelay, wet, lowCut, highCut', parseReverbJson)
+  .option('--threads <number>', 'WAV render threads (default: available CPU cores)')
+  .option('--verbose', 'Print WAV render and encoding timings')
   .action(async (options) => {
     try {
       const generatorInput = options.preset
@@ -249,7 +251,12 @@ program
       }
 
       const data = isWav
-        ? await generateWav(generatorInput)
+        ? await generateWav(generatorInput, {
+            threads: options.threads === undefined ? undefined : Number.parseInt(options.threads, 10),
+            onTiming: options.verbose
+              ? ({ stage, milliseconds }) => console.error(`${stage}: ${milliseconds.toFixed(1)} ms`)
+              : undefined,
+          })
         : await generateMidi(generatorInput);
 
       writeFileSync(options.output, data);

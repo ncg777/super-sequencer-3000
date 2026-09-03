@@ -46,11 +46,9 @@ import {
 } from '../src/audio/tonewheelWavetable.js';
 import {
   BREATH_FILTER_Q,
-  PULSE_DUTY,
-  getFluteHarmonicAmplitude,
-  getPulseHarmonicAmplitude,
-  isPulseWaveform,
 } from '../src/audio/spectra.js';
+import { encodeWavFromChannelsSync } from '../src/audio/wav.js';
+import { prepareTonewheel, sampleTonewheel } from './tonewheelOscillator.js';
 
 export interface GenerateTrackOptions {
   /** Optional display name for the track. */
@@ -192,7 +190,6 @@ const ECHO_DELAY_OPTIONS = [
 const ECHO_DELAY_VALUES = new Set<string>(ECHO_DELAY_OPTIONS);
 const MAX_POLYPHONY = 16;
 const DEFAULT_TONEWHEEL_DRAWBARS = [0, 0, 0, 8, 0, 0, 0, 0, 0];
-const TONEWHEEL_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 const TIME_WARP_QUANTIZE_VALUES = new Set<number>(TIME_WARP_QUANTIZE_OPTIONS);
 const WAV_EXPORT_SAMPLE_RATE = 48000;
 
@@ -273,10 +270,29 @@ export interface GenerateOptions {
   reverb?: GenerateReverbOptions;
 }
 
+export interface WavRenderTiming {
+  stage: 'render' | 'encode';
+  milliseconds: number;
+}
+
+export interface WavRenderOptions {
+  threads?: number;
+  onTiming?: (timing: WavRenderTiming) => void;
+}
+
 let pcs12Initialized = false;
 
 type NormalizedTrack = Required<Omit<GenerateTrackOptions, 'generatorType' | 'fmSynth' | 'virtualAnalogSynth'>>;
-type NormalizedReverb = Required<GenerateReverbOptions>;
+export type NormalizedReverb = Required<GenerateReverbOptions>;
+
+export interface WavChannelRenderResult {
+  left: Float32Array | Float64Array;
+  right: Float32Array | Float64Array;
+  reverbLeft: Float32Array | Float64Array | null;
+  reverbRight: Float32Array | Float64Array | null;
+  sampleRate: number;
+  reverb: NormalizedReverb;
+}
 
 interface TrackRenderData {
   track: NormalizedTrack;
@@ -751,52 +767,6 @@ async function prepareRenderData(options: GenerateOptions): Promise<PreparedRend
   };
 }
 
-function sampleOscillator(phase: number, waveform: string): number {
-  if (waveform === 'flute' || isPulseWaveform(waveform)) {
-    const harmonicCount = waveform === 'flute' ? 5 : 32;
-    let sample = 0;
-    let energy = 0;
-    for (let harmonic = 1; harmonic <= harmonicCount; harmonic += 1) {
-      const amplitude = waveform === 'flute'
-        ? getFluteHarmonicAmplitude(harmonic)
-        : getPulseHarmonicAmplitude(PULSE_DUTY[waveform], harmonic);
-      sample += amplitude * Math.sin(2 * Math.PI * harmonic * phase);
-      energy += amplitude * amplitude;
-    }
-    return sample / Math.max(1, Math.sqrt(energy));
-  }
-  switch (waveform) {
-    case 'square':
-      return phase < 0.5 ? 1 : -1;
-    case 'triangle':
-      return 1 - 4 * Math.abs(phase - 0.5);
-    case 'sawtooth':
-      return 2 * phase - 1;
-    case 'sine':
-    default:
-      return Math.sin(2 * Math.PI * phase);
-  }
-}
-
-function prepareTonewheel(drawbars: number[]): Array<{ amplitude: number; ratio: number }> {
-  const activeDrawbars = drawbars
-    .map((drawbar, index) => ({ amplitude: drawbar / 8, ratio: TONEWHEEL_RATIOS[index] }))
-    .filter(({ amplitude }) => amplitude !== 0);
-  const normalizer = Math.max(
-    1,
-    Math.sqrt(activeDrawbars.reduce((sum, { amplitude }) => sum + amplitude * amplitude, 0)),
-  );
-  return activeDrawbars.map(({ amplitude, ratio }) => ({ amplitude: amplitude / normalizer, ratio }));
-}
-
-function sampleTonewheel(phase: number, waveform: string, tonewheel: Array<{ amplitude: number; ratio: number }>): number {
-  let sample = 0;
-  for (const { amplitude, ratio } of tonewheel) {
-    sample += amplitude * sampleOscillator((phase * ratio) % 1, waveform);
-  }
-  return sample;
-}
-
 function getAdsrLevel(
   elapsed: number,
   gateDuration: number,
@@ -1042,62 +1012,6 @@ function applyReverbSend(left: Float32Array, right: Float32Array, sendLeft: Floa
   }
 }
 
-function encodeWavFromChannels(channels: Float32Array[], sampleRate: number): Uint8Array {
-  const numChannels = channels.length;
-  const frameCount = channels[0]?.length ?? 0;
-  const bitDepth = 24;
-  const bytesPerSample = bitDepth / 8;
-  const blockAlign = numChannels * bytesPerSample;
-  const dataLength = frameCount * blockAlign;
-  const buffer = new ArrayBuffer(44 + dataLength);
-  const view = new DataView(buffer);
-  const bytes = new Uint8Array(buffer);
-
-  let offset = 0;
-  const writeString = (value: string) => {
-    for (let i = 0; i < value.length; i += 1) {
-      view.setUint8(offset, value.charCodeAt(i));
-      offset += 1;
-    }
-  };
-
-  writeString('RIFF');
-  view.setUint32(offset, 36 + dataLength, true);
-  offset += 4;
-  writeString('WAVE');
-  writeString('fmt ');
-  view.setUint32(offset, 16, true);
-  offset += 4;
-  view.setUint16(offset, 1, true);
-  offset += 2;
-  view.setUint16(offset, numChannels, true);
-  offset += 2;
-  view.setUint32(offset, sampleRate, true);
-  offset += 4;
-  view.setUint32(offset, sampleRate * blockAlign, true);
-  offset += 4;
-  view.setUint16(offset, blockAlign, true);
-  offset += 2;
-  view.setUint16(offset, bitDepth, true);
-  offset += 2;
-  writeString('data');
-  view.setUint32(offset, dataLength, true);
-  offset += 4;
-
-  for (let i = 0; i < frameCount; i += 1) {
-    for (let channel = 0; channel < numChannels; channel += 1) {
-      const sample = clamp(channels[channel][i], -1, 1);
-      const intSample = sample < 0 ? Math.round(sample * 0x800000) : Math.round(sample * 0x7FFFFF);
-      bytes[offset] = intSample & 0xff;
-      bytes[offset + 1] = (intSample >>> 8) & 0xff;
-      bytes[offset + 2] = (intSample >>> 16) & 0xff;
-      offset += 3;
-    }
-  }
-
-  return new Uint8Array(buffer);
-}
-
 /**
  * Generate a MIDI file from the given options.
  * Returns the raw MIDI bytes as a Uint8Array.
@@ -1152,15 +1066,21 @@ export async function generateMidi(options: GenerateOptions): Promise<Uint8Array
   return midi.toArray();
 }
 
-/**
- * Render a WAV file from the given options.
- * Returns raw WAV bytes as a Uint8Array.
- */
-export async function generateWav(options: GenerateOptions): Promise<Uint8Array> {
+export async function renderWavChannels(
+  options: GenerateOptions,
+  selectedTrackIndex?: number,
+): Promise<WavChannelRenderResult> {
   const prepared = await prepareRenderData(options);
   const hasNotes = prepared.tracks.some((entry) => entry.actualNotes.some((notes) => notes.length > 0));
   if (!hasNotes) {
-    return encodeWavFromChannels([new Float32Array(1), new Float32Array(1)], WAV_EXPORT_SAMPLE_RATE);
+    return {
+      left: new Float32Array(1),
+      right: new Float32Array(1),
+      reverbLeft: null,
+      reverbRight: null,
+      sampleRate: WAV_EXPORT_SAMPLE_RATE,
+      reverb: prepared.reverb,
+    };
   }
 
   const sampleRate = WAV_EXPORT_SAMPLE_RATE;
@@ -1168,15 +1088,22 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
   const renderDuration = totalDuration + getRenderTrailSeconds(prepared);
 
   const frameCount = Math.ceil(renderDuration * sampleRate);
-  const left = new Float32Array(frameCount);
-  const right = new Float32Array(frameCount);
+  const left = selectedTrackIndex === undefined ? new Float32Array(frameCount) : new Float64Array(frameCount);
+  const right = selectedTrackIndex === undefined ? new Float32Array(frameCount) : new Float64Array(frameCount);
   const hasReverbSend = prepared.reverb.enabled
     && prepared.reverb.wet > -96
     && prepared.tracks.some((entry) => entry.track.reverbWet > -96);
-  const reverbLeft = hasReverbSend ? new Float32Array(frameCount) : null;
-  const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
+  const reverbLeft = hasReverbSend
+    ? (selectedTrackIndex === undefined ? new Float32Array(frameCount) : new Float64Array(frameCount))
+    : null;
+  const reverbRight = hasReverbSend
+    ? (selectedTrackIndex === undefined ? new Float32Array(frameCount) : new Float64Array(frameCount))
+    : null;
 
   prepared.tracks.forEach((entry, trackIndex) => {
+    if (selectedTrackIndex !== undefined && trackIndex !== selectedTrackIndex) {
+      return;
+    }
     const events = buildTrackEvents(
       entry,
       prepared.bpm,
@@ -1194,6 +1121,12 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
       entry.track.tonewheelWavetable,
       entry.track.tonewheelDrawbars,
     ));
+    const hasTonewheelModulation = entry.track.tonewheelWavetable.enabled
+      && entry.track.tonewheelWavetable.lfos.some((lfo) => (
+        lfo.enabled && lfo.depth !== 0 && lfo.routes.some((route) => route !== 0)
+      ));
+    const hasPitchEnvelope = entry.track.pitchEnvelopeAmount !== 0;
+    const trackGain = dbToGain(entry.track.gain);
     const drumParameters = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.parameters]));
     const drumXorGroups = new Map(entry.track.drumLanes.map((lane) => [lane.voiceId, lane.xorGroup]));
     const nextGroupHitTimes = new Map<number, number[]>();
@@ -1216,7 +1149,7 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
       const start = event.time;
       const duration = event.duration;
       const notes = event.notes;
-      const noteAmplitude = event.velocity * 0.12 * dbToGain(entry.track.gain);
+      const noteAmplitude = event.velocity * 0.12 * trackGain;
 
       if (entry.track.trackKind === 'rhythmic') {
         const startFrame = Math.max(0, Math.floor(start * sampleRate));
@@ -1242,13 +1175,15 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             voiceId,
             parameters,
             chokeUntil: laterGroupHit === undefined ? undefined : laterGroupHit - start,
-            transform: (sample, elapsed) => applySimpleFilter(
-              sample * dbToGain(entry.track.gain),
-              drumFilterState,
-              entry.track,
-              getFilterFrequency(entry.track, notes, getFilterEnvelopeLevel(entry.track, elapsed, duration), prepared.a4),
-              sampleRate,
-            ),
+            transform: entry.track.filterEnabled
+              ? (sample, elapsed) => applySimpleFilter(
+                sample * trackGain,
+                drumFilterState,
+                entry.track,
+                getFilterFrequency(entry.track, notes, getFilterEnvelopeLevel(entry.track, elapsed, duration), prepared.a4),
+                sampleRate,
+              )
+              : (sample) => sample * trackGain,
           });
         }
         continue;
@@ -1287,12 +1222,11 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
             const leftPan = Math.cos(voicePan * Math.PI / 2);
             const rightPan = Math.sin(voicePan * Math.PI / 2);
             const filterState = { low: 0, high: 0, band: 0 };
-            const filterStateRight = { low: 0, high: 0, band: 0 };
             let phase = 0;
             let tonewheel = staticTonewheel;
             for (let frame = startFrame; frame < endFrame; frame += 1) {
               const t = (frame - startFrame) / sampleRate;
-              if ((frame - startFrame) % 64 === 0) {
+              if (hasTonewheelModulation && (frame - startFrame) % 64 === 0) {
                 tonewheel = prepareTonewheel(interpolateModulatedTonewheelDrawbars(
                   entry.track.tonewheelWavetable,
                   entry.track.tonewheelDrawbars,
@@ -1331,13 +1265,20 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
               const vibrato = entry.track.vibratoEnabled
                 ? Math.pow(2, Math.sin(2 * Math.PI * entry.track.vibratoFrequency * t) * entry.track.vibratoDepth / 12)
                 : 1;
-              const pitchEnvelopeLevel = getPitchEnvelopeLevel(entry.track, t, duration);
-              const pitchEnvelopeRatio = Math.pow(
-                2,
-                getPitchEnvelopeMidiOffset(entry.track, pitchEnvelopeLevel) / 12,
-              );
-              const filterEnvelopeLevel = getFilterEnvelopeLevel(entry.track, t, duration);
-              const filterCutoff = getFilterFrequency(entry.track, voicedNotes, filterEnvelopeLevel, prepared.a4);
+              const pitchEnvelopeRatio = hasPitchEnvelope
+                ? Math.pow(
+                  2,
+                  getPitchEnvelopeMidiOffset(entry.track, getPitchEnvelopeLevel(entry.track, t, duration)) / 12,
+                )
+                : 1;
+              const filterCutoff = entry.track.filterEnabled
+                ? getFilterFrequency(
+                  entry.track,
+                  voicedNotes,
+                  getFilterEnvelopeLevel(entry.track, t, duration),
+                  prepared.a4,
+                )
+                : 0;
 
               const instantaneousFrequency = frequency * vibrato * pitchEnvelopeRatio * (
                 glidePlan && glidePlan.seconds > 0 ? getGlideFrequency(glidePlan, t) / glidePlan.toFrequency : 1
@@ -1384,14 +1325,17 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     const activeDurationSeconds = entry.track.repeats * getTrackRepeatDurationSeconds(prepared.bpm, entry);
     const fadeInSeconds = entry.track.fadeIn * barSeconds;
     const fadeOutSeconds = entry.track.fadeOut * barSeconds;
+    const hasTrackFade = fadeInSeconds > 0 || fadeOutSeconds > 0;
     const sendWet = hasReverbSend ? dbToGain(entry.track.reverbWet) : 0;
     for (let frame = 0; frame < frameCount; frame += 1) {
-      const fadeGain = getTrackFadeGain(
-        frame / sampleRate - trackStartSeconds,
-        activeDurationSeconds,
-        fadeInSeconds,
-        fadeOutSeconds,
-      );
+      const fadeGain = hasTrackFade
+        ? getTrackFadeGain(
+          frame / sampleRate - trackStartSeconds,
+          activeDurationSeconds,
+          fadeInSeconds,
+          fadeOutSeconds,
+        )
+        : 1;
       const trackLeftSample = trackLeft[frame] * fadeGain;
       const trackRightSample = trackRight[frame] * fadeGain;
       left[frame] += trackLeftSample;
@@ -1403,9 +1347,65 @@ export async function generateWav(options: GenerateOptions): Promise<Uint8Array>
     }
   });
 
-  if (reverbLeft && reverbRight) {
-    applyReverbSend(left, right, reverbLeft, reverbRight, prepared.reverb, sampleRate);
+  return { left, right, reverbLeft, reverbRight, sampleRate, reverb: prepared.reverb };
+}
+
+function combineWavChannelRenders(results: WavChannelRenderResult[]): Float32Array[] {
+  const first = results[0];
+  if (!first) {
+    return [new Float32Array(1), new Float32Array(1)];
   }
 
-  return encodeWavFromChannels([left, right], sampleRate);
+  const frameCount = first.left.length;
+  const left = new Float32Array(frameCount);
+  const right = new Float32Array(frameCount);
+  const hasReverbSend = results.some((result) => result.reverbLeft && result.reverbRight);
+  const reverbLeft = hasReverbSend ? new Float32Array(frameCount) : null;
+  const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
+
+  for (const result of results) {
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      left[frame] += result.left[frame];
+      right[frame] += result.right[frame];
+      if (reverbLeft && reverbRight && result.reverbLeft && result.reverbRight) {
+        reverbLeft[frame] += result.reverbLeft[frame];
+        reverbRight[frame] += result.reverbRight[frame];
+      }
+    }
+  }
+
+  if (reverbLeft && reverbRight) {
+    applyReverbSend(left, right, reverbLeft, reverbRight, first.reverb, first.sampleRate);
+  }
+  return [left, right];
+}
+
+/**
+ * Render a WAV file from the given options.
+ * Returns raw WAV bytes as a Uint8Array.
+ */
+export async function generateWav(
+  options: GenerateOptions,
+  renderOptions: WavRenderOptions = {},
+): Promise<Uint8Array> {
+  const renderStarted = performance.now();
+  const trackCount = Array.isArray(options.tracks) && options.tracks.length > 0 ? options.tracks.length : 1;
+  let rendered: WavChannelRenderResult[];
+  if (trackCount === 1) {
+    rendered = [await renderWavChannels(options)];
+  } else {
+    try {
+      const { renderWavChannelsInPool } = await import('./renderPool.js');
+      rendered = await renderWavChannelsInPool(options, trackCount, renderOptions.threads);
+    } catch {
+      rendered = [await renderWavChannels(options)];
+    }
+  }
+  renderOptions.onTiming?.({ stage: 'render', milliseconds: performance.now() - renderStarted });
+
+  const channels = combineWavChannelRenders(rendered);
+  const encodeStarted = performance.now();
+  const bytes = encodeWavFromChannelsSync(channels, rendered[0].sampleRate, { dither: false });
+  renderOptions.onTiming?.({ stage: 'encode', milliseconds: performance.now() - encodeStarted });
+  return bytes;
 }

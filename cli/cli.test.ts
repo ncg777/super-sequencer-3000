@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import ToneMidi from '@tonejs/midi';
-import { generateMidi, generateWav } from './generate.js';
+import { generateMidi, generateWav, type GenerateOptions } from './generate.js';
 
 const { Midi } = ToneMidi;
 
@@ -312,6 +312,39 @@ test('rhythmic tracks render synthesized audio in CLI WAV output', async () => {
   assert.equal(Buffer.from(wavBytes.subarray(0, 4)).toString('ascii'), 'RIFF');
   assert.ok(wavBytes.length > 44);
   assert.ok(wavBytes.subarray(44).some((value) => value !== 0));
+});
+
+test('WAV worker threads preserve deterministic multi-track output', async () => {
+  const options: GenerateOptions = {
+    bpm: 120,
+    forte: '5-35.05',
+    tracks: [
+      {
+        name: 'Pulse',
+        denominator: 8,
+        sequence: '3 5 9 17',
+        repeats: 1,
+        waveform: 'pulse-25',
+        fadeIn: 0.125,
+        reverbWet: -18,
+      },
+      {
+        name: 'Sine',
+        denominator: 8,
+        sequence: '7 11 13 19',
+        repeats: 1,
+        waveform: 'sine',
+        fadeOut: 0.125,
+        reverbWet: -12,
+      },
+    ],
+    reverb: { enabled: true, decay: 0.2, preDelay: 0, wet: -16 },
+  };
+
+  const inline = await generateWav(options, { threads: 1 });
+  const parallel = await generateWav(options, { threads: 2 });
+
+  assert.deepEqual(parallel, inline);
 });
 
 test('rhythmic WAV export remains valid across time-warp curves', async () => {

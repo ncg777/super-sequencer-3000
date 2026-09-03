@@ -92,6 +92,27 @@ GateRunner can optionally gate tracks across the full song loop with a song-leve
 - The track strip darkens inactive chunks so the schedule stays visible.
 - URL sharing accepts `?b=1+2+3+0` (or space-encoded values). The CLI accepts the same syntax via `--b "1 2 3 0"`.
 
+### CLI WAV Export
+
+Build or run the TypeScript CLI directly:
+
+```sh
+yarn cli --format wav --output output.wav --preset preset.json
+```
+
+Multi-track WAV rendering uses available CPU cores by default. Use `--threads 1` for
+inline rendering or `--threads N` to set an explicit worker count. `--verbose` prints
+separate render and WAV-encoding timings. Track results are mixed in source order, so
+thread counts produce the same deterministic WAV bytes.
+
+The WAV benchmark can capture reference files and compare later renders by hash and
+decoded 24-bit PCM error:
+
+```sh
+yarn bench:wav --write-reference .wav-reference
+yarn bench:wav --reference .wav-reference
+```
+
 ---
 
 ### How Notes Are Computed in the Encoding Scheme
