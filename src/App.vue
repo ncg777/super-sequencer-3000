@@ -327,7 +327,6 @@ import {
   type ReverbAudioChain,
 } from './audio/reverb';
 import { encodeWavFromChannels } from './audio/wav';
-import { renderOfflineInWindows, type OfflineWindowScheduler } from './audio/offlineRender';
 import { buildTrackFadeEnvelope } from './audio/trackFade';
 import { Phaser } from './audio/phaser';
 import {
@@ -1305,102 +1304,65 @@ export default defineComponent({
       const liveTrackSynths = this.trackSynths;
       let offlineReverbChain: ReverbAudioChain | null = null;
       const offlineTrackChains: TrackAudioChain[] = [];
-      const renderTracks = schedulableTracks.map((entry) => ({
-        entry,
-        events: this.buildTrackEvents(
-          entry.track,
-          entry.notes,
-          loopDuration,
-          entry.trackIndex,
-          entry.noteVelocities,
-          entry.drumVoiceIds,
-        ),
-        chain: null as TrackAudioChain | null,
-      }));
-      const hasActiveTonewheelLfo = schedulableTracks.some(({ track }) => (
-        track.tonewheelWavetable.enabled
-        && (track.tonewheelWavetable.lfos ?? []).some((lfo) => (
-          lfo.enabled && lfo.depth > 0 && lfo.routes.some((amount) => amount !== 0)
-        ))
-      ));
-
-      const disposeOfflineGraph = () => {
-        for (const chain of offlineTrackChains.splice(0)) {
+      let rendered: unknown;
+      try {
+        // Every voice must exist before startRendering(): Tone builds the native render
+        // graph at that point, so anything scheduled later is silently left out.
+        rendered = await Tone.Offline((offlineContext) => {
           try {
-            this.disposeTrackChain(chain);
-          } catch {
-          }
-        }
-        for (const renderedTrack of renderTracks) {
-          renderedTrack.chain = null;
-        }
-        if (offlineReverbChain) {
-          try {
-            disposeReverbAudioChain(offlineReverbChain);
-          } catch {
-          }
-          offlineReverbChain = null;
-        }
-      };
-
-      const setupOfflineGraph = (offlineContext: Tone.OfflineContext): OfflineWindowScheduler => {
-        try {
-          this.reverbChain = null;
-          this.trackSynths = markRaw({});
-          this.getOrCreateReverbChain();
-          offlineReverbChain = this.reverbChain;
-
-          offlineContext.transport.stop();
-          offlineContext.transport.seconds = 0;
-
-          for (const renderedTrack of renderTracks) {
-            const { entry, events } = renderedTrack;
-            scheduledTracks += 1;
-            this.setWavExportProgress(
-              SCHEDULE_PROGRESS_START
-                + (RENDER_PROGRESS_START - SCHEDULE_PROGRESS_START) * (scheduledTracks / schedulableTracks.length),
-              'Scheduling tracks...',
-            );
-            if (events.length === 0) {
-              continue;
-            }
-
-            const chain = this.createTrackAudioChain({
-              echoPingPong: entry.track.echoPingPong,
-              maxDelay: this.getTrackEchoMaxDelay(entry.track),
-              phaserStages: entry.track.phaserStages,
-              phaserCenterFrequency: this.midiToFrequency(entry.track.phaserCenter),
+            this.trackOfflineRenderProgress(offlineContext, renderDuration, (ratio) => {
+              this.setWavExportProgress(
+                RENDER_PROGRESS_START + (RENDER_PROGRESS_END - RENDER_PROGRESS_START) * ratio,
+                'Rendering audio...',
+              );
             });
-            renderedTrack.chain = chain;
-            offlineTrackChains.push(chain);
-            this.trackSynths[`offline-${entry.track.id}`] = chain;
-            this.updateTrackChainSettings(entry.track, chain);
-            this.scheduleTrackFadeEnvelope(
-              entry.track,
-              entry.notes,
-              chain.fadeGain.gain,
-              this.getTrackDelaySeconds(entry.track),
-              chain.drumReverbFadeGain.gain,
-            );
-          }
 
-          offlineContext.transport.start(0);
-        } finally {
-          this.reverbChain = liveReverbChain;
-          this.trackSynths = liveTrackSynths;
-        }
+            this.reverbChain = null;
+            this.trackSynths = markRaw({});
+            this.getOrCreateReverbChain();
+            offlineReverbChain = this.reverbChain;
 
-        return {
-          scheduleWindow: (startSeconds, endSeconds) => {
-            for (const { entry, events, chain } of renderTracks) {
-              if (!chain) {
+            offlineContext.transport.stop();
+            offlineContext.transport.seconds = 0;
+
+            for (const entry of schedulableTracks) {
+              scheduledTracks += 1;
+              this.setWavExportProgress(
+                SCHEDULE_PROGRESS_START
+                  + (RENDER_PROGRESS_START - SCHEDULE_PROGRESS_START) * (scheduledTracks / schedulableTracks.length),
+                'Scheduling tracks...',
+              );
+
+              const events = this.buildTrackEvents(
+                entry.track,
+                entry.notes,
+                loopDuration,
+                entry.trackIndex,
+                entry.noteVelocities,
+                entry.drumVoiceIds,
+              );
+              if (events.length === 0) {
                 continue;
               }
-              for (const event of events) {
-                if (event.time < startSeconds || event.time >= endSeconds) {
-                  continue;
-                }
 
+              const chain = this.createTrackAudioChain({
+                echoPingPong: entry.track.echoPingPong,
+                maxDelay: this.getTrackEchoMaxDelay(entry.track),
+                phaserStages: entry.track.phaserStages,
+                phaserCenterFrequency: this.midiToFrequency(entry.track.phaserCenter),
+              });
+              offlineTrackChains.push(chain);
+              this.trackSynths[`offline-${entry.track.id}`] = chain;
+              this.updateTrackChainSettings(entry.track, chain);
+              this.scheduleTrackFadeEnvelope(
+                entry.track,
+                entry.notes,
+                chain.fadeGain.gain,
+                this.getTrackDelaySeconds(entry.track),
+                chain.drumReverbFadeGain.gain,
+              );
+
+              for (const event of events) {
                 this.scheduleFilterEnvelope(entry.track, event.notes, event.time, event.duration, chain);
                 if (entry.track.trackKind === 'rhythmic') {
                   const noteVelocities = event.noteVelocities ?? event.notes.map(() => event.velocity);
@@ -1411,59 +1373,32 @@ export default defineComponent({
                     instrument?.trigger(event.time, noteVelocities[noteIndex] ?? event.velocity, event.duration);
                   }
                 } else {
-                  this.triggerTrackVoice(
-                    entry.track,
-                    chain,
-                    event.notes,
-                    event.duration,
-                    event.time,
-                    event.velocity,
-                    event.time,
-                  );
+                  this.triggerTrackVoice(entry.track, chain, event.notes, event.duration, event.time, event.velocity, event.time);
                 }
               }
             }
-          },
-        };
-      };
 
-      let rendered: unknown;
-      try {
-        try {
-          rendered = await renderOfflineInWindows({
-            duration: renderDuration,
-            channels: 2,
-            sampleRate: WAV_EXPORT_SAMPLE_RATE,
-            windowSeconds: hasActiveTonewheelLfo ? 1 / 30 : 5,
-            setup: setupOfflineGraph,
-            onProgress: (ratio) => {
-              this.setWavExportProgress(
-                RENDER_PROGRESS_START + (RENDER_PROGRESS_END - RENDER_PROGRESS_START) * ratio,
-                'Rendering audio...',
-              );
-            },
-          });
-        } catch {
-          disposeOfflineGraph();
-          scheduledTracks = 0;
-          rendered = null;
-        }
-        if (!rendered) {
-          rendered = await Tone.Offline((offlineContext) => {
-            this.trackOfflineRenderProgress(offlineContext, renderDuration, (ratio) => {
-              this.setWavExportProgress(
-                RENDER_PROGRESS_START + (RENDER_PROGRESS_END - RENDER_PROGRESS_START) * ratio,
-                'Rendering audio...',
-              );
-            });
-            const scheduler = setupOfflineGraph(offlineContext);
-            scheduler.scheduleWindow(0, renderDuration);
-          }, renderDuration, 2, WAV_EXPORT_SAMPLE_RATE);
-        }
+            offlineContext.transport.start(0);
+          } finally {
+            this.reverbChain = liveReverbChain;
+            this.trackSynths = liveTrackSynths;
+          }
+        }, renderDuration, 2, WAV_EXPORT_SAMPLE_RATE);
       } finally {
         this.reverbChain = liveReverbChain;
         this.trackSynths = liveTrackSynths;
-        disposeOfflineGraph();
+        for (const chain of offlineTrackChains) {
+          try {
+            this.disposeTrackChain(chain);
+          } catch {
+          }
+        }
+        if (offlineReverbChain) {
+          try {
+            disposeReverbAudioChain(offlineReverbChain);
+          } catch {
+          }
+        }
       }
 
       this.setWavExportProgress(ENCODE_PROGRESS_START, 'Encoding WAV...');
