@@ -108,6 +108,9 @@ interface PooledVoice<T extends TriggerVoice> {
 /** Per-layer polyphony ceiling for a single GM drum voice. */
 const MAX_POOLED_DRUM_VOICES = 2;
 
+/** Matches Tone's source timeline epsilon for strictly ordered restarts. */
+const MIN_POOLED_VOICE_RESTART_INTERVAL_SECONDS = 1e-6;
+
 /**
  * Tone.MetalSynth keeps six FM oscillators plus their whole signal graph running for as
  * long as the instance exists, so an idle instance still costs render-thread time. Cymbal
@@ -161,7 +164,8 @@ function createTriggeredVoicePool<T extends TriggerVoice>(
       const startSeconds = timeToSeconds(time);
       const durationSeconds = Math.max(0, timeToSeconds(duration));
       let selected = voices.find((candidate) => (
-        candidate.availableAt <= startSeconds && candidate.lastStartAt < startSeconds
+        candidate.availableAt <= startSeconds
+          && startSeconds > candidate.lastStartAt + MIN_POOLED_VOICE_RESTART_INTERVAL_SECONDS
       ));
       if (!selected) {
         if (voices.length < voiceLimit) {
@@ -172,7 +176,7 @@ function createTriggeredVoicePool<T extends TriggerVoice>(
           selected = voices.reduce((oldest, candidate) => (
             candidate.lastStartAt < oldest.lastStartAt ? candidate : oldest
           ));
-          if (selected.lastStartAt >= startSeconds) {
+          if (!(startSeconds > selected.lastStartAt + MIN_POOLED_VOICE_RESTART_INTERVAL_SECONDS)) {
             return pool;
           }
         }
