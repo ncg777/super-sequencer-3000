@@ -1,6 +1,6 @@
 {
   "name": "gaterunner",
-  "version": "2026.9.3",
+  "version": "2026.9.4",
   "scripts": {
     "build": "run-p type-check \"build-only {@}\" --",
     "build-only": "vite build",

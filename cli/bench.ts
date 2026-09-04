@@ -118,6 +118,42 @@ const fixtures: BenchmarkFixture[] = [
   },
 ];
 
+const longFixtures: BenchmarkFixture[] = [
+  {
+    name: 'long-static-filter',
+    options: {
+      bpm: 90,
+      tracks: [{
+        sequence: '7 11 13 19',
+        repeats: 64,
+        unisonVoices: 4,
+        filterEnabled: true,
+        filterType: 'peaking',
+        filterGain: 6,
+        filterFrequency: 86,
+        filterKeyFollow: 60,
+      }],
+      reverb: { enabled: false },
+    },
+  },
+  {
+    name: 'long-multi-track',
+    options: {
+      bpm: 120,
+      tracks: Array.from({ length: 12 }, (_, index) => ({
+        sequence: '1 2 4 8',
+        repeats: 64,
+        denominator: 1,
+        delay: index % 3,
+        unisonVoices: 2,
+        waveform: 'sine',
+        gain: -18,
+      })),
+      reverb: { enabled: true, decay: 2 },
+    },
+  },
+];
+
 function hash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
 }
@@ -152,14 +188,17 @@ function argumentValue(name: string): string | null {
 async function main(): Promise<void> {
   const writeReferenceDirectory = argumentValue('--write-reference');
   const referenceDirectory = argumentValue('--reference') ?? writeReferenceDirectory;
+  const threadArgument = argumentValue('--threads');
+  const threads = threadArgument === null ? undefined : Number(threadArgument);
   if (writeReferenceDirectory) {
     mkdirSync(resolve(writeReferenceDirectory), { recursive: true });
   }
 
   let failed = false;
-  for (const fixture of fixtures) {
+  const selectedFixtures = process.argv.includes('--long') ? [...fixtures, ...longFixtures] : fixtures;
+  for (const fixture of selectedFixtures) {
     const start = performance.now();
-    const bytes = await generateWav(fixture.options);
+    const bytes = await generateWav(fixture.options, { threads });
     const elapsed = performance.now() - start;
     const referencePath = referenceDirectory
       ? resolve(referenceDirectory, `${fixture.name}.wav`)

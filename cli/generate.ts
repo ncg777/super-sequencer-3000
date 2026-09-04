@@ -7,6 +7,7 @@ import {
   normalizePitchEnvelopeShape,
 } from '../src/audio/pitchEnvelope.js';
 import { getTrackFadeGain } from '../src/audio/trackFade.js';
+import { getStepDurations } from '../src/audio/stepDurations.js';
 import {
   DEFAULT_TIME_WARP_CURVE,
   quantizeNormalizedTime,
@@ -386,20 +387,6 @@ function parseSequence(sequenceInput: string): number[] {
     .filter((n: number) => !Number.isNaN(n));
 }
 
-function getStepDuration(actualNotes: number[][], index: number): number {
-  if (actualNotes.length === 0) {
-    return 1;
-  }
-
-  for (let offset = 1; offset < actualNotes.length; offset += 1) {
-    if (actualNotes[(index + offset) % actualNotes.length].length > 0) {
-      return offset;
-    }
-  }
-
-  return 1;
-}
-
 function buildTrackEvents(
   entry: TrackRenderData,
   bpm: number,
@@ -433,6 +420,7 @@ function buildTrackEvents(
     return [];
   }
   const events: TrackScheduledEvent[] = [];
+  const stepDurations = getStepDurations(entry.actualNotes);
   let order = 0;
 
   for (let repeat = 0; repeat < entry.track.repeats; repeat += 1) {
@@ -446,7 +434,7 @@ function buildTrackEvents(
         continue;
       }
 
-      const durSteps = getStepDuration(entry.actualNotes, i);
+      const durSteps = stepDurations[i];
       const baseDuration = ((durSteps * entry.track.lengthFactor) / 100.0 + entry.track.lengthOffset) * entry.quant;
       if (!Number.isFinite(baseDuration)) {
         continue;
@@ -918,50 +906,83 @@ function midiToFrequency(midi: number, a4 = 440): number {
   return a4 * Math.pow(2, (midi - 69) / 12);
 }
 
-function getFilterFrequency(track: NormalizedTrack, midiNotes: number[], envelopeLevel = 0, a4 = 440): number {
-  const cutoffMidi = clamp(
-    getFilterMidi(track, midiNotes) + track.filterEnvelopeAmount * envelopeLevel,
+function createFilterCutoff(track: NormalizedTrack, midiNotes: number[], duration: number, a4: number): (elapsed: number) => number {
+  if (!track.filterEnabled) {
+    return () => 0;
+  }
+  const baseMidi = getFilterMidi(track, midiNotes);
+  if (track.filterEnvelopeAmount === 0) {
+    const frequency = midiToFrequency(clamp(baseMidi, 0, 127), a4);
+    return () => frequency;
+  }
+  return (elapsed) => midiToFrequency(clamp(
+    baseMidi + track.filterEnvelopeAmount * getFilterEnvelopeLevel(track, elapsed, duration),
     0,
     127,
-  );
-  return midiToFrequency(cutoffMidi, a4);
+  ), a4);
 }
 
 function dbToGain(db: number): number {
   return Math.pow(10, db / 20);
 }
 
-function applySimpleFilter(sample: number, state: { low: number; high: number; band: number }, track: NormalizedTrack, cutoff: number, sampleRate: number): number {
+function findNextHitTime(times: readonly number[] | undefined, after: number): number | undefined {
+  if (!times) {
+    return undefined;
+  }
+  let low = 0;
+  let high = times.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (times[middle] <= after) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return times[low];
+}
+
+function createSimpleFilter(track: NormalizedTrack, sampleRate: number): (sample: number, cutoff: number) => number {
   if (!track.filterEnabled) {
-    return sample;
+    return (sample) => sample;
   }
 
-  const frequency = clamp(cutoff, 20, sampleRate / 2 - 100);
-  const f = 2 * Math.sin(Math.PI * frequency / sampleRate);
+  const state = { low: 0, high: 0, band: 0 };
   const q = Math.max(0.05, track.filterQ);
-  state.low += f * state.band;
-  state.high = sample - state.low - q * state.band;
-  state.band += f * state.high;
+  const gain = Math.pow(10, track.filterGain / 20) - 1;
+  let previousCutoff = Number.NaN;
+  let coefficient = 0;
+  return (sample, cutoff) => {
+    if (cutoff !== previousCutoff) {
+      const frequency = clamp(cutoff, 20, sampleRate / 2 - 100);
+      coefficient = 2 * Math.sin(Math.PI * frequency / sampleRate);
+      previousCutoff = cutoff;
+    }
+    state.low += coefficient * state.band;
+    state.high = sample - state.low - q * state.band;
+    state.band += coefficient * state.high;
 
-  switch (track.filterType) {
-    case 'highpass':
-      return state.high;
-    case 'bandpass':
-      return state.band;
-    case 'notch':
-      return state.low + state.high;
-    case 'peaking':
-      return sample + state.band * (Math.pow(10, track.filterGain / 20) - 1);
-    case 'lowshelf':
-      return sample + state.low * (Math.pow(10, track.filterGain / 20) - 1);
-    case 'highshelf':
-      return sample + state.high * (Math.pow(10, track.filterGain / 20) - 1);
-    case 'allpass':
-      return sample;
-    case 'lowpass':
-    default:
-      return state.low;
-  }
+    switch (track.filterType) {
+      case 'highpass':
+        return state.high;
+      case 'bandpass':
+        return state.band;
+      case 'notch':
+        return state.low + state.high;
+      case 'peaking':
+        return sample + state.band * gain;
+      case 'lowshelf':
+        return sample + state.low * gain;
+      case 'highshelf':
+        return sample + state.high * gain;
+      case 'allpass':
+        return sample;
+      case 'lowpass':
+      default:
+        return state.low;
+    }
+  };
 }
 
 function applyFeedbackEcho(left: Float32Array, right: Float32Array, track: NormalizedTrack, sampleRate: number, delaySeconds: number): void {
@@ -1141,7 +1162,7 @@ export async function renderWavChannels(
         nextGroupHitTimes.set(group, times);
       }
     }
-    const drumFilterState = { low: 0, high: 0, band: 0 };
+    const drumFilter = createSimpleFilter(entry.track, sampleRate);
     const isMonoTrack = entry.track.trackKind !== 'rhythmic' && isMonophonic(entry.track.polyphony);
     const glideState = createMonoGlideState();
 
@@ -1154,6 +1175,7 @@ export async function renderWavChannels(
       if (entry.track.trackKind === 'rhythmic') {
         const startFrame = Math.max(0, Math.floor(start * sampleRate));
         const noteVelocities = event.noteVelocities ?? notes.map(() => event.velocity);
+        const filterCutoff = createFilterCutoff(entry.track, notes, duration, prepared.a4);
         for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
           const voiceId = event.drumVoiceIds?.[noteIndex];
           const parameters = voiceId ? drumParameters.get(voiceId) : undefined;
@@ -1164,7 +1186,7 @@ export async function renderWavChannels(
           const group = drumXorGroups.get(voiceId) ?? 0;
           const laterGroupHit = group === 0
             ? undefined
-            : nextGroupHitTimes.get(group)?.find((time) => time > start + 1e-9);
+            : findNextHitTime(nextGroupHitTimes.get(group), start + 1e-9);
           renderDrumHitIntoBuffers({
             left: trackLeft,
             right: trackRight,
@@ -1176,12 +1198,9 @@ export async function renderWavChannels(
             parameters,
             chokeUntil: laterGroupHit === undefined ? undefined : laterGroupHit - start,
             transform: entry.track.filterEnabled
-              ? (sample, elapsed) => applySimpleFilter(
+              ? (sample, elapsed) => drumFilter(
                 sample * trackGain,
-                drumFilterState,
-                entry.track,
-                getFilterFrequency(entry.track, notes, getFilterEnvelopeLevel(entry.track, elapsed, duration), prepared.a4),
-                sampleRate,
+                filterCutoff(elapsed),
               )
               : (sample) => sample * trackGain,
           });
@@ -1193,6 +1212,7 @@ export async function renderWavChannels(
       const voiceRelease = entry.track.release;
       const endFrame = Math.min(frameCount, Math.ceil((start + duration + voiceRelease) * sampleRate));
       const voicedNotes = limitPolyphony(notes, entry.track.polyphony);
+      const filterCutoff = createFilterCutoff(entry.track, voicedNotes, duration, prepared.a4);
       // High-note priority already picked the winner, so the glide follows a single pitch.
       const glidePlan: GlidePlan | null = isMonoTrack && voicedNotes.length > 0
         ? planMonoGlide(
@@ -1221,7 +1241,7 @@ export async function renderWavChannels(
             const voiceGain = noteAmplitude / Math.sqrt(voiceCount);
             const leftPan = Math.cos(voicePan * Math.PI / 2);
             const rightPan = Math.sin(voicePan * Math.PI / 2);
-            const filterState = { low: 0, high: 0, band: 0 };
+            const filter = createSimpleFilter(entry.track, sampleRate);
             let phase = 0;
             let tonewheel = staticTonewheel;
             for (let frame = startFrame; frame < endFrame; frame += 1) {
@@ -1271,25 +1291,10 @@ export async function renderWavChannels(
                   getPitchEnvelopeMidiOffset(entry.track, getPitchEnvelopeLevel(entry.track, t, duration)) / 12,
                 )
                 : 1;
-              const filterCutoff = entry.track.filterEnabled
-                ? getFilterFrequency(
-                  entry.track,
-                  voicedNotes,
-                  getFilterEnvelopeLevel(entry.track, t, duration),
-                  prepared.a4,
-                )
-                : 0;
-
-              const instantaneousFrequency = frequency * vibrato * pitchEnvelopeRatio * (
-                glidePlan && glidePlan.seconds > 0 ? getGlideFrequency(glidePlan, t) / glidePlan.toFrequency : 1
-              );
               const oscillatorSample = sampleTonewheel(phase, entry.track.waveform, tonewheel);
-              const sample = applySimpleFilter(
+              const sample = filter(
                 oscillatorSample * voiceGain * env * tremolo,
-                filterState,
-                entry.track,
-                filterCutoff,
-                sampleRate,
+                filterCutoff(t),
               );
               trackLeft[frame] += sample * leftPan;
               trackRight[frame] += sample * rightPan;
@@ -1350,34 +1355,44 @@ export async function renderWavChannels(
   return { left, right, reverbLeft, reverbRight, sampleRate, reverb: prepared.reverb };
 }
 
-function combineWavChannelRenders(results: WavChannelRenderResult[]): Float32Array[] {
-  const first = results[0];
-  if (!first) {
-    return [new Float32Array(1), new Float32Array(1)];
-  }
-
-  const frameCount = first.left.length;
-  const left = new Float32Array(frameCount);
-  const right = new Float32Array(frameCount);
-  const hasReverbSend = results.some((result) => result.reverbLeft && result.reverbRight);
-  const reverbLeft = hasReverbSend ? new Float32Array(frameCount) : null;
-  const reverbRight = hasReverbSend ? new Float32Array(frameCount) : null;
-
-  for (const result of results) {
-    for (let frame = 0; frame < frameCount; frame += 1) {
-      left[frame] += result.left[frame];
-      right[frame] += result.right[frame];
-      if (reverbLeft && reverbRight && result.reverbLeft && result.reverbRight) {
-        reverbLeft[frame] += result.reverbLeft[frame];
-        reverbRight[frame] += result.reverbRight[frame];
+async function combineWavChannelRenders(
+  results: AsyncIterable<WavChannelRenderResult> | Iterable<WavChannelRenderResult>,
+): Promise<{ channels: Float32Array[]; sampleRate: number }> {
+  let mix: WavChannelRenderResult | undefined;
+  for await (const result of results) {
+    if (!mix) {
+      mix = {
+        ...result,
+        left: result.left instanceof Float32Array ? result.left : new Float32Array(result.left),
+        right: result.right instanceof Float32Array ? result.right : new Float32Array(result.right),
+        reverbLeft: result.reverbLeft ? new Float32Array(result.reverbLeft) : null,
+        reverbRight: result.reverbRight ? new Float32Array(result.reverbRight) : null,
+      };
+      continue;
+    }
+    if (result.reverbLeft && result.reverbRight && !mix.reverbLeft) {
+      mix.reverbLeft = new Float32Array(mix.left.length);
+      mix.reverbRight = new Float32Array(mix.left.length);
+    }
+    for (let frame = 0; frame < mix.left.length; frame += 1) {
+      mix.left[frame] += result.left[frame];
+      mix.right[frame] += result.right[frame];
+      if (mix.reverbLeft && mix.reverbRight && result.reverbLeft && result.reverbRight) {
+        mix.reverbLeft[frame] += result.reverbLeft[frame];
+        mix.reverbRight[frame] += result.reverbRight[frame];
       }
     }
   }
 
-  if (reverbLeft && reverbRight) {
-    applyReverbSend(left, right, reverbLeft, reverbRight, first.reverb, first.sampleRate);
+  if (!mix) {
+    return { channels: [new Float32Array(1), new Float32Array(1)], sampleRate: WAV_EXPORT_SAMPLE_RATE };
   }
-  return [left, right];
+  const left = mix.left as Float32Array;
+  const right = mix.right as Float32Array;
+  if (mix.reverbLeft && mix.reverbRight) {
+    applyReverbSend(left, right, mix.reverbLeft as Float32Array, mix.reverbRight as Float32Array, mix.reverb, mix.sampleRate);
+  }
+  return { channels: [left, right], sampleRate: mix.sampleRate };
 }
 
 /**
@@ -1390,22 +1405,21 @@ export async function generateWav(
 ): Promise<Uint8Array> {
   const renderStarted = performance.now();
   const trackCount = Array.isArray(options.tracks) && options.tracks.length > 0 ? options.tracks.length : 1;
-  let rendered: WavChannelRenderResult[];
+  let rendered: { channels: Float32Array[]; sampleRate: number };
   if (trackCount === 1) {
-    rendered = [await renderWavChannels(options)];
+    rendered = await combineWavChannelRenders([await renderWavChannels(options)]);
   } else {
     try {
-      const { renderWavChannelsInPool } = await import('./renderPool.js');
-      rendered = await renderWavChannelsInPool(options, trackCount, renderOptions.threads);
+      const { iterateWavChannelRenders } = await import('./renderPool.js');
+      rendered = await combineWavChannelRenders(iterateWavChannelRenders(options, trackCount, renderOptions.threads));
     } catch {
-      rendered = [await renderWavChannels(options)];
+      rendered = await combineWavChannelRenders([await renderWavChannels(options)]);
     }
   }
   renderOptions.onTiming?.({ stage: 'render', milliseconds: performance.now() - renderStarted });
 
-  const channels = combineWavChannelRenders(rendered);
   const encodeStarted = performance.now();
-  const bytes = encodeWavFromChannelsSync(channels, rendered[0].sampleRate, { dither: false });
+  const bytes = encodeWavFromChannelsSync(rendered.channels, rendered.sampleRate, { dither: false });
   renderOptions.onTiming?.({ stage: 'encode', milliseconds: performance.now() - encodeStarted });
   return bytes;
 }

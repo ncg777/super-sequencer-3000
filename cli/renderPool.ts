@@ -19,33 +19,90 @@ function resolvedThreadCount(requestedThreads: number | undefined, trackCount: n
   return Math.min(trackCount, requested);
 }
 
-function renderTrackInWorker(options: GenerateOptions, trackIndex: number): Promise<WavChannelRenderResult> {
+function createRenderWorker(options: GenerateOptions): Worker {
   const extension = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
   const workerUrl = new URL(`./renderTrackWorker.${extension}`, import.meta.url);
+  return extension === 'ts'
+    ? new Worker(`
+        const { workerData } = require('node:worker_threads');
+        import('tsx/esm/api').then(({ tsImport }) => tsImport(workerData.moduleUrl, workerData.moduleUrl));
+      `, { eval: true, workerData: { options, moduleUrl: workerUrl.href } })
+    : new Worker(workerUrl, { workerData: { options } });
+}
+
+function renderTrackInWorker(worker: Worker, trackIndex: number): Promise<WavChannelRenderResult> {
   return new Promise<WavChannelRenderResult>((resolve, reject) => {
-    const worker = new Worker(workerUrl, { workerData: { options, trackIndex } });
-    const terminate = () => {
-      void worker.terminate();
+    const cleanup = () => {
+      worker.off('message', onMessage);
+      worker.off('error', onError);
+      worker.off('exit', onExit);
     };
-    worker.once('message', (message: WorkerResultMessage) => {
-      terminate();
+    const onMessage = (message: WorkerResultMessage) => {
+      cleanup();
       if (message.error || !message.result) {
         reject(new Error(message.error ?? 'WAV render worker returned no result.'));
         return;
       }
       resolve(message.result);
-    });
-    worker.once('error', (error) => {
-      terminate();
+    };
+    const onError = (error: Error) => {
+      cleanup();
       reject(error);
-    });
-    worker.once('exit', (code) => {
-      if (code !== 0) {
-        terminate();
-        reject(new Error(`WAV render worker exited with code ${code}.`));
-      }
-    });
+    };
+    const onExit = (code: number) => {
+      cleanup();
+      reject(new Error(`WAV render worker exited before returning a result (code ${code}).`));
+    };
+    worker.once('message', onMessage);
+    worker.once('error', onError);
+    worker.once('exit', onExit);
+    worker.postMessage(trackIndex);
   });
+}
+
+export async function* iterateWavChannelRenders(
+  options: GenerateOptions,
+  trackCount: number,
+  requestedThreads?: number,
+): AsyncGenerator<WavChannelRenderResult> {
+  const threadCount = resolvedThreadCount(requestedThreads, trackCount);
+  if (threadCount <= 1) {
+    for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+      yield await renderWavChannels(options, trackIndex);
+    }
+    return;
+  }
+
+  const workers: Worker[] = [];
+  const pending: Array<Promise<WorkerResultMessage> | undefined> = [];
+  const dispatch = (worker: Worker, trackIndex: number): Promise<WorkerResultMessage> => (
+    renderTrackInWorker(worker, trackIndex).then(
+      (result) => ({ result }),
+      (error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }),
+    )
+  );
+  try {
+    for (let trackIndex = 0; trackIndex < threadCount; trackIndex += 1) {
+      const worker = createRenderWorker(options);
+      workers.push(worker);
+      pending.push(dispatch(worker, trackIndex));
+    }
+    for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+      const slot = trackIndex % threadCount;
+      const message = await pending[slot];
+      pending[slot] = undefined;
+      if (!message?.result) {
+        throw new Error(message?.error ?? 'WAV render worker returned no result.');
+      }
+      yield message.result;
+      const nextTrackIndex = trackIndex + threadCount;
+      if (nextTrackIndex < trackCount) {
+        pending[slot] = dispatch(workers[slot], nextTrackIndex);
+      }
+    }
+  } finally {
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
 }
 
 export async function renderWavChannelsInPool(
@@ -53,20 +110,9 @@ export async function renderWavChannelsInPool(
   trackCount: number,
   requestedThreads?: number,
 ): Promise<WavChannelRenderResult[]> {
-  const threadCount = resolvedThreadCount(requestedThreads, trackCount);
-  const results = new Array<WavChannelRenderResult>(trackCount);
-  let nextTrackIndex = 0;
-
-  const renderNext = async (): Promise<void> => {
-    while (nextTrackIndex < trackCount) {
-      const trackIndex = nextTrackIndex;
-      nextTrackIndex += 1;
-      results[trackIndex] = threadCount === 1
-        ? await renderWavChannels(options, trackIndex)
-        : await renderTrackInWorker(options, trackIndex);
-    }
-  };
-
-  await Promise.all(Array.from({ length: threadCount }, () => renderNext()));
+  const results: WavChannelRenderResult[] = [];
+  for await (const result of iterateWavChannelRenders(options, trackCount, requestedThreads)) {
+    results.push(result);
+  }
   return results;
 }

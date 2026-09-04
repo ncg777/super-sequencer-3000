@@ -327,7 +327,9 @@ import {
   type ReverbAudioChain,
 } from './audio/reverb';
 import { encodeWavFromChannels } from './audio/wav';
+import { renderOfflineAudio } from './audio/offlineRender';
 import { buildTrackFadeEnvelope } from './audio/trackFade';
+import { getStepDurations } from './audio/stepDurations';
 import { Phaser } from './audio/phaser';
 import {
   createSkewLfoState,
@@ -1006,19 +1008,6 @@ export default defineComponent({
 
       this.updateSynths(updatedTrack.id, false);
     },
-    getTrackStepDuration(trackNotes: number[][], index: number): number {
-      if (trackNotes.length === 0) {
-        return 1;
-      }
-
-      for (let offset = 1; offset < trackNotes.length; offset += 1) {
-        if (trackNotes[(index + offset) % trackNotes.length].length > 0) {
-          return offset;
-        }
-      }
-
-      return 1;
-    },
     getTrackVelocity(notes: number[], velocityMultiplier: number): number {
       if (notes.length === 0) {
         return 0;
@@ -1060,6 +1049,7 @@ export default defineComponent({
       }
       const activationMasks = this.activationMasks;
       const events: TrackScheduledEvent[] = [];
+      const stepDurations = getStepDurations(trackNotes);
       let order = 0;
 
       for (let repeat = 0; repeat < track.repeats; repeat += 1) {
@@ -1073,7 +1063,7 @@ export default defineComponent({
             continue;
           }
 
-          const durSteps = this.getTrackStepDuration(trackNotes, i);
+          const durSteps = stepDurations[i];
           const baseDuration = ((durSteps * track.lengthFactor / 100.0) + track.lengthOffset) * trackQuant;
           if (!Number.isFinite(baseDuration)) {
             continue;
@@ -1271,12 +1261,12 @@ export default defineComponent({
         }
 
         const ratio = step / steps;
-        suspend.call(rawContext, quantumIndex * quantum).then(async () => {
-          onProgress(ratio);
-          await this.$nextTick();
-          await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-          return resume.call(rawContext);
+        suspend.call(rawContext, quantumIndex * quantum).then(() => {
+          try {
+            void onProgress(ratio);
+          } finally {
+            return resume.call(rawContext);
+          }
         }).catch(() => {
           // Ignore checkpoints the browser refuses to schedule.
         });
@@ -1308,7 +1298,7 @@ export default defineComponent({
       try {
         // Every voice must exist before startRendering(): Tone builds the native render
         // graph at that point, so anything scheduled later is silently left out.
-        rendered = await Tone.Offline((offlineContext) => {
+        rendered = await renderOfflineAudio((offlineContext) => {
           try {
             this.trackOfflineRenderProgress(offlineContext, renderDuration, (ratio) => {
               this.setWavExportProgress(

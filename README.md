@@ -105,12 +105,44 @@ inline rendering or `--threads N` to set an explicit worker count. `--verbose` p
 separate render and WAV-encoding timings. Track results are mixed in source order, so
 thread counts produce the same deterministic WAV bytes.
 
+Workers are reused across tracks, including when running from TypeScript. Export mixes
+results incrementally in track order with at most one outstanding result per worker,
+instead of retaining every track's full-song buffers. Long pieces still require
+full-length audio buffers; use a smaller `--threads` value to reduce concurrent memory
+use. The render timing includes mixing and reverb, not just track synthesis.
+
 The WAV benchmark can capture reference files and compare later renders by hash and
 decoded 24-bit PCM error:
 
 ```sh
 yarn bench:wav --write-reference .wav-reference
 yarn bench:wav --reference .wav-reference
+```
+
+Add `--long --threads 2` to include long filtered and twelve-track fixtures. Capture
+references with the same `--long` selection before comparing. No sample-rate, bit-depth,
+envelope-resolution, or synthesis-quality settings are reduced for speed.
+
+### Browser WAV Export
+
+Offline rendering uses Tone's original audio graph and clock, without the per-second
+timer waits in its default offline scheduler. Progress checkpoints resume rendering
+without waiting for animation frames, so a hidden tab cannot stall export on a missing
+frame callback. Scheduling runs synchronously and can briefly block the UI on dense
+pieces; native audio rendering and chunked WAV encoding follow it.
+
+Audio regressions can be checked with:
+
+```sh
+yarn node --import tsx --test cli/*.test.ts src/__tests__/*.test.ts
+```
+
+For the browser-specific clock equivalence and context-restoration checks, start
+`yarn dev` and run this in the browser console on the local app:
+
+```js
+const checks = await import('/gaterunner/src/__tests__/offlineRender.browser.ts');
+await checks.runOfflineRenderChecks();
 ```
 
 ---
